@@ -4,6 +4,7 @@ import {
   MATERIAL_KEYS,
   createStarterWorld,
   isValidWorld,
+  settlePlacedBlock,
   settleWorld,
   type VoxelBlock,
 } from './world';
@@ -45,6 +46,56 @@ describe('voxel gravity', () => {
       [1, 0],
       [2, 0],
     ]);
+  });
+});
+
+describe('fresh block pouring', () => {
+  it('drops a newly placed block while preserving its stable ID', () => {
+    const result = settlePlacedBlock([block('seed', 2, 5, -1)], 'seed');
+    expect(result).toEqual({
+      blocks: [block('seed', 2, 0, -1)],
+      moved: true,
+    });
+  });
+
+  it('rolls a new block off a narrow tower instead of stacking it', () => {
+    const world = [block('base', 0, 0, 0), block('seed', 0, 1, 0)];
+    const result = settlePlacedBlock(world, 'seed');
+    const seed = result.blocks.find(({ id }) => id === 'seed');
+
+    expect(result.moved).toBe(true);
+    expect(seed?.y).toBe(0);
+    expect(Math.abs(seed?.x ?? 0) + Math.abs(seed?.z ?? 0)).toBe(1);
+    expect(new Set(result.blocks.map(({ x, y, z }) => `${x},${y},${z}`)).size).toBe(2);
+  });
+
+  it('leaves a fresh block in place when a pile contains every downhill cell', () => {
+    const world = [
+      block('support', 0, 0, 0),
+      block('east', 1, 0, 0),
+      block('west', -1, 0, 0),
+      block('south', 0, 0, 1),
+      block('north', 0, 0, -1),
+      block('seed', 0, 1, 0),
+    ];
+
+    expect(settlePlacedBlock(world, 'seed')).toEqual({ blocks: world, moved: false });
+  });
+
+  it('spreads repeated pours into a mound instead of a thin tower', () => {
+    let world = [block('base', 0, 0, 0)];
+
+    for (let index = 0; index < 12; index += 1) {
+      const centerTop = Math.max(
+        ...world.filter(({ x, z }) => x === 0 && z === 0).map(({ y }) => y),
+      );
+      const poured = block(`seed-${index}`, 0, centerTop + 1, 0);
+      world = settlePlacedBlock([...world, poured], poured.id).blocks;
+    }
+
+    const occupiedColumns = new Set(world.map(({ x, z }) => `${x},${z}`));
+    expect(occupiedColumns.size).toBeGreaterThan(5);
+    expect(Math.max(...world.map(({ y }) => y))).toBeLessThanOrEqual(1);
   });
 });
 

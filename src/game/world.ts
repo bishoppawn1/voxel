@@ -51,6 +51,7 @@ export type Cell = Pick<VoxelBlock, 'x' | 'y' | 'z'>;
 export const WORLD_SIZE = 24;
 export const WORLD_RADIUS = WORLD_SIZE / 2;
 export const MAX_HEIGHT = 12;
+export const BLOCK_RENDER_SIZE = 0.58;
 
 export const MATERIALS: Record<
   BlockMaterial,
@@ -91,6 +92,13 @@ const NEIGHBORS: Cell[] = [
   { x: 0, y: 0, z: -1 },
 ];
 
+const ROLL_DIRECTIONS: Cell[] = [
+  { x: 1, y: -1, z: 0 },
+  { x: -1, y: -1, z: 0 },
+  { x: 0, y: -1, z: 1 },
+  { x: 0, y: -1, z: -1 },
+];
+
 export const cellKey = ({ x, y, z }: Cell) => `${x},${y},${z}`;
 
 export function isInWorld({ x, y, z }: Cell) {
@@ -107,6 +115,59 @@ export function isInWorld({ x, y, z }: Cell) {
 export function hasBlock(blocks: VoxelBlock[], cell: Cell) {
   const key = cellKey(cell);
   return blocks.some((block) => cellKey(block) === key);
+}
+
+/**
+ * Settles one freshly placed, particle-sized block. It falls through open
+ * cells and rolls diagonally off occupied cells, producing a low pile when a
+ * player repeatedly pours blocks into the same area. Established structures
+ * are not reshaped; their group gravity is handled by settleWorld below.
+ */
+export function settlePlacedBlock(input: VoxelBlock[], blockId: string) {
+  const original = input.find((block) => block.id === blockId);
+  if (!original) return { blocks: input, moved: false };
+
+  const occupied = new Set(
+    input.filter((block) => block.id !== blockId).map((block) => cellKey(block)),
+  );
+  let moving = { ...original };
+  let moved = false;
+
+  while (moving.y > 0) {
+    const below = { x: moving.x, y: moving.y - 1, z: moving.z };
+    if (!occupied.has(cellKey(below))) {
+      moving = { ...moving, ...below };
+      moved = true;
+      continue;
+    }
+
+    const directionOffset =
+      Math.abs(moving.x * 31 + moving.y * 17 + moving.z * 13) % ROLL_DIRECTIONS.length;
+    let rolled: Cell | undefined;
+
+    for (let index = 0; index < ROLL_DIRECTIONS.length; index += 1) {
+      const direction = ROLL_DIRECTIONS[(index + directionOffset) % ROLL_DIRECTIONS.length];
+      const candidate = {
+        x: moving.x + direction.x,
+        y: moving.y + direction.y,
+        z: moving.z + direction.z,
+      };
+      if (isInWorld(candidate) && !occupied.has(cellKey(candidate))) {
+        rolled = candidate;
+        break;
+      }
+    }
+
+    if (!rolled) break;
+    moving = { ...moving, ...rolled };
+    moved = true;
+  }
+
+  if (!moved) return { blocks: input, moved: false };
+  return {
+    blocks: input.map((block) => (block.id === blockId ? moving : block)),
+    moved: true,
+  };
 }
 
 function anchoredBlockIds(blocks: VoxelBlock[]) {

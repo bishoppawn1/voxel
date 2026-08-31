@@ -17,6 +17,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MOUSE, type Mesh, Vector3 } from 'three';
 import {
+  BLOCK_RENDER_SIZE,
   MATERIALS,
   MATERIAL_KEYS,
   WORLD_SIZE,
@@ -24,6 +25,7 @@ import {
   hasBlock,
   isInWorld,
   isValidWorld,
+  settlePlacedBlock,
   settleWorld,
   type BlockMaterial,
   type Cell,
@@ -34,6 +36,7 @@ type Tool = 'place' | 'erase';
 type HoverTarget = Cell & { blockId?: string; valid: boolean };
 
 const STORAGE_KEY = 'voxel-world-v1';
+const PAINT_INTERVAL_MS = 160;
 
 function loadWorld() {
   try {
@@ -50,15 +53,17 @@ function AnimatedBlock({
   onHover,
   onLeave,
   onSelect,
+  onPaintStart,
 }: {
   block: VoxelBlock;
   onHover: (event: ThreeEvent<PointerEvent>, block: VoxelBlock) => void;
   onLeave: () => void;
   onSelect: (event: ThreeEvent<MouseEvent>, block: VoxelBlock) => void;
+  onPaintStart: (event: ThreeEvent<PointerEvent>, block: VoxelBlock) => void;
 }) {
   const mesh = useRef<Mesh>(null);
   const target = useMemo(
-    () => new Vector3(block.x, block.y + 0.5, block.z),
+    () => new Vector3(block.x, block.y + BLOCK_RENDER_SIZE / 2, block.z),
     [block.x, block.y, block.z],
   );
   const colors = MATERIALS[block.material];
@@ -76,10 +81,11 @@ function AnimatedBlock({
       castShadow
       receiveShadow
       onPointerMove={(event) => onHover(event, block)}
+      onPointerDown={(event) => onPaintStart(event, block)}
       onPointerOut={onLeave}
       onClick={(event) => onSelect(event, block)}
     >
-      <boxGeometry args={[1, 1, 1]} />
+      <boxGeometry args={[BLOCK_RENDER_SIZE, BLOCK_RENDER_SIZE, BLOCK_RENDER_SIZE]} />
       <meshStandardMaterial
         color={colors.color}
         roughness={colors.roughness ?? 0.82}
@@ -107,6 +113,20 @@ function WorldScene({
   onRemove: (id: string) => void;
 }) {
   const [hover, setHover] = useState<HoverTarget | null>(null);
+  const painting = useRef(false);
+  const lastPaintAt = useRef(-Infinity);
+
+  useEffect(() => {
+    const stopPainting = () => {
+      painting.current = false;
+    };
+    window.addEventListener('pointerup', stopPainting);
+    window.addEventListener('pointercancel', stopPainting);
+    return () => {
+      window.removeEventListener('pointerup', stopPainting);
+      window.removeEventListener('pointercancel', stopPainting);
+    };
+  }, []);
 
   const getAdjacentCell = useCallback(
     (event: ThreeEvent<PointerEvent | MouseEvent>, block: VoxelBlock): Cell => {
@@ -120,6 +140,22 @@ function WorldScene({
     [],
   );
 
+  const paintCell = (event: ThreeEvent<PointerEvent>, cell: Cell, immediate = false) => {
+    if (
+      tool !== 'place' ||
+      !event.shiftKey ||
+      (!immediate && (!painting.current || (event.buttons & 1) === 0))
+    ) {
+      if (!event.shiftKey || (event.buttons & 1) === 0) painting.current = false;
+      return;
+    }
+
+    const now = performance.now();
+    if (!immediate && now - lastPaintAt.current < PAINT_INTERVAL_MS) return;
+    lastPaintAt.current = now;
+    if (isInWorld(cell) && !hasBlock(blocks, cell)) onAdd(cell);
+  };
+
   const hoverBlock = (event: ThreeEvent<PointerEvent>, block: VoxelBlock) => {
     event.stopPropagation();
     if (tool === 'erase') {
@@ -128,11 +164,19 @@ function WorldScene({
     }
     const cell = getAdjacentCell(event, block);
     setHover({ ...cell, valid: isInWorld(cell) && !hasBlock(blocks, cell) });
+    paintCell(event, cell);
+  };
+
+  const startPaintingOnBlock = (event: ThreeEvent<PointerEvent>, block: VoxelBlock) => {
+    if (tool !== 'place' || event.button !== 0 || !event.shiftKey) return;
+    event.stopPropagation();
+    painting.current = true;
+    paintCell(event, getAdjacentCell(event, block), true);
   };
 
   const selectBlock = (event: ThreeEvent<MouseEvent>, block: VoxelBlock) => {
     event.stopPropagation();
-    if (event.delta > 3) return;
+    if (event.delta > 3 || event.shiftKey) return;
     if (tool === 'erase') {
       onRemove(block.id);
       setHover(null);
@@ -173,10 +217,17 @@ function WorldScene({
           event.stopPropagation();
           const cell = planeCell(event);
           setHover({ ...cell, valid: isInWorld(cell) && !hasBlock(blocks, cell) });
+          paintCell(event, cell);
+        }}
+        onPointerDown={(event) => {
+          if (tool !== 'place' || event.button !== 0 || !event.shiftKey) return;
+          event.stopPropagation();
+          painting.current = true;
+          paintCell(event, planeCell(event), true);
         }}
         onPointerOut={() => setHover(null)}
         onClick={(event) => {
-          if (tool !== 'place' || event.delta > 3) return;
+          if (tool !== 'place' || event.delta > 3 || event.shiftKey) return;
           event.stopPropagation();
           const cell = planeCell(event);
           if (isInWorld(cell) && !hasBlock(blocks, cell)) onAdd(cell);
@@ -206,12 +257,13 @@ function WorldScene({
           onHover={hoverBlock}
           onLeave={() => setHover(null)}
           onSelect={selectBlock}
+          onPaintStart={startPaintingOnBlock}
         />
       ))}
 
       {hover && (
-        <mesh position={[hover.x, hover.y + 0.5, hover.z]}>
-          <boxGeometry args={[1, 1, 1]} />
+        <mesh position={[hover.x, hover.y + BLOCK_RENDER_SIZE / 2, hover.z]}>
+          <boxGeometry args={[BLOCK_RENDER_SIZE * 1.08, BLOCK_RENDER_SIZE * 1.08, BLOCK_RENDER_SIZE * 1.08]} />
           <meshStandardMaterial
             color={tool === 'erase' ? '#cc6d55' : hover.valid ? '#e6ed88' : '#cc6d55'}
             transparent
@@ -335,16 +387,19 @@ export default function Game() {
 
   const addBlock = (cell: Cell) => {
     if (hasBlock(blocks, cell) || !isInWorld(cell)) return;
-    const added: VoxelBlock[] = [
-      ...blocks,
-      {
-        id: `created-${Date.now()}-${idCounter.current++}`,
-        ...cell,
-        material,
-      },
-    ];
-    const settled = gravityOn ? settleWorld(added) : { blocks: added, moved: false };
-    commit(settled.blocks, settled.moved);
+    const placed: VoxelBlock = {
+      id: `created-${Date.now()}-${idCounter.current++}`,
+      ...cell,
+      material,
+    };
+    const added = [...blocks, placed];
+    const poured = gravityOn
+      ? settlePlacedBlock(added, placed.id)
+      : { blocks: added, moved: false };
+    const settled = gravityOn
+      ? settleWorld(poured.blocks)
+      : { blocks: poured.blocks, moved: false };
+    commit(settled.blocks, poured.moved || settled.moved);
   };
 
   const removeBlock = (id: string) => {
@@ -491,6 +546,7 @@ export default function Game() {
       <div className="controls-hint">
         <span><i className="mouse-icon right" /> Right-drag to orbit</span>
         <span><i className="mouse-icon left" /> Left-click to {tool}</span>
+        {tool === 'place' && <span><kbd>Shift</kbd> + drag to pour</span>}
         <span><b>⌁</b> Scroll to zoom</span>
       </div>
 

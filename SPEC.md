@@ -21,7 +21,8 @@ The player can:
 
 1. Choose Place or Erase.
 2. Select one of 24 block materials from a compact block palette.
-3. Left-click the plane or an exposed block face to place a block.
+3. Left-click the plane or an exposed block face to place a block. Hold Shift
+   while left-dragging to pour blocks at a calm, controlled rate.
 4. Left-click a block with Erase selected to remove it.
 5. Right-click and drag to orbit around the center of the world.
 6. Scroll to zoom in and out.
@@ -53,12 +54,17 @@ Gravity is connectivity-based rather than a full rigid-body simulation.
 - The group stops once it touches the plane or reconnects to a supported structure.
 - The group keeps its internal shape while falling.
 - Pausing gravity allows unsupported structures to remain suspended. Resuming gravity settles all unsupported groups immediately, with a short visual fall animation.
+- A freshly placed block can roll diagonally off an occupied cell before it
+  becomes stable, so repeated placement forms a low pile instead of an
+  implausibly thin tower. Existing structures still settle as intact groups.
 
 ## Interface and visual direction
 
 - Full-screen isometric world with soft sage sky, warm neutral plane, visible grid, subtle fog, and directional shadows.
 - Compact translucent tool surfaces use cream, forest green, lime, soil brown, stone gray, and sand gold.
-- Rendered cubes fill their grid cells and touch neighboring cubes without a visible gap. Palette tiles stay compact enough to show the expanded collection without covering the world.
+- Rendered cubes are particle-sized within their grid cells, with visible air
+  between neighboring cubes. Palette tiles stay very small and compact enough
+  to show the expanded collection without covering the world.
 - Controls must expose accessible names, selected states, disabled states, and keyboard shortcuts where applicable.
 - The first-use message should leave after the first world edit.
 - Motion should honor the operating system's reduced-motion preference.
