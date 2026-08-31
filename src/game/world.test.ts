@@ -345,13 +345,42 @@ describe('world persistence validation', () => {
     expect(isValidWorld([block('a', 99, 0, 0)])).toBe(false);
   });
 
-  it('supports 24 selectable materials, including dirt and wood', () => {
-    expect(MATERIAL_KEYS).toHaveLength(24);
+  it('supports 34 selectable materials, including ten new building blocks', () => {
+    const newMaterials = [
+      'cobblestone',
+      'limestone',
+      'granite',
+      'slate',
+      'sandstone',
+      'planks',
+      'terracotta',
+      'concrete',
+      'steel',
+      'glowstone',
+    ] as const;
+
+    expect(MATERIAL_KEYS).toHaveLength(34);
     expect(MATERIALS.soil.label).toBe('Dirt');
     expect(MATERIALS.wood.label).toBe('Wood');
+    expect(newMaterials.every((material) => MATERIAL_KEYS.includes(material))).toBe(true);
     expect(
-      isValidWorld([{ ...block('wood', 0, 0, 0), material: 'wood' }]),
+      newMaterials.every((material, index) =>
+        isValidWorld([block(`new-${material}`, index, 0, 0, material)]),
+      ),
     ).toBe(true);
+  });
+
+  it('gives the new blocks material-specific structural and fire behavior', () => {
+    expect(MATERIALS.steel).toMatchObject({
+      gravityBehavior: 'structural',
+      supportTolerance: 12,
+      metalness: 0.8,
+    });
+    expect(MATERIALS.terracotta).toMatchObject({
+      gravityBehavior: 'cohesive',
+      supportTolerance: 5,
+    });
+    expect(MATERIALS.planks.burnDuration).toBe(6);
   });
 
   it('validates persisted fire state only on flammable materials', () => {

@@ -300,6 +300,102 @@ function paintMaterial(
       context.fillStyle = '#5b388c';
       context.fillRect(8, 0, 1, SIZE);
       return;
+    case 'cobblestone':
+      fill(context, '#4c5350');
+      for (let row = 0; row < 4; row += 1) {
+        const y = row * 4;
+        const offset = row % 2 === 0 ? -3 : 0;
+        for (let x = offset; x < SIZE; x += 6) {
+          context.fillStyle = random() > 0.5 ? '#747c78' : '#626a67';
+          context.fillRect(x + 1, y + 1, 5, 3);
+          context.fillStyle = '#909692';
+          context.fillRect(x + 2, y + 1, 2, 1);
+        }
+      }
+      return;
+    case 'limestone':
+      fill(context, '#c7bb97');
+      scatter(context, random, ['#ded3ad', '#aa9c79', '#e8ddba'], 34, 1);
+      context.fillStyle = '#998b6c';
+      context.fillRect(0, 4, 11, 1);
+      context.fillRect(5, 5, 7, 1);
+      context.fillRect(3, 11, 13, 1);
+      context.fillRect(0, 12, 6, 1);
+      return;
+    case 'granite':
+      fill(context, '#906861');
+      scatter(context, random, ['#c99a8e', '#654a48', '#dcc0ad', '#3e3d3b'], 78, 2);
+      return;
+    case 'slate':
+      fill(context, '#485761');
+      for (let y = 1; y < SIZE; y += 3) {
+        context.fillStyle = y % 2 === 0 ? '#687782' : '#34434d';
+        context.fillRect(Math.floor(random() * 4), y, 10 + Math.floor(random() * 6), 1);
+      }
+      scatter(context, random, ['#82909a', '#27343c'], 24, 1);
+      return;
+    case 'sandstone':
+      fill(context, '#c89e61');
+      scatter(context, random, ['#e0bb7a', '#ad814a', '#efd08b'], 32, 1);
+      for (let y = 3; y < SIZE; y += 4) {
+        context.fillStyle = y % 8 === 3 ? '#a77843' : '#dfb572';
+        context.fillRect(0, y, SIZE, 1);
+        context.fillRect((y * 3) % 9, y + 1, 6, 1);
+      }
+      return;
+    case 'planks':
+      fill(context, '#a86f3b');
+      for (let y = 0; y < SIZE; y += 5) {
+        context.fillStyle = '#714326';
+        context.fillRect(0, y, SIZE, 1);
+        const joint = (y * 5 + 4) % SIZE;
+        context.fillRect(joint, y, 1, 5);
+        context.fillStyle = '#cf9353';
+        context.fillRect((joint + 3) % SIZE, y + 2, 6, 1);
+      }
+      scatter(context, random, ['#87542f', '#dc9e5a'], 20, 1);
+      return;
+    case 'terracotta':
+      fill(context, '#b75f43');
+      scatter(context, random, ['#cf7756', '#944731', '#dc8964'], 30, 1);
+      context.fillStyle = '#71392e';
+      for (let index = -8; index < SIZE; index += 8) {
+        for (let step = 0; step < 8; step += 1) {
+          context.fillRect(index + step, step, 1, 1);
+          context.fillRect(index + step, SIZE - 1 - step, 1, 1);
+        }
+      }
+      return;
+    case 'concrete':
+      fill(context, '#9fa39f');
+      scatter(context, random, ['#c4c7c1', '#777d79', '#d7d7ce', '#626a66'], 62, 2);
+      context.fillStyle = '#e2e0d6';
+      context.fillRect(2, 3, 1, 1);
+      context.fillRect(12, 9, 2, 1);
+      return;
+    case 'steel':
+      fill(context, '#7f8e95');
+      context.fillStyle = '#b5c1c5';
+      context.fillRect(1, 1, SIZE - 2, 1);
+      context.fillRect(1, SIZE - 2, SIZE - 2, 1);
+      context.fillStyle = '#4e5d64';
+      context.fillRect(0, 7, SIZE, 2);
+      context.fillRect(7, 0, 2, SIZE);
+      for (const [x, y] of [[2, 2], [13, 2], [2, 13], [13, 13]]) {
+        context.fillStyle = '#d3dcde';
+        context.fillRect(x, y, 1, 1);
+      }
+      return;
+    case 'glowstone':
+      fill(context, '#8d5c21');
+      scatter(context, random, ['#c4862d', '#724517', '#e8b948'], 44, 2);
+      context.fillStyle = '#ffe47a';
+      for (let y = 0; y < SIZE; y += 1) {
+        const x = (11 - Math.floor(y / 3) + (y % 4)) % SIZE;
+        context.fillRect(x, y, 1, 1);
+        if (y % 4 === 0) context.fillRect(x - 1, y, 3, 1);
+      }
+      return;
   }
 }
 

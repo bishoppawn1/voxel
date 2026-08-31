@@ -23,6 +23,16 @@ export const MATERIAL_KEYS = [
   'marble',
   'basalt',
   'crystal',
+  'cobblestone',
+  'limestone',
+  'granite',
+  'slate',
+  'sandstone',
+  'planks',
+  'terracotta',
+  'concrete',
+  'steel',
+  'glowstone',
 ] as const;
 
 export type BlockMaterial = (typeof MATERIAL_KEYS)[number];
@@ -86,6 +96,16 @@ export const MATERIALS: Record<
   marble: { label: 'Marble', color: '#ddd9cf', edge: '#989990', supportTolerance: 12, gravityBehavior: 'structural', roughness: 0.38 },
   basalt: { label: 'Basalt', color: '#555a60', edge: '#2f3337', supportTolerance: 10, gravityBehavior: 'structural', roughness: 0.93 },
   crystal: { label: 'Crystal', color: '#9d75d5', edge: '#5e388f', supportTolerance: 6, gravityBehavior: 'structural', roughness: 0.18, opacity: 0.82, emissive: '#654098', emissiveIntensity: 0.22 },
+  cobblestone: { label: 'Cobblestone', color: '#727976', edge: '#454c49', supportTolerance: 8, gravityBehavior: 'structural', roughness: 0.98 },
+  limestone: { label: 'Limestone', color: '#c9bd99', edge: '#8d8062', supportTolerance: 8, gravityBehavior: 'structural', roughness: 0.88 },
+  granite: { label: 'Granite', color: '#9a736c', edge: '#604842', supportTolerance: 10, gravityBehavior: 'structural', roughness: 0.78 },
+  slate: { label: 'Slate', color: '#53616a', edge: '#303941', supportTolerance: 9, gravityBehavior: 'structural', roughness: 0.72 },
+  sandstone: { label: 'Sandstone', color: '#c89f62', edge: '#8c6a3e', supportTolerance: 6, gravityBehavior: 'structural', roughness: 0.92 },
+  planks: { label: 'Planks', color: '#b98249', edge: '#714526', supportTolerance: 9, gravityBehavior: 'structural', burnDuration: 6, roughness: 0.9 },
+  terracotta: { label: 'Terracotta', color: '#bd6848', edge: '#7c3e2e', supportTolerance: 5, gravityBehavior: 'cohesive', roughness: 0.86 },
+  concrete: { label: 'Concrete', color: '#a2a5a0', edge: '#646965', supportTolerance: 11, gravityBehavior: 'structural', roughness: 0.91 },
+  steel: { label: 'Steel', color: '#89969c', edge: '#4a565d', supportTolerance: 12, gravityBehavior: 'structural', roughness: 0.25, metalness: 0.8 },
+  glowstone: { label: 'Glowstone', color: '#d8a442', edge: '#94621d', supportTolerance: 6, gravityBehavior: 'structural', roughness: 0.55, emissive: '#e58a22', emissiveIntensity: 0.4 },
 };
 
 const NEIGHBORS: Cell[] = [
