@@ -49,18 +49,20 @@ The world is saved to local browser storage after each edit and restored on the 
 
 ## Structural gravity
 
-Gravity is connectivity-based rather than a full rigid-body simulation.
+Gravity is material-aware and connectivity-based rather than a full rigid-body simulation.
 
 - A block touching the plane is grounded.
-- Face-adjacent blocks support one another on all six faces: left, right, front, back, above, and below.
-- Any group connected through those faces to a grounded block is supported.
+- Every material has a support tolerance describing how far it can carry a face-connected structure away from direct support. Marble, obsidian, wood, basalt, brick, and stone have long tolerances; dirt and other cohesive materials have shorter tolerances.
+- Rigid and cohesive blocks can transmit support through face connections. Wood can carry a tree canopy, and leaves connect through neighboring wood and leaves within their shorter tolerance.
+- Loose and fluid materials—including sand, gravel, snow, mud, water, and lava—do not receive or transmit sideways support. They fall and roll downhill until directly supported by the plane or a block below.
 - When an edit disconnects a group from every grounded block, the whole disconnected group falls together one grid level at a time.
 - The group stops once it touches the plane or reconnects to a supported structure.
 - The group keeps its internal shape while falling.
 - Pausing gravity allows unsupported structures to remain suspended. Resuming gravity settles all unsupported groups immediately, with a short visual fall animation.
-- A freshly placed block can roll diagonally off an occupied cell before it
-  becomes stable, so repeated placement forms a low pile instead of an
-  implausibly thin tower. Existing structures still settle as intact groups.
+- A freshly placed loose or fluid block can roll diagonally off an occupied
+  cell before it becomes stable, so repeated placement forms a low pile
+  instead of an implausibly thin tower. Rigid blocks remain on direct supports,
+  and existing falling groups still preserve their shape.
 
 ## Interface and visual direction
 

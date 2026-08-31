@@ -14,12 +14,18 @@ import {
   type VoxelBlock,
 } from './world';
 
-const block = (id: string, x: number, y: number, z: number): VoxelBlock => ({
+const block = (
+  id: string,
+  x: number,
+  y: number,
+  z: number,
+  material: VoxelBlock['material'] = 'stone',
+): VoxelBlock => ({
   id,
   x,
   y,
   z,
-  material: 'stone',
+  material,
 });
 
 describe('voxel gravity', () => {
@@ -52,6 +58,60 @@ describe('voxel gravity', () => {
       [2, 0],
     ]);
   });
+
+  it('lets marble carry a long cantilever without collapsing', () => {
+    const world = [
+      block('root', 0, 0, 0, 'marble'),
+      block('column', 0, 1, 0, 'marble'),
+      ...Array.from({ length: 10 }, (_, index) =>
+        block(`span-${index}`, index + 1, 1, 0, 'marble'),
+      ),
+    ];
+
+    expect(settleWorld(world)).toEqual({ blocks: world, moved: false });
+  });
+
+  it('lets wood support a connected leaf canopy', () => {
+    const world = [
+      block('trunk-0', 0, 0, 0, 'wood'),
+      block('trunk-1', 0, 1, 0, 'wood'),
+      block('trunk-2', 0, 2, 0, 'wood'),
+      ...Array.from({ length: 5 }, (_, index) =>
+        block(`leaf-${index}`, index + 1, 2, 0, 'leaves'),
+      ),
+    ];
+
+    expect(settleWorld(world)).toEqual({ blocks: world, moved: false });
+  });
+
+  it.each(['sand', 'lava'] as const)(
+    'does not let %s hang from the side of a wall',
+    (material) => {
+      const world = [
+        block('root', 0, 0, 0),
+        block('wall', 0, 1, 0),
+        block('falling', 1, 1, 0, material),
+      ];
+      const result = settleWorld(world);
+
+      expect(result.moved).toBe(true);
+      expect(result.blocks.find(({ id }) => id === 'falling')?.y).toBe(0);
+    },
+  );
+
+  it('limits weaker dirt to a short unsupported span', () => {
+    const world = [
+      block('root', 0, 0, 0, 'soil'),
+      block('column', 0, 1, 0, 'soil'),
+      block('near-1', 1, 1, 0, 'soil'),
+      block('near-2', 2, 1, 0, 'soil'),
+      block('far', 3, 1, 0, 'soil'),
+    ];
+    const result = settleWorld(world);
+
+    expect(result.blocks.find(({ id }) => id === 'near-2')?.y).toBe(1);
+    expect(result.blocks.find(({ id }) => id === 'far')?.y).toBe(0);
+  });
 });
 
 describe('quarter-scale world grid', () => {
@@ -72,15 +132,15 @@ describe('quarter-scale world grid', () => {
 
 describe('fresh block pouring', () => {
   it('drops a newly placed block while preserving its stable ID', () => {
-    const result = settlePlacedBlock([block('seed', 2, 5, -1)], 'seed');
+    const result = settlePlacedBlock([block('seed', 2, 5, -1, 'sand')], 'seed');
     expect(result).toEqual({
-      blocks: [block('seed', 2, 0, -1)],
+      blocks: [block('seed', 2, 0, -1, 'sand')],
       moved: true,
     });
   });
 
-  it('rolls a new block off a narrow tower instead of stacking it', () => {
-    const world = [block('base', 0, 0, 0), block('seed', 0, 1, 0)];
+  it('rolls loose sand off a narrow tower instead of stacking it', () => {
+    const world = [block('base', 0, 0, 0), block('seed', 0, 1, 0, 'sand')];
     const result = settlePlacedBlock(world, 'seed');
     const seed = result.blocks.find(({ id }) => id === 'seed');
 
@@ -88,6 +148,15 @@ describe('fresh block pouring', () => {
     expect(seed?.y).toBe(0);
     expect(Math.abs(seed?.x ?? 0) + Math.abs(seed?.z ?? 0)).toBe(1);
     expect(new Set(result.blocks.map(({ x, y, z }) => `${x},${y},${z}`)).size).toBe(2);
+  });
+
+  it('keeps rigid marble on a narrow support', () => {
+    const world = [
+      block('base', 0, 0, 0, 'marble'),
+      block('seed', 0, 1, 0, 'marble'),
+    ];
+
+    expect(settlePlacedBlock(world, 'seed')).toEqual({ blocks: world, moved: false });
   });
 
   it('leaves a fresh block in place when a pile contains every downhill cell', () => {
@@ -110,7 +179,7 @@ describe('fresh block pouring', () => {
       const centerTop = Math.max(
         ...world.filter(({ x, z }) => x === 0 && z === 0).map(({ y }) => y),
       );
-      const poured = block(`seed-${index}`, 0, centerTop + 1, 0);
+      const poured = block(`seed-${index}`, 0, centerTop + 1, 0, 'sand');
       world = settlePlacedBlock([...world, poured], poured.id).blocks;
     }
 

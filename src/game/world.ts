@@ -31,6 +31,8 @@ type MaterialDefinition = {
   label: string;
   color: string;
   edge: string;
+  supportTolerance: number;
+  gravityBehavior: 'structural' | 'cohesive' | 'loose' | 'fluid';
   roughness?: number;
   metalness?: number;
   opacity?: number;
@@ -58,30 +60,30 @@ export const MATERIALS: Record<
   BlockMaterial,
   MaterialDefinition
 > = {
-  grass: { label: 'Grass', color: '#72a55a', edge: '#496f43' },
-  soil: { label: 'Dirt', color: '#9a6845', edge: '#70482f' },
-  stone: { label: 'Stone', color: '#7d898e', edge: '#586468' },
-  sand: { label: 'Sand', color: '#d7bd76', edge: '#a88d4d' },
-  wood: { label: 'Wood', color: '#a8733f', edge: '#6f4626', roughness: 0.95 },
-  leaves: { label: 'Leaves', color: '#477d46', edge: '#285532', roughness: 0.9 },
-  brick: { label: 'Brick', color: '#a74f3f', edge: '#743327', roughness: 0.92 },
-  clay: { label: 'Clay', color: '#bf765d', edge: '#894f40', roughness: 0.9 },
-  snow: { label: 'Snow', color: '#f2f5ee', edge: '#b8c7c1', roughness: 0.72 },
-  ice: { label: 'Ice', color: '#a9dce5', edge: '#5f9eb2', roughness: 0.25, opacity: 0.78 },
-  water: { label: 'Water', color: '#4b9dc4', edge: '#267294', roughness: 0.18, opacity: 0.68 },
-  lava: { label: 'Lava', color: '#f0682c', edge: '#a73520', roughness: 0.65, emissive: '#d33e14', emissiveIntensity: 0.48 },
-  obsidian: { label: 'Obsidian', color: '#312b40', edge: '#17141f', roughness: 0.35, metalness: 0.22 },
-  coal: { label: 'Coal', color: '#3e4341', edge: '#1d211f', roughness: 0.96 },
-  iron: { label: 'Iron', color: '#a8ada8', edge: '#666e6c', roughness: 0.5, metalness: 0.55 },
-  gold: { label: 'Gold', color: '#d9ad36', edge: '#8f6a17', roughness: 0.34, metalness: 0.72 },
-  copper: { label: 'Copper', color: '#bc6f46', edge: '#78442e', roughness: 0.5, metalness: 0.5 },
-  glass: { label: 'Glass', color: '#d8f0e9', edge: '#78a9a1', roughness: 0.08, opacity: 0.42 },
-  moss: { label: 'Moss', color: '#71883f', edge: '#485929', roughness: 1 },
-  mud: { label: 'Mud', color: '#6f503b', edge: '#453125', roughness: 1 },
-  gravel: { label: 'Gravel', color: '#8d8880', edge: '#5d5954', roughness: 1 },
-  marble: { label: 'Marble', color: '#ddd9cf', edge: '#989990', roughness: 0.38 },
-  basalt: { label: 'Basalt', color: '#555a60', edge: '#2f3337', roughness: 0.93 },
-  crystal: { label: 'Crystal', color: '#9d75d5', edge: '#5e388f', roughness: 0.18, opacity: 0.82, emissive: '#654098', emissiveIntensity: 0.22 },
+  grass: { label: 'Grass', color: '#72a55a', edge: '#496f43', supportTolerance: 3, gravityBehavior: 'cohesive' },
+  soil: { label: 'Dirt', color: '#9a6845', edge: '#70482f', supportTolerance: 2, gravityBehavior: 'cohesive' },
+  stone: { label: 'Stone', color: '#7d898e', edge: '#586468', supportTolerance: 7, gravityBehavior: 'structural' },
+  sand: { label: 'Sand', color: '#d7bd76', edge: '#a88d4d', supportTolerance: 0, gravityBehavior: 'loose' },
+  wood: { label: 'Wood', color: '#a8733f', edge: '#6f4626', supportTolerance: 10, gravityBehavior: 'structural', roughness: 0.95 },
+  leaves: { label: 'Leaves', color: '#477d46', edge: '#285532', supportTolerance: 5, gravityBehavior: 'cohesive', roughness: 0.9 },
+  brick: { label: 'Brick', color: '#a74f3f', edge: '#743327', supportTolerance: 8, gravityBehavior: 'structural', roughness: 0.92 },
+  clay: { label: 'Clay', color: '#bf765d', edge: '#894f40', supportTolerance: 4, gravityBehavior: 'cohesive', roughness: 0.9 },
+  snow: { label: 'Snow', color: '#f2f5ee', edge: '#b8c7c1', supportTolerance: 0, gravityBehavior: 'loose', roughness: 0.72 },
+  ice: { label: 'Ice', color: '#a9dce5', edge: '#5f9eb2', supportTolerance: 5, gravityBehavior: 'structural', roughness: 0.25, opacity: 0.78 },
+  water: { label: 'Water', color: '#4b9dc4', edge: '#267294', supportTolerance: 0, gravityBehavior: 'fluid', roughness: 0.18, opacity: 0.68 },
+  lava: { label: 'Lava', color: '#f0682c', edge: '#a73520', supportTolerance: 0, gravityBehavior: 'fluid', roughness: 0.65, emissive: '#d33e14', emissiveIntensity: 0.48 },
+  obsidian: { label: 'Obsidian', color: '#312b40', edge: '#17141f', supportTolerance: 12, gravityBehavior: 'structural', roughness: 0.35, metalness: 0.22 },
+  coal: { label: 'Coal', color: '#3e4341', edge: '#1d211f', supportTolerance: 6, gravityBehavior: 'structural', roughness: 0.96 },
+  iron: { label: 'Iron', color: '#a8ada8', edge: '#666e6c', supportTolerance: 9, gravityBehavior: 'structural', roughness: 0.5, metalness: 0.55 },
+  gold: { label: 'Gold', color: '#d9ad36', edge: '#8f6a17', supportTolerance: 7, gravityBehavior: 'structural', roughness: 0.34, metalness: 0.72 },
+  copper: { label: 'Copper', color: '#bc6f46', edge: '#78442e', supportTolerance: 7, gravityBehavior: 'structural', roughness: 0.5, metalness: 0.5 },
+  glass: { label: 'Glass', color: '#d8f0e9', edge: '#78a9a1', supportTolerance: 4, gravityBehavior: 'structural', roughness: 0.08, opacity: 0.42 },
+  moss: { label: 'Moss', color: '#71883f', edge: '#485929', supportTolerance: 3, gravityBehavior: 'cohesive', roughness: 1 },
+  mud: { label: 'Mud', color: '#6f503b', edge: '#453125', supportTolerance: 0, gravityBehavior: 'loose', roughness: 1 },
+  gravel: { label: 'Gravel', color: '#8d8880', edge: '#5d5954', supportTolerance: 0, gravityBehavior: 'loose', roughness: 1 },
+  marble: { label: 'Marble', color: '#ddd9cf', edge: '#989990', supportTolerance: 12, gravityBehavior: 'structural', roughness: 0.38 },
+  basalt: { label: 'Basalt', color: '#555a60', edge: '#2f3337', supportTolerance: 10, gravityBehavior: 'structural', roughness: 0.93 },
+  crystal: { label: 'Crystal', color: '#9d75d5', edge: '#5e388f', supportTolerance: 6, gravityBehavior: 'structural', roughness: 0.18, opacity: 0.82, emissive: '#654098', emissiveIntensity: 0.22 },
 };
 
 const NEIGHBORS: Cell[] = [
@@ -132,6 +134,11 @@ export function settlePlacedBlock(input: VoxelBlock[], blockId: string) {
   const original = input.find((block) => block.id === blockId);
   if (!original) return { blocks: input, moved: false };
 
+  const behavior = MATERIALS[original.material].gravityBehavior;
+  if (behavior !== 'loose' && behavior !== 'fluid') {
+    return { blocks: input, moved: false };
+  }
+
   const occupied = new Set(
     input.filter((block) => block.id !== blockId).map((block) => cellKey(block)),
   );
@@ -179,8 +186,12 @@ function anchoredBlockIds(blocks: VoxelBlock[]) {
   const byCell = new Map(blocks.map((block) => [cellKey(block), block]));
   const anchored = new Set<string>();
   const queue = blocks.filter((block) => block.y === 0);
+  const remainingTolerance = new Map<string, number>();
 
-  queue.forEach((block) => anchored.add(block.id));
+  queue.forEach((block) => {
+    anchored.add(block.id);
+    remainingTolerance.set(block.id, MATERIALS[block.material].supportTolerance);
+  });
 
   for (let index = 0; index < queue.length; index += 1) {
     const block = queue[index];
@@ -192,10 +203,21 @@ function anchoredBlockIds(blocks: VoxelBlock[]) {
           z: block.z + offset.z,
         }),
       );
-      if (neighbor && !anchored.has(neighbor.id)) {
-        anchored.add(neighbor.id);
-        queue.push(neighbor);
-      }
+      if (!neighbor) continue;
+
+      const neighborTolerance = MATERIALS[neighbor.material].supportTolerance;
+      const isRestingOnBlock = offset.x === 0 && offset.y === 1 && offset.z === 0;
+      const sourceTolerance = remainingTolerance.get(block.id) ?? 0;
+      const nextTolerance = isRestingOnBlock
+        ? neighborTolerance
+        : Math.min(sourceTolerance, neighborTolerance) - 1;
+
+      if (nextTolerance < 0) continue;
+      if ((remainingTolerance.get(neighbor.id) ?? -1) >= nextTolerance) continue;
+
+      anchored.add(neighbor.id);
+      remainingTolerance.set(neighbor.id, nextTolerance);
+      queue.push(neighbor);
     }
   }
 
