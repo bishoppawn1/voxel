@@ -260,62 +260,73 @@ function floatingComponents(blocks: VoxelBlock[], floatingIds: Set<string>) {
   return components;
 }
 
+function settleStructuresStep(input: VoxelBlock[]) {
+  const anchored = anchoredBlockIds(input);
+  const floating = input.filter(
+    (block) =>
+      !anchored.has(block.id) && MATERIALS[block.material].gravityBehavior !== 'fluid',
+  );
+  if (floating.length === 0) return { blocks: input, moved: false };
+
+  const floatingIds = new Set(floating.map((block) => block.id));
+  const components = floatingComponents(input, floatingIds);
+  const occupied = new Set(input.map((block) => cellKey(block)));
+  const byId = new Map(input.map((block) => [block.id, block]));
+  let moved = false;
+
+  for (const component of components) {
+    component.forEach((block) => occupied.delete(cellKey(block)));
+    const seed = component[0];
+    const directionOffset =
+      Math.abs(seed.x * 31 + seed.y * 17 + seed.z * 13) % ROLL_DIRECTIONS.length;
+    const translations = [
+      { x: 0, y: -1, z: 0 },
+      ...ROLL_DIRECTIONS.map(
+        (_, index) => ROLL_DIRECTIONS[(index + directionOffset) % ROLL_DIRECTIONS.length],
+      ),
+    ];
+    const translation = translations.find((offset) =>
+      component.every((block) => {
+        const destination = {
+          x: block.x + offset.x,
+          y: block.y + offset.y,
+          z: block.z + offset.z,
+        };
+        return isInWorld(destination) && !occupied.has(cellKey(destination));
+      }),
+    );
+
+    if (translation) {
+      component.forEach((block) => {
+        const next = {
+          ...block,
+          x: block.x + translation.x,
+          y: block.y + translation.y,
+          z: block.z + translation.z,
+        };
+        byId.set(block.id, next);
+        occupied.add(cellKey(next));
+      });
+      moved = true;
+    } else {
+      component.forEach((block) => occupied.add(cellKey(block)));
+    }
+  }
+
+  return {
+    blocks: moved ? input.map((block) => byId.get(block.id) ?? block) : input,
+    moved,
+  };
+}
+
 function settleStructures(input: VoxelBlock[]) {
-  let blocks = input.map((block) => ({ ...block }));
+  let blocks = input;
   let moved = false;
 
   for (let step = 0; step < MAX_HEIGHT * 2; step += 1) {
-    const anchored = anchoredBlockIds(blocks);
-    const floating = blocks.filter((block) => !anchored.has(block.id));
-    if (floating.length === 0) break;
-
-    const floatingIds = new Set(floating.map((block) => block.id));
-    const components = floatingComponents(blocks, floatingIds);
-    const occupied = new Set(blocks.map((block) => cellKey(block)));
-    const byId = new Map(blocks.map((block) => [block.id, block]));
-    let movedThisStep = false;
-
-    for (const component of components) {
-      component.forEach((block) => occupied.delete(cellKey(block)));
-      const seed = component[0];
-      const directionOffset =
-        Math.abs(seed.x * 31 + seed.y * 17 + seed.z * 13) % ROLL_DIRECTIONS.length;
-      const translations = [
-        { x: 0, y: -1, z: 0 },
-        ...ROLL_DIRECTIONS.map(
-          (_, index) => ROLL_DIRECTIONS[(index + directionOffset) % ROLL_DIRECTIONS.length],
-        ),
-      ];
-      const translation = translations.find((offset) =>
-        component.every((block) => {
-          const destination = {
-            x: block.x + offset.x,
-            y: block.y + offset.y,
-            z: block.z + offset.z,
-          };
-          return isInWorld(destination) && !occupied.has(cellKey(destination));
-        }),
-      );
-
-      if (translation) {
-        component.forEach((block) => {
-          const next = {
-            ...block,
-            x: block.x + translation.x,
-            y: block.y + translation.y,
-            z: block.z + translation.z,
-          };
-          byId.set(block.id, next);
-          occupied.add(cellKey(next));
-        });
-        movedThisStep = true;
-      } else {
-        component.forEach((block) => occupied.add(cellKey(block)));
-      }
-    }
-
-    if (!movedThisStep) break;
-    blocks = blocks.map((block) => byId.get(block.id) ?? block);
+    const result = settleStructuresStep(blocks);
+    if (!result.moved) break;
+    blocks = result.blocks;
     moved = true;
   }
 
@@ -330,14 +341,16 @@ function verticalLanding(cell: Cell, occupied: Set<string>) {
   return y;
 }
 
-function lowestLiquidDestination(block: VoxelBlock, occupied: Set<string>): Cell | null {
+function nextLiquidCell(block: VoxelBlock, occupied: Set<string>): Cell | null {
   const directY = verticalLanding(block, occupied);
-  if (directY < block.y) return { x: block.x, y: directY, z: block.z };
+  if (directY < block.y) return { x: block.x, y: block.y - 1, z: block.z };
 
   const start = { x: block.x, y: block.y, z: block.z };
-  const queue: Array<Cell & { distance: number }> = [{ ...start, distance: 0 }];
+  const queue: Array<Cell & { distance: number; firstStep?: Cell }> = [
+    { ...start, distance: 0 },
+  ];
   const visited = new Set([cellKey(start)]);
-  let best: (Cell & { distance: number }) | null = null;
+  let best: { landing: Cell; distance: number; next: Cell } | null = null;
 
   for (let index = 0; index < queue.length; index += 1) {
     const current = queue[index];
@@ -354,59 +367,89 @@ function lowestLiquidDestination(block: VoxelBlock, occupied: Set<string>): Cell
       const distance = current.distance + 1;
       const landingY = verticalLanding(candidate, occupied);
       if (landingY < block.y) {
-        const destination = { ...candidate, y: landingY, distance };
+        const landing = { ...candidate, y: landingY };
+        const next = current.firstStep ?? {
+          x: candidate.x,
+          y: block.y - 1,
+          z: candidate.z,
+        };
         if (
           !best ||
-          destination.y < best.y ||
-          (destination.y === best.y && destination.distance < best.distance) ||
-          (destination.y === best.y &&
-            destination.distance === best.distance &&
-            cellKey(destination) < cellKey(best))
+          landing.y < best.landing.y ||
+          (landing.y === best.landing.y && distance < best.distance) ||
+          (landing.y === best.landing.y &&
+            distance === best.distance &&
+            cellKey(landing) < cellKey(best.landing))
         ) {
-          best = destination;
+          best = { landing, distance, next };
         }
         continue;
       }
 
-      queue.push({ ...candidate, distance });
+      queue.push({
+        ...candidate,
+        distance,
+        firstStep: current.firstStep ?? candidate,
+      });
     }
   }
 
-  return best ? { x: best.x, y: best.y, z: best.z } : null;
+  return best?.next ?? null;
+}
+
+/** Advances every water and lava block at most one visible cell. */
+export function settleLiquidsStep(input: VoxelBlock[]) {
+  const occupied = new Set(input.map((block) => cellKey(block)));
+  const byId = new Map(input.map((block) => [block.id, block]));
+  let moved = false;
+
+  for (const original of input) {
+    const block = byId.get(original.id) ?? original;
+    if (MATERIALS[block.material].gravityBehavior !== 'fluid') continue;
+
+    occupied.delete(cellKey(block));
+    const destination = nextLiquidCell(block, occupied);
+    if (destination) {
+      const next = { ...block, ...destination };
+      byId.set(block.id, next);
+      occupied.add(cellKey(next));
+      moved = true;
+    } else {
+      occupied.add(cellKey(block));
+    }
+  }
+
+  return {
+    blocks: moved ? input.map((block) => byId.get(block.id) ?? block) : input,
+    moved,
+  };
 }
 
 /** Moves water and lava to the lowest reachable drop without changing IDs. */
 export function settleLiquids(input: VoxelBlock[]) {
-  let blocks = input.map((block) => ({ ...block }));
+  let blocks = input;
   let moved = false;
 
-  for (let step = 0; step < MAX_HEIGHT; step += 1) {
-    const occupied = new Set(blocks.map((block) => cellKey(block)));
-    const byId = new Map(blocks.map((block) => [block.id, block]));
-    let movedThisStep = false;
-
-    for (const original of blocks) {
-      const block = byId.get(original.id) ?? original;
-      if (MATERIALS[block.material].gravityBehavior !== 'fluid') continue;
-
-      occupied.delete(cellKey(block));
-      const destination = lowestLiquidDestination(block, occupied);
-      if (destination && destination.y < block.y) {
-        const next = { ...block, ...destination };
-        byId.set(block.id, next);
-        occupied.add(cellKey(next));
-        movedThisStep = true;
-      } else {
-        occupied.add(cellKey(block));
-      }
-    }
-
-    if (!movedThisStep) break;
-    blocks = blocks.map((block) => byId.get(block.id) ?? block);
+  for (let step = 0; step < MAX_HEIGHT + WORLD_SIZE * 2; step += 1) {
+    const result = settleLiquidsStep(blocks);
+    if (!result.moved) break;
+    blocks = result.blocks;
     moved = true;
   }
 
   return { blocks, moved };
+}
+
+/** Advances gravity and liquid flow by one cell for visible simulation. */
+export function advanceWorldStep(input: VoxelBlock[]) {
+  const structures = settleStructuresStep(input);
+  const liquids = settleLiquidsStep(structures.blocks);
+  return {
+    blocks: liquids.blocks,
+    moved: structures.moved || liquids.moved,
+    structuresMoved: structures.moved,
+    liquidsMoved: liquids.moved,
+  };
 }
 
 /**
@@ -463,6 +506,10 @@ export function advanceFire(input: VoxelBlock[]): {
       changed = true;
       if (block.burning >= burnDuration) {
         burned += 1;
+        if (block.material === 'grass') {
+          const { burning: _burning, ...scorched } = block;
+          return [{ ...scorched, material: 'soil' }];
+        }
         return [];
       }
       return [{ ...block, burning: block.burning + 1 }];

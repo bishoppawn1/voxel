@@ -6,6 +6,7 @@ import {
   MAX_HEIGHT,
   WORLD_SIZE,
   advanceFire,
+  advanceWorldStep,
   cellToWorld,
   createStarterWorld,
   isValidWorld,
@@ -31,6 +32,15 @@ const block = (
 });
 
 describe('voxel gravity', () => {
+  it('advances a falling block only one level per visible simulation step', () => {
+    const first = advanceWorldStep([block('a', 0, 4, 0)]);
+    const second = advanceWorldStep(first.blocks);
+
+    expect(first.blocks[0].y).toBe(3);
+    expect(second.blocks[0].y).toBe(2);
+    expect(first.structuresMoved).toBe(true);
+  });
+
   it('drops a lone floating block to the plane', () => {
     const result = settleWorld([block('a', 0, 4, 0)]);
     expect(result.moved).toBe(true);
@@ -219,6 +229,29 @@ describe('fresh block pouring', () => {
 });
 
 describe('liquid flow', () => {
+  it('advances falling liquid one visible cell per simulation step', () => {
+    const world = [block('water', 0, 5, 0, 'water')];
+    const first = advanceWorldStep(world);
+    const second = advanceWorldStep(first.blocks);
+
+    expect(first.blocks[0]).toMatchObject({ id: 'water', y: 4 });
+    expect(second.blocks[0]).toMatchObject({ id: 'water', y: 3 });
+    expect(first.liquidsMoved).toBe(true);
+  });
+
+  it('shows liquid flowing over a ledge before it reaches the ground', () => {
+    const world = [
+      block('base', 0, 0, 0),
+      block('ledge', 0, 1, 0),
+      block('water', 0, 2, 0, 'water'),
+    ];
+    const first = advanceWorldStep(world);
+    const water = first.blocks.find(({ id }) => id === 'water');
+
+    expect(water?.y).toBe(1);
+    expect(Math.abs(water?.x ?? 0) + Math.abs(water?.z ?? 0)).toBe(1);
+  });
+
   it.each(['water', 'lava'] as const)(
     'moves %s over a ledge to the lowest reachable level',
     (material) => {
@@ -252,6 +285,21 @@ describe('liquid flow', () => {
 });
 
 describe('fire', () => {
+  it('burns the grass layer into dirt without deleting the block', () => {
+    let world = [
+      block('lava', 0, 0, 0, 'lava'),
+      block('grassy-dirt', 1, 0, 0, 'grass'),
+    ];
+
+    for (let tick = 0; tick <= (MATERIALS.grass.burnDuration ?? 0); tick += 1) {
+      world = advanceFire(world).blocks;
+    }
+
+    expect(world.find(({ id }) => id === 'grassy-dirt')).toEqual(
+      block('grassy-dirt', 1, 0, 0, 'soil'),
+    );
+  });
+
   it('ignites wood beside lava and consumes it after its burn duration', () => {
     let world = [block('lava', 0, 0, 0, 'lava'), block('wood', 1, 0, 0, 'wood')];
 

@@ -59,7 +59,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 - When an edit disconnects a group from every grounded block, the whole disconnected group falls together one grid level at a time.
 - The group stops once it touches the plane or reconnects to a supported structure.
 - The group keeps its internal shape while falling.
-- Pausing gravity allows unsupported structures to remain suspended. Resuming gravity settles all unsupported groups immediately, with a short visual fall animation.
+- Pausing gravity allows unsupported structures to remain suspended. Resuming
+  gravity advances unsupported groups one cell per simulation tick so the
+  player can watch the complete fall.
 - A freshly placed loose or fluid block can roll diagonally off an occupied
   cell before it becomes stable, so repeated placement forms a low pile
   instead of an implausibly thin tower. Rigid blocks remain on direct supports,
@@ -69,10 +71,13 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 
 - Water and lava fall vertically whenever possible. When blocked, they travel
   across connected supported surfaces to the lowest reachable open drop rather
-  than remaining perched on a ledge.
+  than remaining perched on a ledge. Flow advances one neighboring cell per
+  simulation tick and remains visible throughout its route.
 - Lava ignites face-adjacent grass, wood, leaves, moss, and coal. Burning blocks
-  show visible flames, ignite adjacent flammable blocks, and disappear after a
-  material-specific burn duration.
+  show visible flames and ignite adjacent flammable blocks. Wood, leaves, moss,
+  and coal disappear after a material-specific burn duration; grassy dirt loses
+  only its grass layer and becomes an ordinary Dirt block with the same ID and
+  position.
 - Water touching a burning block extinguishes it. Stone, soil, metals, glass,
   and other nonflammable materials never ignite.
 - When fire removes a supporting block, gravity settles the remaining structure

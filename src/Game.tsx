@@ -23,13 +23,12 @@ import {
   MATERIAL_KEYS,
   WORLD_RENDER_SIZE,
   advanceFire,
+  advanceWorldStep,
   cellToWorld,
   createStarterWorld,
   hasBlock,
   isInWorld,
   isValidWorld,
-  settlePlacedBlock,
-  settleWorld,
   worldToCell,
   type BlockMaterial,
   type Cell,
@@ -43,6 +42,7 @@ type HoverTarget = Cell & { blockId?: string; valid: boolean };
 const STORAGE_KEY = 'voxel-world-v1';
 const PAINT_INTERVAL_MS = 160;
 const FIRE_TICK_MS = 650;
+const WORLD_TICK_MS = 140;
 
 function loadWorld() {
   try {
@@ -102,6 +102,7 @@ function AnimatedBlock({
       ),
     [block.x, block.y, block.z],
   );
+  const initialPosition = useRef(target.clone()).current;
   const colors = MATERIALS[block.material];
   const grassCapHeight = block.material === 'grass' ? BLOCK_SIZE * 0.06 : 0;
   const textures = useMemo(() => getBlockTextures(block.material), [block.material]);
@@ -126,7 +127,7 @@ function AnimatedBlock({
   return (
     <group
       ref={group}
-      position={target}
+      position={initialPosition}
       onPointerMove={(event) => onHover(event, block)}
       onPointerDown={(event) => onPaintStart(event, block)}
       onPointerOut={onLeave}
@@ -441,48 +442,56 @@ export default function Game() {
   const [settling, setSettling] = useState(false);
   const [welcomeVisible, setWelcomeVisible] = useState(true);
   const idCounter = useRef(0);
-  const settleTimer = useRef<number | undefined>(undefined);
+  const blocksRef = useRef(blocks);
   const burningCount = blocks.filter((block) => block.burning).length;
   const fireActive = useMemo(() => advanceFire(blocks).changed, [blocks]);
 
   useEffect(() => {
+    blocksRef.current = blocks;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(blocks));
   }, [blocks]);
-
-  useEffect(
-    () => () => {
-      if (settleTimer.current) window.clearTimeout(settleTimer.current);
-    },
-    [],
-  );
 
   useEffect(() => {
     if (!fireActive) return;
     const fireTimer = window.setInterval(() => {
-      setBlocks((current) => {
-        const fire = advanceFire(current);
-        if (!fire.changed) return current;
-        if (!gravityOn || fire.burned === 0) return fire.blocks;
-        return settleWorld(fire.blocks).blocks;
-      });
+      const fire = advanceFire(blocksRef.current);
+      if (!fire.changed) return;
+      blocksRef.current = fire.blocks;
+      setBlocks(fire.blocks);
+      if (gravityOn && fire.burned > 0) setSettling(true);
     }, FIRE_TICK_MS);
 
     return () => window.clearInterval(fireTimer);
   }, [fireActive, gravityOn]);
 
-  const markSettling = () => {
-    setSettling(true);
-    if (settleTimer.current) window.clearTimeout(settleTimer.current);
-    settleTimer.current = window.setTimeout(() => setSettling(false), 650);
-  };
+  useEffect(() => {
+    if (!gravityOn) {
+      setSettling(false);
+      return;
+    }
+
+    const worldTimer = window.setInterval(() => {
+      const step = advanceWorldStep(blocksRef.current);
+      if (!step.moved) {
+        setSettling(false);
+        return;
+      }
+      blocksRef.current = step.blocks;
+      setBlocks(step.blocks);
+      setSettling(true);
+    }, WORLD_TICK_MS);
+
+    return () => window.clearInterval(worldTimer);
+  }, [gravityOn]);
 
   const commit = (next: VoxelBlock[], didMove = false) => {
     if (next === blocks) return;
     setPast((history) => [...history.slice(-29), blocks]);
     setFuture([]);
+    blocksRef.current = next;
     setBlocks(next);
     setWelcomeVisible(false);
-    if (didMove) markSettling();
+    if (didMove) setSettling(true);
   };
 
   const addBlock = (cell: Cell) => {
@@ -493,29 +502,22 @@ export default function Game() {
       material,
     };
     const added = [...blocks, placed];
-    const poured = gravityOn
-      ? settlePlacedBlock(added, placed.id)
-      : { blocks: added, moved: false };
-    const settled = gravityOn
-      ? settleWorld(poured.blocks)
-      : { blocks: poured.blocks, moved: false };
-    commit(settled.blocks, poured.moved || settled.moved);
+    commit(added, gravityOn);
   };
 
   const removeBlock = (id: string) => {
     const remaining = blocks.filter((block) => block.id !== id);
-    const settled = gravityOn ? settleWorld(remaining) : { blocks: remaining, moved: false };
-    commit(settled.blocks, settled.moved);
+    commit(remaining, gravityOn);
   };
 
   const toggleGravity = () => {
     if (gravityOn) {
       setGravityOn(false);
+      setSettling(false);
       return;
     }
     setGravityOn(true);
-    const settled = settleWorld(blocks);
-    if (settled.moved) commit(settled.blocks, true);
+    setSettling(true);
   };
 
   useEffect(() => {
@@ -533,6 +535,7 @@ export default function Game() {
     if (!previous) return;
     setPast((history) => history.slice(0, -1));
     setFuture((history) => [blocks, ...history].slice(0, 30));
+    blocksRef.current = previous;
     setBlocks(previous);
   };
 
@@ -541,6 +544,7 @@ export default function Game() {
     if (!next) return;
     setFuture((history) => history.slice(1));
     setPast((history) => [...history.slice(-29), blocks]);
+    blocksRef.current = next;
     setBlocks(next);
   };
 
