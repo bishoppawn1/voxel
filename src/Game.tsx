@@ -15,18 +15,20 @@ import {
   Undo2,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MOUSE, type Mesh, Vector3 } from 'three';
+import { type Group, MOUSE, Vector3 } from 'three';
 import {
-  BLOCK_RENDER_SIZE,
+  BLOCK_SIZE,
   MATERIALS,
   MATERIAL_KEYS,
-  WORLD_SIZE,
+  WORLD_RENDER_SIZE,
+  cellToWorld,
   createStarterWorld,
   hasBlock,
   isInWorld,
   isValidWorld,
   settlePlacedBlock,
   settleWorld,
+  worldToCell,
   type BlockMaterial,
   type Cell,
   type VoxelBlock,
@@ -62,12 +64,18 @@ function AnimatedBlock({
   onSelect: (event: ThreeEvent<MouseEvent>, block: VoxelBlock) => void;
   onPaintStart: (event: ThreeEvent<PointerEvent>, block: VoxelBlock) => void;
 }) {
-  const mesh = useRef<Mesh>(null);
+  const group = useRef<Group>(null);
   const target = useMemo(
-    () => new Vector3(block.x, block.y + BLOCK_RENDER_SIZE / 2, block.z),
+    () =>
+      new Vector3(
+        cellToWorld(block.x),
+        cellToWorld(block.y) + BLOCK_SIZE / 2,
+        cellToWorld(block.z),
+      ),
     [block.x, block.y, block.z],
   );
   const colors = MATERIALS[block.material];
+  const grassCapHeight = block.material === 'grass' ? BLOCK_SIZE * 0.06 : 0;
   const textures = useMemo(() => getBlockTextures(block.material), [block.material]);
   const faceTextures = useMemo(
     () => [
@@ -82,52 +90,46 @@ function AnimatedBlock({
   );
 
   useFrame((_, delta) => {
-    if (!mesh.current) return;
+    if (!group.current) return;
     const strength = 1 - Math.exp(-delta * 13);
-    mesh.current.position.lerp(target, strength);
+    group.current.position.lerp(target, strength);
   });
 
   return (
-    <mesh
-      ref={mesh}
+    <group
+      ref={group}
       position={target}
-      castShadow
-      receiveShadow
       onPointerMove={(event) => onHover(event, block)}
       onPointerDown={(event) => onPaintStart(event, block)}
       onPointerOut={onLeave}
       onClick={(event) => onSelect(event, block)}
     >
-      <boxGeometry args={[BLOCK_RENDER_SIZE, BLOCK_RENDER_SIZE, BLOCK_RENDER_SIZE]} />
-      {faceTextures.map((map, index) => (
-        <meshStandardMaterial
-          key={index}
-          attach={`material-${index}`}
-          map={map}
-          color="#ffffff"
-          roughness={colors.roughness ?? 0.82}
-          metalness={colors.metalness ?? 0}
-          transparent={(colors.opacity ?? 1) < 1}
-          opacity={colors.opacity ?? 1}
-          depthWrite={(colors.opacity ?? 1) >= 0.7}
-          emissive={colors.emissive}
-          emissiveIntensity={colors.emissiveIntensity ?? 0}
-        />
-      ))}
-      {block.material === 'grass' && (
-        <mesh position={[0, BLOCK_RENDER_SIZE / 2 + 0.012, 0]} castShadow>
-          <boxGeometry
-            args={[
-              BLOCK_RENDER_SIZE * 1.035,
-              Math.max(0.035, BLOCK_RENDER_SIZE * 0.06),
-              BLOCK_RENDER_SIZE * 1.035,
-            ]}
+      <mesh position={[0, -grassCapHeight / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={[BLOCK_SIZE, BLOCK_SIZE - grassCapHeight, BLOCK_SIZE]} />
+        {faceTextures.map((map, index) => (
+          <meshStandardMaterial
+            key={index}
+            attach={`material-${index}`}
+            map={map}
+            color="#ffffff"
+            roughness={colors.roughness ?? 0.82}
+            metalness={colors.metalness ?? 0}
+            transparent={(colors.opacity ?? 1) < 1}
+            opacity={colors.opacity ?? 1}
+            depthWrite={(colors.opacity ?? 1) >= 0.7}
+            emissive={colors.emissive}
+            emissiveIntensity={colors.emissiveIntensity ?? 0}
           />
+        ))}
+        <Edges threshold={22} color={colors.edge} opacity={0.42} transparent />
+      </mesh>
+      {block.material === 'grass' && (
+        <mesh position={[0, BLOCK_SIZE / 2 - grassCapHeight / 2, 0]} castShadow>
+          <boxGeometry args={[BLOCK_SIZE, grassCapHeight, BLOCK_SIZE]} />
           <meshStandardMaterial map={textures.top} color="#ffffff" roughness={0.94} />
         </mesh>
       )}
-      <Edges threshold={22} color={colors.edge} opacity={0.42} transparent />
-    </mesh>
+    </group>
   );
 }
 
@@ -217,9 +219,9 @@ function WorldScene({
   };
 
   const planeCell = (event: ThreeEvent<PointerEvent | MouseEvent>): Cell => ({
-    x: Math.round(event.point.x),
+    x: worldToCell(event.point.x),
     y: 0,
-    z: Math.round(event.point.z),
+    z: worldToCell(event.point.z),
   });
 
   return (
@@ -263,18 +265,18 @@ function WorldScene({
           if (isInWorld(cell) && !hasBlock(blocks, cell)) onAdd(cell);
         }}
       >
-        <planeGeometry args={[WORLD_SIZE, WORLD_SIZE]} />
+        <planeGeometry args={[WORLD_RENDER_SIZE, WORLD_RENDER_SIZE]} />
         <meshStandardMaterial color="#e9e6d8" roughness={0.98} />
       </mesh>
 
       <Grid
         position={[0, 0.012, 0]}
-        args={[WORLD_SIZE, WORLD_SIZE]}
-        cellSize={1}
-        sectionSize={4}
+        args={[WORLD_RENDER_SIZE, WORLD_RENDER_SIZE]}
+        cellSize={BLOCK_SIZE}
+        sectionSize={1}
         cellColor="#aab9a6"
         sectionColor="#7f9681"
-        cellThickness={0.55}
+        cellThickness={0.3}
         sectionThickness={0.9}
         fadeDistance={31}
         infiniteGrid={false}
@@ -292,8 +294,14 @@ function WorldScene({
       ))}
 
       {hover && (
-        <mesh position={[hover.x, hover.y + BLOCK_RENDER_SIZE / 2, hover.z]}>
-          <boxGeometry args={[BLOCK_RENDER_SIZE * 1.08, BLOCK_RENDER_SIZE * 1.08, BLOCK_RENDER_SIZE * 1.08]} />
+        <mesh
+          position={[
+            cellToWorld(hover.x),
+            cellToWorld(hover.y) + BLOCK_SIZE / 2,
+            cellToWorld(hover.z),
+          ]}
+        >
+          <boxGeometry args={[BLOCK_SIZE * 1.08, BLOCK_SIZE * 1.08, BLOCK_SIZE * 1.08]} />
           <meshStandardMaterial
             color={tool === 'erase' ? '#cc6d55' : hover.valid ? '#e6ed88' : '#cc6d55'}
             transparent

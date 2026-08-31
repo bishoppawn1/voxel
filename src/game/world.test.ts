@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BLOCK_SIZE,
   MATERIALS,
   MATERIAL_KEYS,
+  MAX_HEIGHT,
+  WORLD_SIZE,
+  cellToWorld,
   createStarterWorld,
   isValidWorld,
   settlePlacedBlock,
   settleWorld,
+  worldToCell,
   type VoxelBlock,
 } from './world';
 
@@ -46,6 +51,22 @@ describe('voxel gravity', () => {
       [1, 0],
       [2, 0],
     ]);
+  });
+});
+
+describe('quarter-scale world grid', () => {
+  it('uses actual quarter-unit cells for geometry, spacing, and placement', () => {
+    expect(BLOCK_SIZE).toBe(0.25);
+    expect(cellToWorld(1) - cellToWorld(0)).toBe(0.25);
+    expect(worldToCell(1)).toBe(4);
+    expect(worldToCell(0.87)).toBe(3);
+  });
+
+  it('provides four times the cells across the same physical world dimensions', () => {
+    expect(WORLD_SIZE).toBe(96);
+    expect(MAX_HEIGHT).toBe(48);
+    expect(isValidWorld([block('edge', 47, 47, -47)])).toBe(true);
+    expect(isValidWorld([block('outside', 48, 0, 0)])).toBe(false);
   });
 });
 

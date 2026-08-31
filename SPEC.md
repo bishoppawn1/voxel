@@ -35,10 +35,14 @@ The world is saved to local browser storage after each edit and restored on the 
 
 ## World model
 
-- Coordinates are integer grid cells.
-- The build plane is level `y = 0`; rendered block centers are offset upward by half a unit.
-- The playable horizontal range is `-11` through `11` on both the x and z axes.
-- The maximum build height is 12 levels (`y = 0` through `y = 11`).
+- Coordinates are integer grid cells, and every cell is 0.25 world units wide,
+  tall, and deep.
+- The build plane is level `y = 0`; rendered positions multiply cell
+  coordinates by 0.25 and offset block centers upward by 0.125 world units.
+- The 24 by 24 build plane contains a 96 by 96 quarter-unit grid. The playable
+  horizontal cell range is `-47` through `47` on both the x and z axes.
+- The maximum physical build height remains 12 world units, represented by 48
+  levels (`y = 0` through `y = 47`).
 - A cell contains at most one block.
 - Every block has a stable ID, cell position, and material.
 - Saved data must be validated before it is loaded. Invalid or outdated data falls back to the starter world.
@@ -63,9 +67,10 @@ Gravity is connectivity-based rather than a full rigid-body simulation.
 - Full-screen isometric world with soft sage sky, warm neutral plane, visible grid, subtle fog, and directional shadows.
 - Compact translucent tool surfaces use cream, forest green, lime, soil brown, stone gray, and sand gold.
 - Every material uses a distinct pixel texture rather than a flat color. Grass is a dirt block with a separate grassy cap, a green top, and an irregular grass fringe over its dirt sides; wood uses bark and growth rings, masonry uses joints, and ore blocks show mineral deposits embedded in stone.
-- Rendered cubes are particle-sized within their grid cells, with visible air
-  between neighboring cubes. Palette tiles stay very small and compact enough
-  to show the expanded collection without covering the world.
+- Rendered cubes fill quarter-unit grid cells and touch neighboring cubes.
+  Their geometry, spacing, placement grid, and gravity steps are all 25% of the
+  original one-unit block size. Palette tiles stay very small and compact
+  enough to show the expanded collection without covering the world.
 - Controls must expose accessible names, selected states, disabled states, and keyboard shortcuts where applicable.
 - The first-use message should leave after the first world edit.
 - Motion should honor the operating system's reduced-motion preference.

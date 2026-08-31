@@ -48,10 +48,11 @@ export type VoxelBlock = {
 
 export type Cell = Pick<VoxelBlock, 'x' | 'y' | 'z'>;
 
-export const WORLD_SIZE = 24;
+export const BLOCK_SIZE = 0.25;
+export const WORLD_RENDER_SIZE = 24;
+export const WORLD_SIZE = WORLD_RENDER_SIZE / BLOCK_SIZE;
 export const WORLD_RADIUS = WORLD_SIZE / 2;
-export const MAX_HEIGHT = 12;
-export const BLOCK_RENDER_SIZE = 0.58;
+export const MAX_HEIGHT = 12 / BLOCK_SIZE;
 
 export const MATERIALS: Record<
   BlockMaterial,
@@ -100,6 +101,10 @@ const ROLL_DIRECTIONS: Cell[] = [
 ];
 
 export const cellKey = ({ x, y, z }: Cell) => `${x},${y},${z}`;
+
+export const cellToWorld = (coordinate: number) => coordinate * BLOCK_SIZE;
+
+export const worldToCell = (coordinate: number) => Math.round(coordinate / BLOCK_SIZE);
 
 export function isInWorld({ x, y, z }: Cell) {
   return (
@@ -222,24 +227,24 @@ export function settleWorld(input: VoxelBlock[]) {
 
 export function createStarterWorld(): VoxelBlock[] {
   const cells: Array<[number, number, number, BlockMaterial]> = [
-    [-3, 0, 0, 'grass'],
-    [-2, 0, 0, 'grass'],
-    [-1, 0, 0, 'grass'],
-    [-3, 0, 1, 'grass'],
-    [-2, 0, 1, 'grass'],
-    [-1, 0, 1, 'grass'],
-    [-2, 1, 0, 'soil'],
-    [-2, 1, 1, 'grass'],
-    [-2, 2, 0, 'stone'],
-    [1, 0, -2, 'stone'],
-    [2, 0, -2, 'stone'],
-    [2, 0, -1, 'stone'],
-    [2, 1, -2, 'stone'],
-    [4, 0, 2, 'sand'],
-    [4, 0, 3, 'sand'],
-    [5, 0, 2, 'sand'],
-    [5, 0, 3, 'sand'],
-    [4, 1, 2, 'sand'],
+    [-12, 0, 0, 'grass'],
+    [-11, 0, 0, 'grass'],
+    [-10, 0, 0, 'grass'],
+    [-12, 0, 1, 'grass'],
+    [-11, 0, 1, 'grass'],
+    [-10, 0, 1, 'grass'],
+    [-11, 1, 0, 'soil'],
+    [-11, 1, 1, 'grass'],
+    [-11, 2, 0, 'stone'],
+    [4, 0, -8, 'stone'],
+    [5, 0, -8, 'stone'],
+    [5, 0, -7, 'stone'],
+    [5, 1, -8, 'stone'],
+    [16, 0, 8, 'sand'],
+    [16, 0, 9, 'sand'],
+    [17, 0, 8, 'sand'],
+    [17, 0, 9, 'sand'],
+    [16, 1, 8, 'sand'],
   ];
 
   return cells.map(([x, y, z, material], index) => ({
