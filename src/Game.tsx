@@ -79,7 +79,7 @@ function AnimatedBlock({
       onPointerOut={onLeave}
       onClick={(event) => onSelect(event, block)}
     >
-      <boxGeometry args={[0.82, 0.82, 0.82]} />
+      <boxGeometry args={[1, 1, 1]} />
       <meshStandardMaterial
         color={colors.color}
         roughness={colors.roughness ?? 0.82}
@@ -211,7 +211,7 @@ function WorldScene({
 
       {hover && (
         <mesh position={[hover.x, hover.y + 0.5, hover.z]}>
-          <boxGeometry args={[0.86, 0.86, 0.86]} />
+          <boxGeometry args={[1, 1, 1]} />
           <meshStandardMaterial
             color={tool === 'erase' ? '#cc6d55' : hover.valid ? '#e6ed88' : '#cc6d55'}
             transparent

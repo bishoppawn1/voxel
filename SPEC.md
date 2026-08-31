@@ -58,7 +58,7 @@ Gravity is connectivity-based rather than a full rigid-body simulation.
 
 - Full-screen isometric world with soft sage sky, warm neutral plane, visible grid, subtle fog, and directional shadows.
 - Compact translucent tool surfaces use cream, forest green, lime, soil brown, stone gray, and sand gold.
-- Rendered cubes leave a visible gap between neighboring grid cells, and palette tiles stay small enough to show the expanded collection without covering the world.
+- Rendered cubes fill their grid cells and touch neighboring cubes without a visible gap. Palette tiles stay compact enough to show the expanded collection without covering the world.
 - Controls must expose accessible names, selected states, disabled states, and keyboard shortcuts where applicable.
 - The first-use message should leave after the first world edit.
 - Motion should honor the operating system's reduced-motion preference.
