@@ -31,6 +31,7 @@ import {
   type Cell,
   type VoxelBlock,
 } from './game/world';
+import { getBlockTextures } from './visuals/blockTextures';
 
 type Tool = 'place' | 'erase';
 type HoverTarget = Cell & { blockId?: string; valid: boolean };
@@ -67,6 +68,18 @@ function AnimatedBlock({
     [block.x, block.y, block.z],
   );
   const colors = MATERIALS[block.material];
+  const textures = useMemo(() => getBlockTextures(block.material), [block.material]);
+  const faceTextures = useMemo(
+    () => [
+      textures.side,
+      textures.side,
+      textures.top,
+      textures.bottom,
+      textures.side,
+      textures.side,
+    ],
+    [textures],
+  );
 
   useFrame((_, delta) => {
     if (!mesh.current) return;
@@ -86,16 +99,33 @@ function AnimatedBlock({
       onClick={(event) => onSelect(event, block)}
     >
       <boxGeometry args={[BLOCK_RENDER_SIZE, BLOCK_RENDER_SIZE, BLOCK_RENDER_SIZE]} />
-      <meshStandardMaterial
-        color={colors.color}
-        roughness={colors.roughness ?? 0.82}
-        metalness={colors.metalness ?? 0}
-        transparent={(colors.opacity ?? 1) < 1}
-        opacity={colors.opacity ?? 1}
-        depthWrite={(colors.opacity ?? 1) >= 0.7}
-        emissive={colors.emissive}
-        emissiveIntensity={colors.emissiveIntensity ?? 0}
-      />
+      {faceTextures.map((map, index) => (
+        <meshStandardMaterial
+          key={index}
+          attach={`material-${index}`}
+          map={map}
+          color="#ffffff"
+          roughness={colors.roughness ?? 0.82}
+          metalness={colors.metalness ?? 0}
+          transparent={(colors.opacity ?? 1) < 1}
+          opacity={colors.opacity ?? 1}
+          depthWrite={(colors.opacity ?? 1) >= 0.7}
+          emissive={colors.emissive}
+          emissiveIntensity={colors.emissiveIntensity ?? 0}
+        />
+      ))}
+      {block.material === 'grass' && (
+        <mesh position={[0, BLOCK_RENDER_SIZE / 2 + 0.012, 0]} castShadow>
+          <boxGeometry
+            args={[
+              BLOCK_RENDER_SIZE * 1.035,
+              Math.max(0.035, BLOCK_RENDER_SIZE * 0.06),
+              BLOCK_RENDER_SIZE * 1.035,
+            ]}
+          />
+          <meshStandardMaterial map={textures.top} color="#ffffff" roughness={0.94} />
+        </mesh>
+      )}
       <Edges threshold={22} color={colors.edge} opacity={0.42} transparent />
     </mesh>
   );
@@ -315,7 +345,13 @@ function BlockPalette({
         {tool === 'erase' ? (
           <span className="selection-chip delete-chip"><Trash2 size={12} /></span>
         ) : (
-          <span className="selection-chip" style={{ backgroundColor: MATERIALS[material].color }} />
+          <span
+            className="selection-chip"
+            style={{
+              backgroundColor: MATERIALS[material].color,
+              backgroundImage: `url(${getBlockTextures(material).preview})`,
+            }}
+          />
         )}
         <span><strong>{selectedLabel}</strong> selected</span>
       </div>
@@ -338,7 +374,10 @@ function BlockPalette({
             aria-pressed={tool === 'place' && material === key}
             title={MATERIALS[key].label}
             type="button"
-            style={{ backgroundColor: MATERIALS[key].color }}
+            style={{
+              backgroundColor: MATERIALS[key].color,
+              backgroundImage: `url(${getBlockTextures(key).preview})`,
+            }}
             onClick={() => onSelectMaterial(key)}
           />
         ))}

@@ -62,6 +62,7 @@ Gravity is connectivity-based rather than a full rigid-body simulation.
 
 - Full-screen isometric world with soft sage sky, warm neutral plane, visible grid, subtle fog, and directional shadows.
 - Compact translucent tool surfaces use cream, forest green, lime, soil brown, stone gray, and sand gold.
+- Every material uses a distinct pixel texture rather than a flat color. Grass is a dirt block with a separate grassy cap, a green top, and an irregular grass fringe over its dirt sides; wood uses bark and growth rings, masonry uses joints, and ore blocks show mineral deposits embedded in stone.
 - Rendered cubes are particle-sized within their grid cells, with visible air
   between neighboring cubes. Palette tiles stay very small and compact enough
   to show the expanded collection without covering the world.
