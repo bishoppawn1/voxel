@@ -24,7 +24,8 @@ The player can:
 3. Left-click the plane or an exposed block face to place a block. Hold Shift
    while left-dragging to pour blocks at a calm, controlled rate.
 4. Left-click a block with Erase selected to remove it.
-5. Right-click and drag to orbit around the center of the world.
+5. Right-click and drag to orbit around the center of the world. Left-drag
+   never changes the camera angle; it is reserved for world editing.
 6. Scroll to zoom in and out.
 7. Pause or resume gravity.
 8. Undo, redo, clear, or restore the starter world.
@@ -52,7 +53,7 @@ The world is saved to local browser storage after each edit and restored on the 
 Gravity is material-aware and connectivity-based rather than a full rigid-body simulation.
 
 - A block touching the plane is grounded.
-- Every material has a support tolerance describing how far it can carry a face-connected structure away from direct support. Marble, obsidian, wood, basalt, brick, and stone have long tolerances; dirt and other cohesive materials have shorter tolerances.
+- Every material has a support tolerance describing how far it can carry a face-connected structure away from direct support. Each upward or sideways connection consumes that tolerance, so grass and dirt columns topple after only a few levels while marble, obsidian, wood, basalt, brick, and stone can carry taller or longer structures.
 - Rigid and cohesive blocks can transmit support through face connections. Wood can carry a tree canopy, and leaves connect through neighboring wood and leaves within their shorter tolerance.
 - Loose and fluid materials—including sand, gravel, snow, mud, water, and lava—do not receive or transmit sideways support. They fall and roll downhill until directly supported by the plane or a block below.
 - When an edit disconnects a group from every grounded block, the whole disconnected group falls together one grid level at a time.
@@ -63,6 +64,19 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   cell before it becomes stable, so repeated placement forms a low pile
   instead of an implausibly thin tower. Rigid blocks remain on direct supports,
   and existing falling groups still preserve their shape.
+
+## Liquids and fire
+
+- Water and lava fall vertically whenever possible. When blocked, they travel
+  across connected supported surfaces to the lowest reachable open drop rather
+  than remaining perched on a ledge.
+- Lava ignites face-adjacent grass, wood, leaves, moss, and coal. Burning blocks
+  show visible flames, ignite adjacent flammable blocks, and disappear after a
+  material-specific burn duration.
+- Water touching a burning block extinguishes it. Stone, soil, metals, glass,
+  and other nonflammable materials never ignite.
+- When fire removes a supporting block, gravity settles the remaining structure
+  and liquids again unless gravity is paused.
 
 ## Interface and visual direction
 
@@ -90,6 +104,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 - The default view contains the plane and at least three recognizable starter block clusters.
 - Place and Erase work on valid grid cells without duplicates.
 - Right-drag orbits; left-click never rotates the camera.
+- Left-drag never rotates the camera, including while painting blocks.
+- Liquids seek their lowest reachable level, flammable blocks burn and spread
+  fire, and weak vertical columns cannot exceed their material tolerance.
 - Removing the last connection beneath or beside a structure makes the detached group settle.
 - Gravity pause and resume work as specified.
 - Undo, redo, clear, reset, material selection, block count, and local persistence work.
@@ -98,4 +115,7 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 
 ## Future direction (not part of this release)
 
-The architecture should leave room for god powers, living creatures, biomes, weather, erosion, fire, water, procedural terrain, larger worlds, time controls, and shareable world files. These ideas must not be added until their behavior and performance budgets are specified.
+The architecture should leave room for god powers, living creatures, biomes,
+weather, erosion, procedural terrain, larger worlds, time controls, and
+shareable world files. These ideas must not be added until their behavior and
+performance budgets are specified.

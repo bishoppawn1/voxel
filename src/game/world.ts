@@ -33,6 +33,7 @@ type MaterialDefinition = {
   edge: string;
   supportTolerance: number;
   gravityBehavior: 'structural' | 'cohesive' | 'loose' | 'fluid';
+  burnDuration?: number;
   roughness?: number;
   metalness?: number;
   opacity?: number;
@@ -46,6 +47,7 @@ export type VoxelBlock = {
   y: number;
   z: number;
   material: BlockMaterial;
+  burning?: number;
 };
 
 export type Cell = Pick<VoxelBlock, 'x' | 'y' | 'z'>;
@@ -60,12 +62,12 @@ export const MATERIALS: Record<
   BlockMaterial,
   MaterialDefinition
 > = {
-  grass: { label: 'Grass', color: '#72a55a', edge: '#496f43', supportTolerance: 3, gravityBehavior: 'cohesive' },
+  grass: { label: 'Grass', color: '#72a55a', edge: '#496f43', supportTolerance: 3, gravityBehavior: 'cohesive', burnDuration: 3 },
   soil: { label: 'Dirt', color: '#9a6845', edge: '#70482f', supportTolerance: 2, gravityBehavior: 'cohesive' },
   stone: { label: 'Stone', color: '#7d898e', edge: '#586468', supportTolerance: 7, gravityBehavior: 'structural' },
   sand: { label: 'Sand', color: '#d7bd76', edge: '#a88d4d', supportTolerance: 0, gravityBehavior: 'loose' },
-  wood: { label: 'Wood', color: '#a8733f', edge: '#6f4626', supportTolerance: 10, gravityBehavior: 'structural', roughness: 0.95 },
-  leaves: { label: 'Leaves', color: '#477d46', edge: '#285532', supportTolerance: 5, gravityBehavior: 'cohesive', roughness: 0.9 },
+  wood: { label: 'Wood', color: '#a8733f', edge: '#6f4626', supportTolerance: 10, gravityBehavior: 'structural', burnDuration: 6, roughness: 0.95 },
+  leaves: { label: 'Leaves', color: '#477d46', edge: '#285532', supportTolerance: 5, gravityBehavior: 'cohesive', burnDuration: 3, roughness: 0.9 },
   brick: { label: 'Brick', color: '#a74f3f', edge: '#743327', supportTolerance: 8, gravityBehavior: 'structural', roughness: 0.92 },
   clay: { label: 'Clay', color: '#bf765d', edge: '#894f40', supportTolerance: 4, gravityBehavior: 'cohesive', roughness: 0.9 },
   snow: { label: 'Snow', color: '#f2f5ee', edge: '#b8c7c1', supportTolerance: 0, gravityBehavior: 'loose', roughness: 0.72 },
@@ -73,12 +75,12 @@ export const MATERIALS: Record<
   water: { label: 'Water', color: '#4b9dc4', edge: '#267294', supportTolerance: 0, gravityBehavior: 'fluid', roughness: 0.18, opacity: 0.68 },
   lava: { label: 'Lava', color: '#f0682c', edge: '#a73520', supportTolerance: 0, gravityBehavior: 'fluid', roughness: 0.65, emissive: '#d33e14', emissiveIntensity: 0.48 },
   obsidian: { label: 'Obsidian', color: '#312b40', edge: '#17141f', supportTolerance: 12, gravityBehavior: 'structural', roughness: 0.35, metalness: 0.22 },
-  coal: { label: 'Coal', color: '#3e4341', edge: '#1d211f', supportTolerance: 6, gravityBehavior: 'structural', roughness: 0.96 },
+  coal: { label: 'Coal', color: '#3e4341', edge: '#1d211f', supportTolerance: 6, gravityBehavior: 'structural', burnDuration: 8, roughness: 0.96 },
   iron: { label: 'Iron', color: '#a8ada8', edge: '#666e6c', supportTolerance: 9, gravityBehavior: 'structural', roughness: 0.5, metalness: 0.55 },
   gold: { label: 'Gold', color: '#d9ad36', edge: '#8f6a17', supportTolerance: 7, gravityBehavior: 'structural', roughness: 0.34, metalness: 0.72 },
   copper: { label: 'Copper', color: '#bc6f46', edge: '#78442e', supportTolerance: 7, gravityBehavior: 'structural', roughness: 0.5, metalness: 0.5 },
   glass: { label: 'Glass', color: '#d8f0e9', edge: '#78a9a1', supportTolerance: 4, gravityBehavior: 'structural', roughness: 0.08, opacity: 0.42 },
-  moss: { label: 'Moss', color: '#71883f', edge: '#485929', supportTolerance: 3, gravityBehavior: 'cohesive', roughness: 1 },
+  moss: { label: 'Moss', color: '#71883f', edge: '#485929', supportTolerance: 3, gravityBehavior: 'cohesive', burnDuration: 3, roughness: 1 },
   mud: { label: 'Mud', color: '#6f503b', edge: '#453125', supportTolerance: 0, gravityBehavior: 'loose', roughness: 1 },
   gravel: { label: 'Gravel', color: '#8d8880', edge: '#5d5954', supportTolerance: 0, gravityBehavior: 'loose', roughness: 1 },
   marble: { label: 'Marble', color: '#ddd9cf', edge: '#989990', supportTolerance: 12, gravityBehavior: 'structural', roughness: 0.38 },
@@ -100,6 +102,13 @@ const ROLL_DIRECTIONS: Cell[] = [
   { x: -1, y: -1, z: 0 },
   { x: 0, y: -1, z: 1 },
   { x: 0, y: -1, z: -1 },
+];
+
+const HORIZONTAL_DIRECTIONS: Cell[] = [
+  { x: 1, y: 0, z: 0 },
+  { x: -1, y: 0, z: 0 },
+  { x: 0, y: 0, z: 1 },
+  { x: 0, y: 0, z: -1 },
 ];
 
 export const cellKey = ({ x, y, z }: Cell) => `${x},${y},${z}`;
@@ -126,16 +135,17 @@ export function hasBlock(blocks: VoxelBlock[], cell: Cell) {
 
 /**
  * Settles one freshly placed, particle-sized block. It falls through open
- * cells and rolls diagonally off occupied cells, producing a low pile when a
- * player repeatedly pours blocks into the same area. Established structures
- * are not reshaped; their group gravity is handled by settleWorld below.
+ * cells and rolls diagonally off occupied cells when it is loose, fluid, or
+ * beyond the support tolerance of the structure it touches. Established
+ * structures are handled by settleWorld below.
  */
 export function settlePlacedBlock(input: VoxelBlock[], blockId: string) {
   const original = input.find((block) => block.id === blockId);
   if (!original) return { blocks: input, moved: false };
 
   const behavior = MATERIALS[original.material].gravityBehavior;
-  if (behavior !== 'loose' && behavior !== 'fluid') {
+  const isLoose = behavior === 'loose' || behavior === 'fluid';
+  if (!isLoose && anchoredBlockIds(input).has(original.id)) {
     return { blocks: input, moved: false };
   }
 
@@ -206,11 +216,8 @@ function anchoredBlockIds(blocks: VoxelBlock[]) {
       if (!neighbor) continue;
 
       const neighborTolerance = MATERIALS[neighbor.material].supportTolerance;
-      const isRestingOnBlock = offset.x === 0 && offset.y === 1 && offset.z === 0;
       const sourceTolerance = remainingTolerance.get(block.id) ?? 0;
-      const nextTolerance = isRestingOnBlock
-        ? neighborTolerance
-        : Math.min(sourceTolerance, neighborTolerance) - 1;
+      const nextTolerance = Math.min(sourceTolerance, neighborTolerance) - 1;
 
       if (nextTolerance < 0) continue;
       if ((remainingTolerance.get(neighbor.id) ?? -1) >= nextTolerance) continue;
@@ -224,11 +231,36 @@ function anchoredBlockIds(blocks: VoxelBlock[]) {
   return anchored;
 }
 
-/**
- * Drops every disconnected group until it reaches the plane or reconnects to
- * a grounded group. IDs are preserved so the renderer can animate the fall.
- */
-export function settleWorld(input: VoxelBlock[]) {
+function floatingComponents(blocks: VoxelBlock[], floatingIds: Set<string>) {
+  const byCell = new Map(blocks.map((block) => [cellKey(block), block]));
+  const remaining = new Set(floatingIds);
+  const components: VoxelBlock[][] = [];
+
+  for (const seed of blocks) {
+    if (!remaining.delete(seed.id)) continue;
+    const component = [seed];
+
+    for (let index = 0; index < component.length; index += 1) {
+      const block = component[index];
+      for (const offset of NEIGHBORS) {
+        const neighbor = byCell.get(
+          cellKey({
+            x: block.x + offset.x,
+            y: block.y + offset.y,
+            z: block.z + offset.z,
+          }),
+        );
+        if (neighbor && remaining.delete(neighbor.id)) component.push(neighbor);
+      }
+    }
+
+    components.push(component);
+  }
+
+  return components;
+}
+
+function settleStructures(input: VoxelBlock[]) {
   let blocks = input.map((block) => ({ ...block }));
   let moved = false;
 
@@ -238,13 +270,215 @@ export function settleWorld(input: VoxelBlock[]) {
     if (floating.length === 0) break;
 
     const floatingIds = new Set(floating.map((block) => block.id));
-    blocks = blocks.map((block) =>
-      floatingIds.has(block.id) ? { ...block, y: block.y - 1 } : block,
-    );
+    const components = floatingComponents(blocks, floatingIds);
+    const occupied = new Set(blocks.map((block) => cellKey(block)));
+    const byId = new Map(blocks.map((block) => [block.id, block]));
+    let movedThisStep = false;
+
+    for (const component of components) {
+      component.forEach((block) => occupied.delete(cellKey(block)));
+      const seed = component[0];
+      const directionOffset =
+        Math.abs(seed.x * 31 + seed.y * 17 + seed.z * 13) % ROLL_DIRECTIONS.length;
+      const translations = [
+        { x: 0, y: -1, z: 0 },
+        ...ROLL_DIRECTIONS.map(
+          (_, index) => ROLL_DIRECTIONS[(index + directionOffset) % ROLL_DIRECTIONS.length],
+        ),
+      ];
+      const translation = translations.find((offset) =>
+        component.every((block) => {
+          const destination = {
+            x: block.x + offset.x,
+            y: block.y + offset.y,
+            z: block.z + offset.z,
+          };
+          return isInWorld(destination) && !occupied.has(cellKey(destination));
+        }),
+      );
+
+      if (translation) {
+        component.forEach((block) => {
+          const next = {
+            ...block,
+            x: block.x + translation.x,
+            y: block.y + translation.y,
+            z: block.z + translation.z,
+          };
+          byId.set(block.id, next);
+          occupied.add(cellKey(next));
+        });
+        movedThisStep = true;
+      } else {
+        component.forEach((block) => occupied.add(cellKey(block)));
+      }
+    }
+
+    if (!movedThisStep) break;
+    blocks = blocks.map((block) => byId.get(block.id) ?? block);
     moved = true;
   }
 
   return { blocks, moved };
+}
+
+function verticalLanding(cell: Cell, occupied: Set<string>) {
+  let y = cell.y;
+  while (y > 0 && !occupied.has(cellKey({ x: cell.x, y: y - 1, z: cell.z }))) {
+    y -= 1;
+  }
+  return y;
+}
+
+function lowestLiquidDestination(block: VoxelBlock, occupied: Set<string>): Cell | null {
+  const directY = verticalLanding(block, occupied);
+  if (directY < block.y) return { x: block.x, y: directY, z: block.z };
+
+  const start = { x: block.x, y: block.y, z: block.z };
+  const queue: Array<Cell & { distance: number }> = [{ ...start, distance: 0 }];
+  const visited = new Set([cellKey(start)]);
+  let best: (Cell & { distance: number }) | null = null;
+
+  for (let index = 0; index < queue.length; index += 1) {
+    const current = queue[index];
+    for (const offset of HORIZONTAL_DIRECTIONS) {
+      const candidate = {
+        x: current.x + offset.x,
+        y: block.y,
+        z: current.z + offset.z,
+      };
+      const key = cellKey(candidate);
+      if (!isInWorld(candidate) || occupied.has(key) || visited.has(key)) continue;
+      visited.add(key);
+
+      const distance = current.distance + 1;
+      const landingY = verticalLanding(candidate, occupied);
+      if (landingY < block.y) {
+        const destination = { ...candidate, y: landingY, distance };
+        if (
+          !best ||
+          destination.y < best.y ||
+          (destination.y === best.y && destination.distance < best.distance) ||
+          (destination.y === best.y &&
+            destination.distance === best.distance &&
+            cellKey(destination) < cellKey(best))
+        ) {
+          best = destination;
+        }
+        continue;
+      }
+
+      queue.push({ ...candidate, distance });
+    }
+  }
+
+  return best ? { x: best.x, y: best.y, z: best.z } : null;
+}
+
+/** Moves water and lava to the lowest reachable drop without changing IDs. */
+export function settleLiquids(input: VoxelBlock[]) {
+  let blocks = input.map((block) => ({ ...block }));
+  let moved = false;
+
+  for (let step = 0; step < MAX_HEIGHT; step += 1) {
+    const occupied = new Set(blocks.map((block) => cellKey(block)));
+    const byId = new Map(blocks.map((block) => [block.id, block]));
+    let movedThisStep = false;
+
+    for (const original of blocks) {
+      const block = byId.get(original.id) ?? original;
+      if (MATERIALS[block.material].gravityBehavior !== 'fluid') continue;
+
+      occupied.delete(cellKey(block));
+      const destination = lowestLiquidDestination(block, occupied);
+      if (destination && destination.y < block.y) {
+        const next = { ...block, ...destination };
+        byId.set(block.id, next);
+        occupied.add(cellKey(next));
+        movedThisStep = true;
+      } else {
+        occupied.add(cellKey(block));
+      }
+    }
+
+    if (!movedThisStep) break;
+    blocks = blocks.map((block) => byId.get(block.id) ?? block);
+    moved = true;
+  }
+
+  return { blocks, moved };
+}
+
+/**
+ * Settles overloaded or disconnected groups, then lets liquids seek the
+ * lowest reachable cells. IDs and falling group shapes are preserved.
+ */
+export function settleWorld(input: VoxelBlock[]) {
+  let blocks = input.map((block) => ({ ...block }));
+  let moved = false;
+
+  for (let step = 0; step < MAX_HEIGHT; step += 1) {
+    const structures = settleStructures(blocks);
+    const liquids = settleLiquids(structures.blocks);
+    blocks = liquids.blocks;
+    moved ||= structures.moved || liquids.moved;
+    if (!structures.moved && !liquids.moved) break;
+  }
+
+  return { blocks, moved };
+}
+
+export function advanceFire(input: VoxelBlock[]): {
+  blocks: VoxelBlock[];
+  changed: boolean;
+  ignited: number;
+  burned: number;
+} {
+  const byCell = new Map(input.map((block) => [cellKey(block), block]));
+  let ignited = 0;
+  let burned = 0;
+  let changed = false;
+
+  const blocks = input.flatMap<VoxelBlock>((block) => {
+    const burnDuration = MATERIALS[block.material].burnDuration;
+    if (!burnDuration) return [block];
+
+    const neighbors = NEIGHBORS.map((offset) =>
+      byCell.get(
+        cellKey({
+          x: block.x + offset.x,
+          y: block.y + offset.y,
+          z: block.z + offset.z,
+        }),
+      ),
+    ).filter((neighbor): neighbor is VoxelBlock => Boolean(neighbor));
+
+    if (block.burning && neighbors.some((neighbor) => neighbor.material === 'water')) {
+      const { burning: _burning, ...extinguished } = block;
+      changed = true;
+      return [extinguished];
+    }
+
+    if (block.burning) {
+      changed = true;
+      if (block.burning >= burnDuration) {
+        burned += 1;
+        return [];
+      }
+      return [{ ...block, burning: block.burning + 1 }];
+    }
+
+    const catchesFire = neighbors.some(
+      (neighbor) => neighbor.material === 'lava' || Boolean(neighbor.burning),
+    );
+    if (!catchesFire) return [block];
+
+    changed = true;
+    ignited += 1;
+    return [{ ...block, burning: 1 }];
+  });
+
+  return { blocks: changed ? blocks : input, changed, ignited, burned };
 }
 
 export function createStarterWorld(): VoxelBlock[] {
@@ -293,6 +527,16 @@ export function isValidWorld(value: unknown): value is VoxelBlock[] {
       !block.material ||
       !(block.material in MATERIALS) ||
       !isInWorld(block as Cell)
+    ) {
+      return false;
+    }
+    const material = block.material as BlockMaterial;
+    if (
+      block.burning !== undefined &&
+      (!Number.isInteger(block.burning) ||
+        block.burning < 1 ||
+        !MATERIALS[material].burnDuration ||
+        block.burning > (MATERIALS[material].burnDuration ?? 0))
     ) {
       return false;
     }

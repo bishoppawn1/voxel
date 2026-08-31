@@ -5,6 +5,7 @@ import {
   ArrowDown,
   CloudSun,
   Eraser,
+  Flame,
   Leaf,
   Pause,
   Play,
@@ -21,6 +22,7 @@ import {
   MATERIALS,
   MATERIAL_KEYS,
   WORLD_RENDER_SIZE,
+  advanceFire,
   cellToWorld,
   createStarterWorld,
   hasBlock,
@@ -40,6 +42,7 @@ type HoverTarget = Cell & { blockId?: string; valid: boolean };
 
 const STORAGE_KEY = 'voxel-world-v1';
 const PAINT_INTERVAL_MS = 160;
+const FIRE_TICK_MS = 650;
 
 function loadWorld() {
   try {
@@ -49,6 +52,31 @@ function loadWorld() {
   } catch {
     return createStarterWorld();
   }
+}
+
+function BurningEffect() {
+  const flames = useRef<Group>(null);
+
+  useFrame(({ clock }) => {
+    if (!flames.current) return;
+    const flicker = 0.88 + Math.sin(clock.elapsedTime * 13) * 0.12;
+    flames.current.scale.set(1, flicker, 1);
+    flames.current.rotation.y = Math.sin(clock.elapsedTime * 4) * 0.16;
+  });
+
+  return (
+    <group ref={flames} position={[0, BLOCK_SIZE * 0.72, 0]}>
+      <mesh position={[-BLOCK_SIZE * 0.16, 0, 0]}>
+        <coneGeometry args={[BLOCK_SIZE * 0.18, BLOCK_SIZE * 0.62, 5]} />
+        <meshBasicMaterial color="#ff7a20" toneMapped={false} />
+      </mesh>
+      <mesh position={[BLOCK_SIZE * 0.13, -BLOCK_SIZE * 0.04, BLOCK_SIZE * 0.08]}>
+        <coneGeometry args={[BLOCK_SIZE * 0.14, BLOCK_SIZE * 0.45, 5]} />
+        <meshBasicMaterial color="#ffd34e" toneMapped={false} />
+      </mesh>
+      <pointLight color="#ff6b1a" intensity={0.9} distance={1.4} decay={2} />
+    </group>
+  );
 }
 
 function AnimatedBlock({
@@ -117,8 +145,8 @@ function AnimatedBlock({
             transparent={(colors.opacity ?? 1) < 1}
             opacity={colors.opacity ?? 1}
             depthWrite={(colors.opacity ?? 1) >= 0.7}
-            emissive={colors.emissive}
-            emissiveIntensity={colors.emissiveIntensity ?? 0}
+            emissive={block.burning ? '#ff541c' : colors.emissive}
+            emissiveIntensity={block.burning ? 0.72 : (colors.emissiveIntensity ?? 0)}
           />
         ))}
         <Edges threshold={22} color={colors.edge} opacity={0.42} transparent />
@@ -129,6 +157,7 @@ function AnimatedBlock({
           <meshStandardMaterial map={textures.top} color="#ffffff" roughness={0.94} />
         </mesh>
       )}
+      {block.burning && <BurningEffect />}
     </group>
   );
 }
@@ -189,6 +218,10 @@ function WorldScene({
   };
 
   const hoverBlock = (event: ThreeEvent<PointerEvent>, block: VoxelBlock) => {
+    if ((event.buttons & 2) !== 0) {
+      setHover(null);
+      return;
+    }
     event.stopPropagation();
     if (tool === 'erase') {
       setHover({ x: block.x, y: block.y, z: block.z, blockId: block.id, valid: true });
@@ -246,6 +279,10 @@ function WorldScene({
         rotation={[-Math.PI / 2, 0, 0]}
         onPointerMove={(event) => {
           if (tool !== 'place') return;
+          if ((event.buttons & 2) !== 0) {
+            setHover(null);
+            return;
+          }
           event.stopPropagation();
           const cell = planeCell(event);
           setHover({ ...cell, valid: isInWorld(cell) && !hasBlock(blocks, cell) });
@@ -323,7 +360,7 @@ function WorldScene({
         minPolarAngle={0.28}
         maxPolarAngle={Math.PI / 2.08}
         mouseButtons={{
-          LEFT: MOUSE.PAN,
+          LEFT: -1 as MOUSE,
           MIDDLE: MOUSE.DOLLY,
           RIGHT: MOUSE.ROTATE,
         }}
@@ -405,6 +442,8 @@ export default function Game() {
   const [welcomeVisible, setWelcomeVisible] = useState(true);
   const idCounter = useRef(0);
   const settleTimer = useRef<number | undefined>(undefined);
+  const burningCount = blocks.filter((block) => block.burning).length;
+  const fireActive = useMemo(() => advanceFire(blocks).changed, [blocks]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(blocks));
@@ -416,6 +455,20 @@ export default function Game() {
     },
     [],
   );
+
+  useEffect(() => {
+    if (!fireActive) return;
+    const fireTimer = window.setInterval(() => {
+      setBlocks((current) => {
+        const fire = advanceFire(current);
+        if (!fire.changed) return current;
+        if (!gravityOn || fire.burned === 0) return fire.blocks;
+        return settleWorld(fire.blocks).blocks;
+      });
+    }, FIRE_TICK_MS);
+
+    return () => window.clearInterval(fireTimer);
+  }, [fireActive, gravityOn]);
 
   const markSettling = () => {
     setSettling(true);
@@ -583,8 +636,14 @@ export default function Game() {
         {settling ? <ArrowDown size={15} className="falling-icon" /> : <span className={`status-dot ${gravityOn ? '' : 'paused'}`} />}
         <span>{settling ? 'Blocks falling' : gravityOn ? 'Gravity on' : 'Gravity paused'}</span>
         <span className="status-rule" />
-        <Leaf size={15} />
-        <span>{blocks.length ? 'World calm' : 'Blank canvas'}</span>
+        {burningCount ? <Flame size={15} className="fire-icon" /> : <Leaf size={15} />}
+        <span>
+          {burningCount
+            ? `${burningCount} ${burningCount === 1 ? 'block' : 'blocks'} burning`
+            : blocks.length
+              ? 'World calm'
+              : 'Blank canvas'}
+        </span>
         <span className="status-rule" />
         <CloudSun size={15} />
         <span>Clear skies</span>

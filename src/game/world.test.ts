@@ -5,9 +5,11 @@ import {
   MATERIAL_KEYS,
   MAX_HEIGHT,
   WORLD_SIZE,
+  advanceFire,
   cellToWorld,
   createStarterWorld,
   isValidWorld,
+  settleLiquids,
   settlePlacedBlock,
   settleWorld,
   worldToCell,
@@ -99,7 +101,7 @@ describe('voxel gravity', () => {
     },
   );
 
-  it('limits weaker dirt to a short unsupported span', () => {
+  it('spends dirt tolerance across vertical and horizontal connections', () => {
     const world = [
       block('root', 0, 0, 0, 'soil'),
       block('column', 0, 1, 0, 'soil'),
@@ -109,8 +111,22 @@ describe('voxel gravity', () => {
     ];
     const result = settleWorld(world);
 
-    expect(result.blocks.find(({ id }) => id === 'near-2')?.y).toBe(1);
+    expect(result.blocks.find(({ id }) => id === 'near-1')?.y).toBe(1);
+    expect(result.blocks.find(({ id }) => id === 'near-2')?.y).toBe(0);
     expect(result.blocks.find(({ id }) => id === 'far')?.y).toBe(0);
+  });
+
+  it('topples the overloaded top of a tall grass column without overlaps', () => {
+    const world = Array.from({ length: 7 }, (_, y) =>
+      block(`grass-${y}`, 0, y, 0, 'grass'),
+    );
+    const result = settleWorld(world);
+    const occupied = new Set(result.blocks.map(({ x, y, z }) => `${x},${y},${z}`));
+
+    expect(result.moved).toBe(true);
+    expect(occupied.size).toBe(world.length);
+    expect(Math.max(...result.blocks.filter(({ x, z }) => x === 0 && z === 0).map(({ y }) => y)))
+      .toBeLessThan(6);
   });
 });
 
@@ -159,6 +175,19 @@ describe('fresh block pouring', () => {
     expect(settlePlacedBlock(world, 'seed')).toEqual({ blocks: world, moved: false });
   });
 
+  it('rolls grass away when a weak column has exhausted its tolerance', () => {
+    const world = [
+      ...Array.from({ length: 4 }, (_, y) => block(`grass-${y}`, 0, y, 0, 'grass')),
+      block('seed', 0, 4, 0, 'grass'),
+    ];
+    const result = settlePlacedBlock(world, 'seed');
+    const seed = result.blocks.find(({ id }) => id === 'seed');
+
+    expect(result.moved).toBe(true);
+    expect(seed?.y).toBe(0);
+    expect(Math.abs(seed?.x ?? 0) + Math.abs(seed?.z ?? 0)).toBe(1);
+  });
+
   it('leaves a fresh block in place when a pile contains every downhill cell', () => {
     const world = [
       block('support', 0, 0, 0),
@@ -189,6 +218,75 @@ describe('fresh block pouring', () => {
   });
 });
 
+describe('liquid flow', () => {
+  it.each(['water', 'lava'] as const)(
+    'moves %s over a ledge to the lowest reachable level',
+    (material) => {
+      const world = [
+        block('base', 0, 0, 0),
+        block('ledge', 0, 1, 0),
+        block('liquid', 0, 2, 0, material),
+      ];
+      const result = settleLiquids(world);
+      const liquid = result.blocks.find(({ id }) => id === 'liquid');
+
+      expect(result.moved).toBe(true);
+      expect(liquid?.y).toBe(0);
+      expect(liquid?.x === 0 && liquid?.z === 0).toBe(false);
+      expect(new Set(result.blocks.map(({ x, y, z }) => `${x},${y},${z}`)).size).toBe(3);
+    },
+  );
+
+  it('keeps contained water in place when no lower cell is reachable', () => {
+    const world = [
+      block('floor', 0, 0, 0),
+      block('east', 1, 1, 0),
+      block('west', -1, 1, 0),
+      block('south', 0, 1, 1),
+      block('north', 0, 1, -1),
+      block('water', 0, 1, 0, 'water'),
+    ];
+
+    expect(settleLiquids(world)).toEqual({ blocks: world, moved: false });
+  });
+});
+
+describe('fire', () => {
+  it('ignites wood beside lava and consumes it after its burn duration', () => {
+    let world = [block('lava', 0, 0, 0, 'lava'), block('wood', 1, 0, 0, 'wood')];
+
+    world = advanceFire(world).blocks;
+    expect(world.find(({ id }) => id === 'wood')?.burning).toBe(1);
+
+    for (let tick = 0; tick < (MATERIALS.wood.burnDuration ?? 0); tick += 1) {
+      world = advanceFire(world).blocks;
+    }
+    expect(world.some(({ id }) => id === 'wood')).toBe(false);
+  });
+
+  it('spreads fire through flammable neighbors but not stone', () => {
+    const world = [
+      { ...block('wood', 0, 0, 0, 'wood'), burning: 1 },
+      block('leaves', 1, 0, 0, 'leaves'),
+      block('stone', -1, 0, 0, 'stone'),
+    ];
+    const result = advanceFire(world);
+
+    expect(result.blocks.find(({ id }) => id === 'leaves')?.burning).toBe(1);
+    expect(result.blocks.find(({ id }) => id === 'stone')?.burning).toBeUndefined();
+  });
+
+  it('lets adjacent water extinguish a burning block', () => {
+    const world = [
+      { ...block('wood', 0, 0, 0, 'wood'), burning: 2 },
+      block('water', 1, 0, 0, 'water'),
+    ];
+
+    expect(advanceFire(world).blocks.find(({ id }) => id === 'wood')?.burning)
+      .toBeUndefined();
+  });
+});
+
 describe('world persistence validation', () => {
   it('accepts the starter world', () => {
     expect(isValidWorld(createStarterWorld())).toBe(true);
@@ -206,5 +304,10 @@ describe('world persistence validation', () => {
     expect(
       isValidWorld([{ ...block('wood', 0, 0, 0), material: 'wood' }]),
     ).toBe(true);
+  });
+
+  it('validates persisted fire state only on flammable materials', () => {
+    expect(isValidWorld([{ ...block('wood', 0, 0, 0, 'wood'), burning: 2 }])).toBe(true);
+    expect(isValidWorld([{ ...block('stone', 0, 0, 0), burning: 1 }])).toBe(false);
   });
 });

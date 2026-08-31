@@ -143,6 +143,7 @@ kbd { min-width: 21px; padding: 3px 6px; border: 1px solid rgba(42, 66, 55, .12)
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #79a459; box-shadow: 0 0 0 3px rgba(121,164,89,.13); }
 .status-dot.paused { background: #be9c5b; box-shadow: 0 0 0 3px rgba(190,156,91,.13); }
 .falling-icon { color: var(--sage-dark); animation: fall-pulse .55s ease-in-out infinite alternate; }
+.fire-icon { color: #e8662f; filter: drop-shadow(0 0 4px rgba(232, 102, 47, .28)); animation: fire-pulse .42s ease-in-out infinite alternate; }
 .status-rule { width: 1px; height: 16px; margin: 0 4px; background: var(--line); }
 .controls-hint { left: 50%; gap: 15px; padding: 0 14px; transform: translateX(-50%); }
 .controls-hint span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
@@ -154,6 +155,11 @@ kbd { min-width: 21px; padding: 3px 6px; border: 1px solid rgba(42, 66, 55, .12)
 @keyframes fall-pulse {
   from { transform: translateY(-2px); opacity: .65; }
   to { transform: translateY(2px); opacity: 1; }
+}
+
+@keyframes fire-pulse {
+  from { transform: translateY(1px) scale(.92); opacity: .78; }
+  to { transform: translateY(-1px) scale(1.06); opacity: 1; }
 }
 
 @media (max-width: 1020px) and (min-width: 721px) {
