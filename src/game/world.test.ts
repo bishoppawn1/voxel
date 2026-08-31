@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { createStarterWorld, isValidWorld, settleWorld, type VoxelBlock } from './world';
+import {
+  MATERIALS,
+  MATERIAL_KEYS,
+  createStarterWorld,
+  isValidWorld,
+  settleWorld,
+  type VoxelBlock,
+} from './world';
 
 const block = (id: string, x: number, y: number, z: number): VoxelBlock => ({
   id,
@@ -49,5 +56,14 @@ describe('world persistence validation', () => {
   it('rejects duplicate and out-of-bounds cells', () => {
     expect(isValidWorld([block('a', 0, 0, 0), block('b', 0, 0, 0)])).toBe(false);
     expect(isValidWorld([block('a', 99, 0, 0)])).toBe(false);
+  });
+
+  it('supports 24 selectable materials, including dirt and wood', () => {
+    expect(MATERIAL_KEYS).toHaveLength(24);
+    expect(MATERIALS.soil.label).toBe('Dirt');
+    expect(MATERIALS.wood.label).toBe('Wood');
+    expect(
+      isValidWorld([{ ...block('wood', 0, 0, 0), material: 'wood' }]),
+    ).toBe(true);
   });
 });

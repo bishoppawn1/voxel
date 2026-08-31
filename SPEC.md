@@ -15,18 +15,20 @@ The first release is a focused creative sandbox. It should feel immediately play
 
 ## First-release player experience
 
-On load, the player sees a 24 by 24 build plane, an angled 3D camera, and a few small starter structures made from grass, soil, stone, and sand blocks. The world—not marketing copy—is the main screen.
+On load, the player sees a 24 by 24 build plane, an angled 3D camera, and a few small starter structures made from grass, dirt, stone, and sand blocks. The world—not marketing copy—is the main screen.
 
 The player can:
 
 1. Choose Place or Erase.
-2. Select one of four block materials.
+2. Select one of 24 block materials from a compact block palette.
 3. Left-click the plane or an exposed block face to place a block.
 4. Left-click a block with Erase selected to remove it.
 5. Right-click and drag to orbit around the center of the world.
 6. Scroll to zoom in and out.
 7. Pause or resume gravity.
 8. Undo, redo, clear, or restore the starter world.
+
+The palette contains Grass, Dirt, Stone, Sand, Wood, Leaves, Brick, Clay, Snow, Ice, Water, Lava, Obsidian, Coal, Iron, Gold, Copper, Glass, Moss, Mud, Gravel, Marble, Basalt, and Crystal. A Delete block sits in the same palette and switches directly to Erase. Selecting any palette block displays a plain-language confirmation such as “Grass selected” or “Delete selected.”
 
 The world is saved to local browser storage after each edit and restored on the same device the next time the game opens.
 
@@ -56,6 +58,7 @@ Gravity is connectivity-based rather than a full rigid-body simulation.
 
 - Full-screen isometric world with soft sage sky, warm neutral plane, visible grid, subtle fog, and directional shadows.
 - Compact translucent tool surfaces use cream, forest green, lime, soil brown, stone gray, and sand gold.
+- Rendered cubes leave a visible gap between neighboring grid cells, and palette tiles stay small enough to show the expanded collection without covering the world.
 - Controls must expose accessible names, selected states, disabled states, and keyboard shortcuts where applicable.
 - The first-use message should leave after the first world edit.
 - Motion should honor the operating system's reduced-motion preference.

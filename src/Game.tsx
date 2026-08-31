@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MOUSE, type Mesh, Vector3 } from 'three';
 import {
   MATERIALS,
+  MATERIAL_KEYS,
   WORLD_SIZE,
   createStarterWorld,
   hasBlock,
@@ -78,8 +79,17 @@ function AnimatedBlock({
       onPointerOut={onLeave}
       onClick={(event) => onSelect(event, block)}
     >
-      <boxGeometry args={[0.94, 0.94, 0.94]} />
-      <meshStandardMaterial color={colors.color} roughness={0.82} />
+      <boxGeometry args={[0.82, 0.82, 0.82]} />
+      <meshStandardMaterial
+        color={colors.color}
+        roughness={colors.roughness ?? 0.82}
+        metalness={colors.metalness ?? 0}
+        transparent={(colors.opacity ?? 1) < 1}
+        opacity={colors.opacity ?? 1}
+        depthWrite={(colors.opacity ?? 1) >= 0.7}
+        emissive={colors.emissive}
+        emissiveIntensity={colors.emissiveIntensity ?? 0}
+      />
       <Edges threshold={22} color={colors.edge} opacity={0.42} transparent />
     </mesh>
   );
@@ -201,7 +211,7 @@ function WorldScene({
 
       {hover && (
         <mesh position={[hover.x, hover.y + 0.5, hover.z]}>
-          <boxGeometry args={[0.98, 0.98, 0.98]} />
+          <boxGeometry args={[0.86, 0.86, 0.86]} />
           <meshStandardMaterial
             color={tool === 'erase' ? '#cc6d55' : hover.valid ? '#e6ed88' : '#cc6d55'}
             transparent
@@ -229,6 +239,59 @@ function WorldScene({
         }}
       />
     </>
+  );
+}
+
+function BlockPalette({
+  className,
+  material,
+  tool,
+  onSelectMaterial,
+  onSelectDelete,
+}: {
+  className: string;
+  material: BlockMaterial;
+  tool: Tool;
+  onSelectMaterial: (material: BlockMaterial) => void;
+  onSelectDelete: () => void;
+}) {
+  const selectedLabel = tool === 'erase' ? 'Delete' : MATERIALS[material].label;
+
+  return (
+    <div className={className}>
+      <div className="selection-readout" role="status" aria-live="polite" aria-atomic="true">
+        {tool === 'erase' ? (
+          <span className="selection-chip delete-chip"><Trash2 size={12} /></span>
+        ) : (
+          <span className="selection-chip" style={{ backgroundColor: MATERIALS[material].color }} />
+        )}
+        <span><strong>{selectedLabel}</strong> selected</span>
+      </div>
+      <div className="swatches" aria-label="Block material">
+        <button
+          className={`swatch delete-swatch ${tool === 'erase' ? 'selected' : ''}`}
+          aria-label="Delete block"
+          aria-pressed={tool === 'erase'}
+          title="Delete"
+          type="button"
+          onClick={onSelectDelete}
+        >
+          <Trash2 size={13} />
+        </button>
+        {MATERIAL_KEYS.map((key) => (
+          <button
+            key={key}
+            className={`swatch ${tool === 'place' && material === key ? 'selected' : ''}`}
+            aria-label={`${MATERIALS[key].label} block`}
+            aria-pressed={tool === 'place' && material === key}
+            title={MATERIALS[key].label}
+            type="button"
+            style={{ backgroundColor: MATERIALS[key].color }}
+            onClick={() => onSelectMaterial(key)}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -328,6 +391,10 @@ export default function Game() {
 
   const resetWorld = () => commit(createStarterWorld());
   const clearWorld = () => commit([]);
+  const selectMaterial = (nextMaterial: BlockMaterial) => {
+    setMaterial(nextMaterial);
+    setTool('place');
+  };
 
   return (
     <main className="game-shell">
@@ -378,20 +445,17 @@ export default function Game() {
         </button>
 
         <div className="panel-rule" />
-        <p className="eyebrow material-heading">MATERIAL</p>
-        <div className="swatches" aria-label="Block material">
-          {(Object.keys(MATERIALS) as BlockMaterial[]).map((key) => (
-            <button
-              key={key}
-              className={`swatch ${key} ${material === key ? 'selected' : ''}`}
-              aria-label={`${MATERIALS[key].label} block`}
-              aria-pressed={material === key}
-              title={MATERIALS[key].label}
-              type="button"
-              onClick={() => { setMaterial(key); setTool('place'); }}
-            />
-          ))}
+        <div className="material-heading">
+          <p className="eyebrow">BLOCKS</p>
+          <span>24 + delete</span>
         </div>
+        <BlockPalette
+          className="material-picker"
+          material={material}
+          tool={tool}
+          onSelectMaterial={selectMaterial}
+          onSelectDelete={() => setTool('erase')}
+        />
 
         <div className="panel-rule action-rule" />
         <div className="world-actions">
@@ -430,18 +494,13 @@ export default function Game() {
         <span><b>⌁</b> Scroll to zoom</span>
       </div>
 
-      <div className="mobile-materials" aria-label="Block material">
-        {(Object.keys(MATERIALS) as BlockMaterial[]).map((key) => (
-          <button
-            key={key}
-            className={`swatch ${key} ${material === key ? 'selected' : ''}`}
-            aria-label={`${MATERIALS[key].label} block`}
-            aria-pressed={material === key}
-            type="button"
-            onClick={() => { setMaterial(key); setTool('place'); }}
-          />
-        ))}
-      </div>
+      <BlockPalette
+        className="mobile-material-picker"
+        material={material}
+        tool={tool}
+        onSelectMaterial={selectMaterial}
+        onSelectDelete={() => setTool('erase')}
+      />
     </main>
   );
 }

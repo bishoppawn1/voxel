@@ -1,4 +1,42 @@
-export type BlockMaterial = 'grass' | 'soil' | 'stone' | 'sand';
+export const MATERIAL_KEYS = [
+  'grass',
+  'soil',
+  'stone',
+  'sand',
+  'wood',
+  'leaves',
+  'brick',
+  'clay',
+  'snow',
+  'ice',
+  'water',
+  'lava',
+  'obsidian',
+  'coal',
+  'iron',
+  'gold',
+  'copper',
+  'glass',
+  'moss',
+  'mud',
+  'gravel',
+  'marble',
+  'basalt',
+  'crystal',
+] as const;
+
+export type BlockMaterial = (typeof MATERIAL_KEYS)[number];
+
+type MaterialDefinition = {
+  label: string;
+  color: string;
+  edge: string;
+  roughness?: number;
+  metalness?: number;
+  opacity?: number;
+  emissive?: string;
+  emissiveIntensity?: number;
+};
 
 export type VoxelBlock = {
   id: string;
@@ -16,12 +54,32 @@ export const MAX_HEIGHT = 12;
 
 export const MATERIALS: Record<
   BlockMaterial,
-  { label: string; color: string; edge: string }
+  MaterialDefinition
 > = {
   grass: { label: 'Grass', color: '#72a55a', edge: '#496f43' },
-  soil: { label: 'Soil', color: '#9a6845', edge: '#70482f' },
+  soil: { label: 'Dirt', color: '#9a6845', edge: '#70482f' },
   stone: { label: 'Stone', color: '#7d898e', edge: '#586468' },
   sand: { label: 'Sand', color: '#d7bd76', edge: '#a88d4d' },
+  wood: { label: 'Wood', color: '#a8733f', edge: '#6f4626', roughness: 0.95 },
+  leaves: { label: 'Leaves', color: '#477d46', edge: '#285532', roughness: 0.9 },
+  brick: { label: 'Brick', color: '#a74f3f', edge: '#743327', roughness: 0.92 },
+  clay: { label: 'Clay', color: '#bf765d', edge: '#894f40', roughness: 0.9 },
+  snow: { label: 'Snow', color: '#f2f5ee', edge: '#b8c7c1', roughness: 0.72 },
+  ice: { label: 'Ice', color: '#a9dce5', edge: '#5f9eb2', roughness: 0.25, opacity: 0.78 },
+  water: { label: 'Water', color: '#4b9dc4', edge: '#267294', roughness: 0.18, opacity: 0.68 },
+  lava: { label: 'Lava', color: '#f0682c', edge: '#a73520', roughness: 0.65, emissive: '#d33e14', emissiveIntensity: 0.48 },
+  obsidian: { label: 'Obsidian', color: '#312b40', edge: '#17141f', roughness: 0.35, metalness: 0.22 },
+  coal: { label: 'Coal', color: '#3e4341', edge: '#1d211f', roughness: 0.96 },
+  iron: { label: 'Iron', color: '#a8ada8', edge: '#666e6c', roughness: 0.5, metalness: 0.55 },
+  gold: { label: 'Gold', color: '#d9ad36', edge: '#8f6a17', roughness: 0.34, metalness: 0.72 },
+  copper: { label: 'Copper', color: '#bc6f46', edge: '#78442e', roughness: 0.5, metalness: 0.5 },
+  glass: { label: 'Glass', color: '#d8f0e9', edge: '#78a9a1', roughness: 0.08, opacity: 0.42 },
+  moss: { label: 'Moss', color: '#71883f', edge: '#485929', roughness: 1 },
+  mud: { label: 'Mud', color: '#6f503b', edge: '#453125', roughness: 1 },
+  gravel: { label: 'Gravel', color: '#8d8880', edge: '#5d5954', roughness: 1 },
+  marble: { label: 'Marble', color: '#ddd9cf', edge: '#989990', roughness: 0.38 },
+  basalt: { label: 'Basalt', color: '#555a60', edge: '#2f3337', roughness: 0.93 },
+  crystal: { label: 'Crystal', color: '#9d75d5', edge: '#5e388f', roughness: 0.18, opacity: 0.82, emissive: '#654098', emissiveIntensity: 0.22 },
 };
 
 const NEIGHBORS: Cell[] = [
