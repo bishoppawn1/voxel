@@ -1,11 +1,11 @@
-import { Edges, Grid, OrbitControls } from '@react-three/drei';
+import { Billboard, Edges, Grid, OrbitControls } from '@react-three/drei';
 import { Canvas, type ThreeEvent, useFrame } from '@react-three/fiber';
 import {
   Box,
   ArrowDown,
-  CloudSun,
   Eraser,
   Flame,
+  Heart,
   Leaf,
   Pause,
   Play,
@@ -17,6 +17,17 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type Group, MOUSE, Vector3 } from 'three';
+import {
+  ECOSYSTEM_TICK_MS,
+  MAX_ANIMAL_HUNGER,
+  advanceEcosystem,
+  createInitialEcosystem,
+  getSurfaceBlock,
+  isValidEcosystem,
+  type EcosystemState,
+  type Sheep,
+  type Vegetation,
+} from './game/ecosystem';
 import {
   BLOCK_SIZE,
   MATERIALS,
@@ -40,6 +51,7 @@ type Tool = 'place' | 'erase';
 type HoverTarget = Cell & { blockId?: string; valid: boolean };
 
 const STORAGE_KEY = 'voxel-world-v1';
+const ECOSYSTEM_STORAGE_KEY = 'voxel-ecosystem-v1';
 const PAINT_INTERVAL_MS = 160;
 const FIRE_TICK_MS = 650;
 const WORLD_TICK_MS = 140;
@@ -51,6 +63,16 @@ function loadWorld() {
     return isValidWorld(parsed) ? parsed : createStarterWorld();
   } catch {
     return createStarterWorld();
+  }
+}
+
+function loadEcosystem(blocks: VoxelBlock[]) {
+  try {
+    const saved = localStorage.getItem(ECOSYSTEM_STORAGE_KEY);
+    const parsed: unknown = saved ? JSON.parse(saved) : null;
+    return isValidEcosystem(parsed) ? parsed : createInitialEcosystem(blocks);
+  } catch {
+    return createInitialEcosystem(blocks);
   }
 }
 
@@ -163,13 +185,133 @@ function AnimatedBlock({
   );
 }
 
+function VegetationSprout({
+  growth,
+  block,
+}: {
+  growth: Vegetation;
+  block: VoxelBlock;
+}) {
+  const height = growth.kind === 'tall-grass' ? BLOCK_SIZE * 0.62 : BLOCK_SIZE * 0.38;
+  const bladeColor = growth.kind === 'tall-grass' ? '#4f873e' : '#6da24b';
+
+  return (
+    <group
+      position={[
+        cellToWorld(block.x),
+        cellToWorld(block.y + 1) + 0.003,
+        cellToWorld(block.z),
+      ]}
+    >
+      {growth.kind === 'flower' ? (
+        <>
+          <mesh position={[0, BLOCK_SIZE * 0.2, 0]} castShadow>
+            <boxGeometry args={[BLOCK_SIZE * 0.045, BLOCK_SIZE * 0.4, BLOCK_SIZE * 0.045]} />
+            <meshStandardMaterial color="#4f873e" roughness={0.95} />
+          </mesh>
+          <mesh position={[0, BLOCK_SIZE * 0.42, 0]} castShadow>
+            <sphereGeometry args={[BLOCK_SIZE * 0.11, 7, 5]} />
+            <meshStandardMaterial color="#f2a6ba" roughness={0.8} />
+          </mesh>
+          <mesh position={[0, BLOCK_SIZE * 0.42, BLOCK_SIZE * 0.085]}>
+            <sphereGeometry args={[BLOCK_SIZE * 0.045, 6, 4]} />
+            <meshStandardMaterial color="#e5b83d" roughness={0.8} />
+          </mesh>
+        </>
+      ) : (
+        [-0.16, 0, 0.16].map((offset, index) => (
+          <mesh
+            key={offset}
+            position={[BLOCK_SIZE * offset, height / 2, BLOCK_SIZE * (index === 1 ? 0.12 : -0.08)]}
+            rotation={[index === 1 ? 0.08 : -0.06, index * 0.9, index === 2 ? -0.14 : 0.12]}
+            castShadow
+          >
+            <boxGeometry args={[BLOCK_SIZE * 0.045, height, BLOCK_SIZE * 0.035]} />
+            <meshStandardMaterial color={bladeColor} roughness={0.96} />
+          </mesh>
+        ))
+      )}
+    </group>
+  );
+}
+
+function SheepModel({ animal, surfaceY }: { animal: Sheep; surfaceY: number }) {
+  const group = useRef<Group>(null);
+  const target = useMemo(
+    () =>
+      new Vector3(
+        cellToWorld(animal.x),
+        cellToWorld(surfaceY + 1),
+        cellToWorld(animal.z),
+      ),
+    [animal.x, animal.z, surfaceY],
+  );
+  const initialPosition = useRef(target.clone()).current;
+
+  useFrame((_, delta) => {
+    if (!group.current) return;
+    group.current.position.lerp(target, 1 - Math.exp(-delta * 7));
+  });
+
+  const scale = animal.isBaby ? 0.62 : 1;
+  const hungerRatio = Math.max(0, Math.min(1, animal.hunger / MAX_ANIMAL_HUNGER));
+  const hungerColor = hungerRatio > 0.5
+    ? '#72a952'
+    : hungerRatio > 0.25
+      ? '#d2a33e'
+      : '#c85f4c';
+  const hungerWidth = BLOCK_SIZE * 1.12;
+
+  return (
+    <group ref={group} position={initialPosition}>
+      <group scale={scale}>
+        <mesh position={[0, BLOCK_SIZE * 0.43, 0]} castShadow>
+          <boxGeometry args={[BLOCK_SIZE * 1.08, BLOCK_SIZE * 0.62, BLOCK_SIZE * 0.68]} />
+          <meshStandardMaterial color="#f5f1df" roughness={0.92} />
+        </mesh>
+        <mesh position={[BLOCK_SIZE * 0.63, BLOCK_SIZE * 0.45, 0]} castShadow>
+          <boxGeometry args={[BLOCK_SIZE * 0.38, BLOCK_SIZE * 0.42, BLOCK_SIZE * 0.46]} />
+          <meshStandardMaterial color="#4a4942" roughness={0.9} />
+        </mesh>
+        {[-0.36, 0.36].flatMap((x) =>
+          [-0.22, 0.22].map((z) => (
+            <mesh key={`${x}:${z}`} position={[BLOCK_SIZE * x, BLOCK_SIZE * 0.13, BLOCK_SIZE * z]} castShadow>
+              <boxGeometry args={[BLOCK_SIZE * 0.12, BLOCK_SIZE * 0.3, BLOCK_SIZE * 0.12]} />
+              <meshStandardMaterial color="#4a4942" roughness={0.94} />
+            </mesh>
+          )),
+        )}
+        <mesh position={[BLOCK_SIZE * 0.84, BLOCK_SIZE * 0.51, BLOCK_SIZE * 0.18]}>
+          <sphereGeometry args={[BLOCK_SIZE * 0.035, 6, 4]} />
+          <meshBasicMaterial color="#171a18" />
+        </mesh>
+      </group>
+      <Billboard position={[0, BLOCK_SIZE * 0.96, 0]}>
+        <mesh>
+          <planeGeometry args={[BLOCK_SIZE * 1.2, BLOCK_SIZE * 0.14]} />
+          <meshBasicMaterial color="#24312b" transparent opacity={0.76} depthWrite={false} />
+        </mesh>
+        <mesh
+          position={[-hungerWidth * (1 - hungerRatio) / 2, 0, 0.001]}
+          scale={[hungerRatio, 1, 1]}
+        >
+          <planeGeometry args={[hungerWidth, BLOCK_SIZE * 0.085]} />
+          <meshBasicMaterial color={hungerColor} toneMapped={false} depthWrite={false} />
+        </mesh>
+      </Billboard>
+    </group>
+  );
+}
+
 function WorldScene({
   blocks,
+  ecosystem,
   tool,
   onAdd,
   onRemove,
 }: {
   blocks: VoxelBlock[];
+  ecosystem: EcosystemState;
   tool: Tool;
   onAdd: (cell: Cell) => void;
   onRemove: (id: string) => void;
@@ -331,6 +473,16 @@ function WorldScene({
         />
       ))}
 
+      {ecosystem.vegetation.map((growth) => {
+        const block = blocks.find(({ id }) => id === growth.blockId);
+        return block ? <VegetationSprout key={growth.id} growth={growth} block={block} /> : null;
+      })}
+
+      {ecosystem.sheep.map((animal) => {
+        const surface = getSurfaceBlock(blocks, animal.x, animal.z);
+        return surface ? <SheepModel key={animal.id} animal={animal} surfaceY={surface.y} /> : null;
+      })}
+
       {hover && (
         <mesh
           position={[
@@ -434,6 +586,7 @@ function BlockPalette({
 
 export default function Game() {
   const [blocks, setBlocks] = useState<VoxelBlock[]>(loadWorld);
+  const [ecosystem, setEcosystem] = useState<EcosystemState>(() => loadEcosystem(blocks));
   const [tool, setTool] = useState<Tool>('place');
   const [material, setMaterial] = useState<BlockMaterial>('grass');
   const [gravityOn, setGravityOn] = useState(true);
@@ -443,6 +596,7 @@ export default function Game() {
   const [welcomeVisible, setWelcomeVisible] = useState(true);
   const idCounter = useRef(0);
   const blocksRef = useRef(blocks);
+  const ecosystemRef = useRef(ecosystem);
   const burningCount = blocks.filter((block) => block.burning).length;
   const fireActive = useMemo(() => advanceFire(blocks).changed, [blocks]);
 
@@ -450,6 +604,11 @@ export default function Game() {
     blocksRef.current = blocks;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(blocks));
   }, [blocks]);
+
+  useEffect(() => {
+    ecosystemRef.current = ecosystem;
+    localStorage.setItem(ECOSYSTEM_STORAGE_KEY, JSON.stringify(ecosystem));
+  }, [ecosystem]);
 
   useEffect(() => {
     if (!fireActive) return;
@@ -483,6 +642,18 @@ export default function Game() {
 
     return () => window.clearInterval(worldTimer);
   }, [gravityOn]);
+
+  useEffect(() => {
+    const ecosystemTimer = window.setInterval(() => {
+      const result = advanceEcosystem(blocksRef.current, ecosystemRef.current);
+      blocksRef.current = result.blocks;
+      ecosystemRef.current = result.ecosystem;
+      setBlocks(result.blocks);
+      setEcosystem(result.ecosystem);
+    }, ECOSYSTEM_TICK_MS);
+
+    return () => window.clearInterval(ecosystemTimer);
+  }, []);
 
   const commit = (next: VoxelBlock[], didMove = false) => {
     if (next === blocks) return;
@@ -548,8 +719,19 @@ export default function Game() {
     setBlocks(next);
   };
 
-  const resetWorld = () => commit(createStarterWorld());
-  const clearWorld = () => commit([]);
+  const resetWorld = () => {
+    const starter = createStarterWorld();
+    const freshEcosystem = createInitialEcosystem(starter);
+    commit(starter);
+    ecosystemRef.current = freshEcosystem;
+    setEcosystem(freshEcosystem);
+  };
+  const clearWorld = () => {
+    const emptyEcosystem = createInitialEcosystem([]);
+    commit([]);
+    ecosystemRef.current = emptyEcosystem;
+    setEcosystem(emptyEcosystem);
+  };
   const selectMaterial = (nextMaterial: BlockMaterial) => {
     setMaterial(nextMaterial);
     setTool('place');
@@ -564,7 +746,13 @@ export default function Game() {
           camera={{ position: [11, 8.5, 11], fov: 42 }}
           gl={{ antialias: true, alpha: false }}
         >
-          <WorldScene blocks={blocks} tool={tool} onAdd={addBlock} onRemove={removeBlock} />
+          <WorldScene
+            blocks={blocks}
+            ecosystem={ecosystem}
+            tool={tool}
+            onAdd={addBlock}
+            onRemove={removeBlock}
+          />
         </Canvas>
       </div>
 
@@ -584,8 +772,9 @@ export default function Game() {
           <button className="icon-button" type="button" aria-label="Redo" disabled={!future.length} onClick={redo}>
             <Redo2 size={17} />
           </button>
-          <button className="icon-button" type="button" aria-label="Reset starter world" onClick={resetWorld}>
+          <button className="icon-button reset-button" type="button" aria-label="Reset world and ecosystem" onClick={resetWorld}>
             <RotateCcw size={17} />
+            <span>Reset</span>
           </button>
         </div>
       </header>
@@ -606,7 +795,7 @@ export default function Game() {
         <div className="panel-rule" />
         <div className="material-heading">
           <p className="eyebrow">BLOCKS</p>
-          <span>24 + delete</span>
+          <span>{MATERIAL_KEYS.length} + delete</span>
         </div>
         <BlockPalette
           className="material-picker"
@@ -632,7 +821,7 @@ export default function Game() {
         <span className="welcome-icon"><Sparkles size={18} /></span>
         <div>
           <p>YOUR WORLD IS READY</p>
-          <strong>Shape it any way you like.</strong>
+          <strong>Shape it—and watch it grow.</strong>
         </div>
       </section>
 
@@ -644,13 +833,15 @@ export default function Game() {
         <span>
           {burningCount
             ? `${burningCount} ${burningCount === 1 ? 'block' : 'blocks'} burning`
+            : ecosystem.vegetation.length
+              ? `${ecosystem.vegetation.length} growing`
             : blocks.length
               ? 'World calm'
               : 'Blank canvas'}
         </span>
         <span className="status-rule" />
-        <CloudSun size={15} />
-        <span>Clear skies</span>
+        <Heart size={15} />
+        <span>{ecosystem.sheep.length} sheep</span>
       </div>
 
       <div className="controls-hint">

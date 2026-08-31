@@ -52,6 +52,7 @@ button { font: inherit; }
 .icon-button { width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 10px; color: var(--ink); background: rgba(255,255,255,.55); cursor: pointer; transition: transform .16s ease, background .16s ease, opacity .16s ease; }
 .icon-button:not(:disabled):hover { transform: translateY(-1px); background: rgba(255,255,255,.92); }
 .icon-button:disabled { opacity: .32; cursor: not-allowed; }
+.reset-button { width: auto; grid-auto-flow: column; gap: 6px; padding: 0 11px; font-size: 10px; font-weight: 800; }
 
 .tool-panel {
   position: absolute;
@@ -173,6 +174,8 @@ kbd { min-width: 21px; padding: 3px 6px; border: 1px solid rgba(42, 66, 55, .12)
   .topbar { top: 10px; left: 10px; right: 10px; }
   .world-title { display: none; }
   .topbar { grid-template-columns: 1fr auto; }
+  .reset-button { width: 38px; padding: 0; }
+  .reset-button span { display: none; }
   .tool-panel { left: 10px; top: auto; bottom: 60px; width: calc(100% - 20px); max-height: none; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; padding: 9px; overflow: visible; }
   .tool-panel > .eyebrow, .tool-panel > .panel-rule, .tool-panel > .material-heading, .tool-panel > .material-picker, .tool-panel > .world-actions { display: none; }
   .tool + .tool { margin: 0; }

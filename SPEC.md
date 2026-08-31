@@ -20,7 +20,7 @@ On load, the player sees a 24 by 24 build plane, an angled 3D camera, and a few 
 The player can:
 
 1. Choose Place or Erase.
-2. Select one of 24 block materials from a compact block palette.
+2. Select one of 34 block materials from a compact block palette.
 3. Left-click the plane or an exposed block face to place a block. Hold Shift
    while left-dragging to pour blocks at a calm, controlled rate.
 4. Left-click a block with Erase selected to remove it.
@@ -28,11 +28,19 @@ The player can:
    never changes the camera angle; it is reserved for world editing.
 6. Scroll to zoom in and out.
 7. Pause or resume gravity.
-8. Undo, redo, clear, or restore the starter world.
+8. Undo, redo, clear, or use the visible Reset button to restore the starter
+   terrain, vegetation state, and sheep.
 
-The palette contains Grass, Dirt, Stone, Sand, Wood, Leaves, Brick, Clay, Snow, Ice, Water, Lava, Obsidian, Coal, Iron, Gold, Copper, Glass, Moss, Mud, Gravel, Marble, Basalt, and Crystal. A Delete block sits in the same palette and switches directly to Erase. Selecting any palette block displays a plain-language confirmation such as “Grass selected” or “Delete selected.”
+The palette contains Grass, Dirt, Stone, Sand, Wood, Leaves, Brick, Clay, Snow,
+Ice, Water, Lava, Obsidian, Coal, Iron, Gold, Copper, Glass, Moss, Mud, Gravel,
+Marble, Basalt, Crystal, Cobblestone, Limestone, Granite, Slate, Sandstone,
+Planks, Terracotta, Concrete, Steel, and Glowstone. A Delete block sits in the
+same palette and switches directly to Erase. Selecting any palette block
+displays a plain-language confirmation such as “Grass selected” or “Delete
+selected.”
 
-The world is saved to local browser storage after each edit and restored on the same device the next time the game opens.
+The world and ecosystem are saved to local browser storage and restored on the
+same device the next time the game opens.
 
 ## World model
 
@@ -73,15 +81,39 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   across connected supported surfaces to the lowest reachable open drop rather
   than remaining perched on a ledge. Flow advances one neighboring cell per
   simulation tick and remains visible throughout its route.
-- Lava ignites face-adjacent grass, wood, leaves, moss, and coal. Burning blocks
-  show visible flames and ignite adjacent flammable blocks. Wood, leaves, moss,
-  and coal disappear after a material-specific burn duration; grassy dirt loses
+- Lava ignites face-adjacent grass, wood, planks, leaves, moss, and coal. Burning blocks
+  show visible flames and ignite adjacent flammable blocks. Wood, planks,
+  leaves, moss, and coal disappear after a material-specific burn duration; grassy dirt loses
   only its grass layer and becomes an ordinary Dirt block with the same ID and
   position.
 - Water touching a burning block extinguishes it. Stone, soil, metals, glass,
   and other nonflammable materials never ignite.
 - When fire removes a supporting block, gravity settles the remaining structure
   and liquids again unless gravity is paused.
+
+## First living ecosystem
+
+- The Grass material represents grassy dirt. Every exposed Dirt block has a
+  small deterministic chance on each ecosystem tick to become grassy dirt.
+- Exposed grassy dirt without an existing growth has a small chance to sprout
+  short grass, a flower, or tall grass. These growths are lightweight surface
+  attachments keyed to stable block IDs; they do not occupy world cells and
+  move with their supporting block.
+- A starter or newly reset world contains two adult sheep on grassy terrain.
+  Sheep walk one cell at a time across neighboring surfaces, seek edible
+  growth or grassy dirt, remove what they eat, and track their meal count.
+- Eating bare grassy dirt changes it back to Dirt, allowing the grass cycle to
+  begin again. Sheep avoid eating burning grass.
+- Every animal has an individual, visible hunger bar. Hunger falls on each
+  ecosystem tick, eating restores it up to its maximum, and an animal dies and
+  is removed from the world when its hunger reaches zero. The same individual
+  hunger rule applies to future animal species.
+- Once two nearby adult sheep have each eaten three meals, they approach one
+  another. When adjacent and a neighboring surface is open, they reset their
+  meal counts and create a visibly smaller lamb. Lambs graze but do not breed.
+- Vegetation, sheep positions, hunger, meal counts, and breeding cooldowns
+  persist with the local world. Reset restores a fresh ecosystem; Clear removes
+  it.
 
 ## Interface and visual direction
 
@@ -112,6 +144,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 - Left-drag never rotates the camera, including while painting blocks.
 - Liquids seek their lowest reachable level, flammable blocks burn and spread
   fire, and weak vertical columns cannot exceed their material tolerance.
+- Dirt can become grassy dirt, grassy dirt can sprout non-block vegetation, and
+  sheep graze, display individual hunger, starve at zero, seek eligible
+  partners, and produce smaller lambs.
 - Removing the last connection beneath or beside a structure makes the detached group settle.
 - Gravity pause and resume work as specified.
 - Undo, redo, clear, reset, material selection, block count, and local persistence work.
@@ -120,7 +155,7 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 
 ## Future direction (not part of this release)
 
-The architecture should leave room for god powers, living creatures, biomes,
+The architecture should leave room for god powers, more creatures, biomes,
 weather, erosion, procedural terrain, larger worlds, time controls, and
 shareable world files. These ideas must not be added until their behavior and
 performance budgets are specified.
