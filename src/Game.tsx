@@ -30,6 +30,7 @@ import {
   convertCoveredGrassToSoil,
   createInitialEcosystem,
   createSurfaceIndex,
+  isAquaticAnimal,
   migrateEcosystem,
   spawnAnimal,
   type AnimalKind,
@@ -248,6 +249,7 @@ const VegetationSprout = memo(function VegetationSprout({
   growth: Vegetation;
   block: VoxelBlock;
 }) {
+  const kelp = growth.kind === 'kelp';
   const tallGrass = growth.kind === 'tall-grass';
   const height = tallGrass ? BLOCK_SIZE * 0.88 : BLOCK_SIZE * 0.46;
   const bladeWidth = tallGrass ? BLOCK_SIZE * 0.085 : BLOCK_SIZE * 0.075;
@@ -259,11 +261,24 @@ const VegetationSprout = memo(function VegetationSprout({
     <group
       position={[
         cellToWorld(block.x),
-        cellToWorld(block.y + 1) + 0.003,
+        kelp ? cellToWorld(block.y) + 0.003 : cellToWorld(block.y + 1) + 0.003,
         cellToWorld(block.z),
       ]}
     >
-      {growth.kind === 'sapling' ? (
+      {kelp ? (
+        <>
+          {[-0.18, 0, 0.18].map((x, index) => (
+            <mesh
+              key={x}
+              position={[BLOCK_SIZE * x, BLOCK_SIZE * (0.34 + index * 0.05), 0]}
+              rotation={[0, 0, (index - 1) * 0.18]}
+            >
+              <boxGeometry args={[BLOCK_SIZE * 0.1, BLOCK_SIZE * (0.68 + index * 0.1), BLOCK_SIZE * 0.08]} />
+              <meshStandardMaterial color={index === 1 ? '#377e5a' : '#4b9566'} roughness={0.88} />
+            </mesh>
+          ))}
+        </>
+      ) : growth.kind === 'sapling' ? (
         <>
           <mesh position={[0, BLOCK_SIZE * 0.22, 0]} castShadow>
             <boxGeometry args={[BLOCK_SIZE * 0.1, BLOCK_SIZE * 0.44, BLOCK_SIZE * 0.1]} />
@@ -314,6 +329,7 @@ function WorldScene({
   blocks,
   ecosystem,
   tool,
+  animalKind,
   activeAbility,
   onAdd,
   onRemove,
@@ -323,6 +339,7 @@ function WorldScene({
   blocks: VoxelBlock[];
   ecosystem: EcosystemState;
   tool: Tool;
+  animalKind: AnimalKind;
   activeAbility: AbilityKey;
   onAdd: (cell: Cell) => void;
   onRemove: (id: string) => void;
@@ -433,7 +450,12 @@ function WorldScene({
         y: block.y + 1,
         z: block.z,
         blockId: block.id,
-        valid: surface?.id === block.id && !block.burning && !occupied,
+        valid:
+          surface?.id === block.id &&
+          !block.burning &&
+          block.material !== 'lava' &&
+          (!isAquaticAnimal(animalKind) || block.material === 'water') &&
+          !occupied,
       });
       return;
     }
@@ -469,7 +491,13 @@ function WorldScene({
       const occupied = ecosystem.animals.some(
         (animal) => animal.x === block.x && animal.z === block.z,
       );
-      if (surface?.id === block.id && !block.burning && !occupied) {
+      if (
+        surface?.id === block.id &&
+        !block.burning &&
+        block.material !== 'lava' &&
+        (!isAquaticAnimal(animalKind) || block.material === 'water') &&
+        !occupied
+      ) {
         onSpawnAnimal(block.x, block.z);
         setHover(null);
       }
@@ -600,7 +628,10 @@ function WorldScene({
       {ecosystem.vegetation.map((growth) => {
         const block = blocksById.get(growth.blockId);
         const surface = block && surfaceAt(block.x, block.z);
-        return block?.material === 'grass' && !block.burning && surface?.id === block.id
+        const supported = growth.kind === 'kelp'
+          ? block?.material === 'water'
+          : block?.material === 'grass';
+        return supported && block && !block.burning && surface?.id === block.id
           ? <VegetationSprout key={growth.id} growth={growth} block={block} />
           : null;
       })}
@@ -608,7 +639,14 @@ function WorldScene({
       {ecosystem.animals.map((animal) => {
         const surface = surfaceAt(animal.x, animal.z);
         return surface
-          ? <AnimalModel key={animal.id} animal={animal} surfaceY={surface.y} />
+          ? (
+              <AnimalModel
+                key={animal.id}
+                animal={animal}
+                surfaceY={surface.y}
+                inWater={surface.material === 'water'}
+              />
+            )
           : null;
       })}
 
@@ -1040,6 +1078,7 @@ export default function Game() {
             blocks={blocks}
             ecosystem={ecosystem}
             tool={tool}
+            animalKind={animalKind}
             activeAbility={activeAbility}
             onAdd={addBlock}
             onRemove={removeBlock}

@@ -217,11 +217,38 @@ function Part({ part }: { part: PartData }) {
   </mesh>;
 }
 
-export const AnimalModel = memo(function AnimalModel({ animal, surfaceY }: { animal: Animal; surfaceY: number }) {
+function AnimalFire() {
+  const flames = useRef<Group>(null);
+  useFrame(({ clock }) => {
+    if (!flames.current) return;
+    flames.current.scale.y = 0.88 + Math.sin(clock.elapsedTime * 13) * 0.12;
+  });
+  return <group ref={flames} position={[0, BLOCK_SIZE * 0.55, 0]}>
+    {[-0.26, 0, 0.26].map((x, index) => (
+      <mesh key={x} position={[BLOCK_SIZE * x, BLOCK_SIZE * (0.28 + index * 0.08), 0]}>
+        <coneGeometry args={[BLOCK_SIZE * 0.15, BLOCK_SIZE * 0.62, 6]} />
+        <meshBasicMaterial color={index === 1 ? '#ffd05a' : '#f06a2c'} transparent opacity={0.9} />
+      </mesh>
+    ))}
+  </group>;
+}
+
+export const AnimalModel = memo(function AnimalModel({
+  animal,
+  surfaceY,
+  inWater,
+}: {
+  animal: Animal;
+  surfaceY: number;
+  inWater: boolean;
+}) {
   const group = useRef<Group>(null);
+  const aquatic = animal.kind === 'small-fish' || animal.kind === 'big-fish';
   const target = useMemo(() => new Vector3(
-    cellToWorld(animal.x), cellToWorld(surfaceY + 1), cellToWorld(animal.z),
-  ), [animal.x, animal.z, surfaceY]);
+    cellToWorld(animal.x),
+    cellToWorld(surfaceY + (inWater ? (aquatic ? 0.42 : 0.64) : 1)),
+    cellToWorld(animal.z),
+  ), [animal.x, animal.z, aquatic, inWater, surfaceY]);
   const initialPosition = useRef(target.clone()).current;
   const targetYaw = -Math.atan2(animal.facingZ, animal.facingX);
 
@@ -239,13 +266,16 @@ export const AnimalModel = memo(function AnimalModel({ animal, surfaceY }: { ani
   const scale = appearance.scale * (animal.isBaby ? 0.62 : 1);
   return <group ref={group} position={initialPosition} scale={scale}>
     {appearance.parts.map((part, index) => <Part key={index} part={part} />)}
+    {animal.burning && !inWater && <AnimalFire />}
   </group>;
 }, (previous, next) =>
   previous.surfaceY === next.surfaceY &&
+  previous.inWater === next.inWater &&
   previous.animal.kind === next.animal.kind &&
   previous.animal.x === next.animal.x &&
   previous.animal.z === next.animal.z &&
   previous.animal.facingX === next.animal.facingX &&
   previous.animal.facingZ === next.animal.facingZ &&
-  previous.animal.isBaby === next.animal.isBaby,
+  previous.animal.isBaby === next.animal.isBaby &&
+  previous.animal.burning === next.animal.burning,
 );

@@ -8,12 +8,14 @@ export const HERBIVORE_FIGHT_BACK_CHANCE = 0.15;
 
 const SOIL_TO_GRASS_CHANCE = 0.012;
 const VEGETATION_GROWTH_CHANCE = 0.028;
+const KELP_GROWTH_CHANCE = 0.036;
 const MATE_SEARCH_RADIUS = 20;
 const BREEDING_COOLDOWN_TICKS = 16;
 const BREEDING_HUNGER_COST = 30;
 const HUNGER_PER_MEAL = 34;
 const MAX_ANIMALS = 500;
 export const ANIMAL_FEED_THRESHOLD = MAX_ANIMAL_HUNGER - HUNGER_PER_MEAL;
+const ANIMAL_FIRE_DAMAGE = 1;
 
 const DIRECTIONS = [
   { x: 1, z: 0 },
@@ -22,7 +24,7 @@ const DIRECTIONS = [
   { x: 0, z: -1 },
 ] as const;
 
-export type VegetationKind = 'grass' | 'flower' | 'tall-grass' | 'sapling';
+export type VegetationKind = 'grass' | 'flower' | 'tall-grass' | 'sapling' | 'kelp';
 
 export type Vegetation = {
   id: string;
@@ -43,8 +45,10 @@ export const HERBIVORE_KEYS = [
   'turtle',
   'beaver',
 ] as const;
-export const PREDATOR_KEYS = ['fox', 'wolf', 'bear', 'eagle', 'crocodile'] as const;
-export const ANIMAL_KEYS = [...HERBIVORE_KEYS, ...PREDATOR_KEYS] as const;
+const LAND_PREDATOR_KEYS = ['fox', 'wolf', 'bear', 'eagle', 'crocodile'] as const;
+export const AQUATIC_KEYS = ['small-fish', 'big-fish'] as const;
+export const PREDATOR_KEYS = [...LAND_PREDATOR_KEYS, 'big-fish'] as const;
+export const ANIMAL_KEYS = [...HERBIVORE_KEYS, ...LAND_PREDATOR_KEYS, ...AQUATIC_KEYS] as const;
 export type AnimalKind = (typeof ANIMAL_KEYS)[number];
 
 const HERBIVORE_MATERIALS = ['grass', 'leaves', 'moss'] as const satisfies
@@ -275,6 +279,32 @@ export const ANIMALS: Record<AnimalKind, {
     maxHealth: 20,
     attackDamage: 6,
   },
+  'small-fish': {
+    label: 'Small Fish',
+    emoji: '🐟',
+    dietLabel: 'kelp',
+    vegetation: ['kelp'],
+    materials: [],
+    prey: [],
+    predator: false,
+    moveEveryTicks: 1,
+    lifespan: 300,
+    maxHealth: 3,
+    attackDamage: 1,
+  },
+  'big-fish': {
+    label: 'Big Fish',
+    emoji: '🐠',
+    dietLabel: 'small fish',
+    vegetation: [],
+    materials: [],
+    prey: ['small-fish'],
+    predator: true,
+    moveEveryTicks: 2,
+    lifespan: 420,
+    maxHealth: 8,
+    attackDamage: 3,
+  },
 };
 
 export type Animal = {
@@ -290,6 +320,7 @@ export type Animal = {
   health: number;
   facingX: number;
   facingZ: number;
+  burning?: number;
 };
 
 export type EcosystemState = {
@@ -317,6 +348,10 @@ function hashString(key: string) {
 
 function deterministicRandom(key: string) {
   return hashString(key) / 4294967296;
+}
+
+export function isAquaticAnimal(kind: AnimalKind) {
+  return (AQUATIC_KEYS as readonly AnimalKind[]).includes(kind);
 }
 
 export function animalMovesOnTick(animal: Pick<Animal, 'id' | 'kind'>, tick: number) {
@@ -373,19 +408,45 @@ function createAnimal(kind: AnimalKind, idNumber: number, position: Position): A
 }
 
 export function createInitialEcosystem(blocks: VoxelBlock[]): EcosystemState {
-  const grassSurfaces = [...createSurfaceIndex(blocks).values()]
+  const indexedSurfaces = [...createSurfaceIndex(blocks).values()];
+  const grassSurfaces = indexedSurfaces
     .filter(({ material }) => material === 'grass')
     .sort((a, b) => a.x - b.x || a.z - b.z || a.id.localeCompare(b.id));
   const startingSurfaces = grassSurfaces.length > 1
     ? [grassSurfaces[0], grassSurfaces.at(-1)!]
     : grassSurfaces;
+  const waterSurfaces = indexedSurfaces
+    .filter(({ material }) => material === 'water')
+    .sort((a, b) => a.x - b.x || a.z - b.z || a.id.localeCompare(b.id));
+  let nextEntityId = 0;
+  const sheep = startingSurfaces.map((block) =>
+    createAnimal('sheep', nextEntityId++, block));
+  const vegetation = waterSurfaces
+    .filter((_, index) => index % 3 === 0)
+    .slice(0, 4)
+    .map((block) => ({
+      id: `growth-${nextEntityId++}`,
+      blockId: block.id,
+      kind: 'kelp' as const,
+    }));
+  const smallFishSurfaces = waterSurfaces.length > 1
+    ? [waterSurfaces[0], waterSurfaces.at(-1)!]
+    : waterSurfaces;
+  const smallFish = smallFishSurfaces.map((block) =>
+    createAnimal('small-fish', nextEntityId++, block));
+  const occupiedWater = new Set(smallFishSurfaces.map(({ x, z }) => columnKey(x, z)));
+  const bigFishSurface = waterSurfaces.find(
+    ({ x, z }) => !occupiedWater.has(columnKey(x, z)),
+  );
+  const bigFish = bigFishSurface
+    ? [createAnimal('big-fish', nextEntityId++, bigFishSurface)]
+    : [];
 
   return {
     tick: 0,
-    vegetation: [],
-    animals: startingSurfaces.map((block, index) =>
-      createAnimal('sheep', index, { x: block.x, z: block.z })),
-    nextEntityId: startingSurfaces.length,
+    vegetation,
+    animals: [...sheep, ...smallFish, ...bigFish],
+    nextEntityId,
   };
 }
 
@@ -401,6 +462,8 @@ export function spawnAnimal(
     state.animals.length >= MAX_ANIMALS ||
     !surface ||
     surface.burning ||
+    surface.material === 'lava' ||
+    (isAquaticAnimal(kind) && surface.material !== 'water') ||
     state.animals.some((animal) => animal.x === x && animal.z === z)
   ) {
     return state;
@@ -418,6 +481,19 @@ function chooseVegetation(value: number): VegetationKind {
   if (value < 0.76) return 'tall-grass';
   if (value < 0.97) return 'flower';
   return 'sapling';
+}
+
+function vegetationCanGrowOn(kind: VegetationKind, block: VoxelBlock) {
+  return kind === 'kelp' ? block.material === 'water' : block.material === 'grass';
+}
+
+function surfaceSupportsAnimal(animal: Pick<Animal, 'kind'>, surface: VoxelBlock) {
+  if (surface.material === 'lava') return false;
+  return !isAquaticAnimal(animal.kind) || surface.material === 'water';
+}
+
+function surfaceIsTraversable(animal: Pick<Animal, 'kind'>, surface: VoxelBlock) {
+  return !surface.burning && surfaceSupportsAnimal(animal, surface);
 }
 
 function withMovementFacing(animal: Animal, position: Position): Animal {
@@ -466,6 +542,7 @@ function moveTowardGoal(
         visited.has(key) ||
         occupied.has(key) ||
         !nextSurface ||
+        !surfaceIsTraversable(animal, nextSurface) ||
         Math.abs(nextSurface.y - currentSurface.y) > 1
       ) {
         continue;
@@ -525,7 +602,7 @@ function fleeFrom(
       const surface = surfaces.get(columnKey(position.x, position.z));
       return Boolean(
         surface &&
-        !surface.burning &&
+        surfaceIsTraversable(animal, surface) &&
         !occupied.has(columnKey(position.x, position.z)) &&
         Math.abs(surface.y - currentSurface.y) <= 1 &&
         distance(position, predator) > currentDistance,
@@ -547,7 +624,12 @@ function findBabyCell(
   for (const parent of parents) {
     for (const direction of DIRECTIONS) {
       const cell = { x: parent.x + direction.x, z: parent.z + direction.z };
-      if (surfaces.has(columnKey(cell.x, cell.z)) && !occupied.has(columnKey(cell.x, cell.z))) {
+      const surface = surfaces.get(columnKey(cell.x, cell.z));
+      if (
+        surface &&
+        surfaceIsTraversable(parent, surface) &&
+        !occupied.has(columnKey(cell.x, cell.z))
+      ) {
         return cell;
       }
     }
@@ -609,7 +691,12 @@ export function advanceEcosystem(
 
   let vegetation = state.vegetation.filter((growth) => {
     const block = blocksById.get(growth.blockId);
-    return block?.material === 'grass' && !block.burning && surfaceIds.has(block.id);
+    return Boolean(
+      block &&
+      vegetationCanGrowOn(growth.kind, block) &&
+      !block.burning &&
+      surfaceIds.has(block.id),
+    );
   });
 
   for (const block of surfaces.values()) {
@@ -625,11 +712,20 @@ export function advanceEcosystem(
   const vegetationBlockIds = new Set(vegetation.map(({ blockId }) => blockId));
   for (const block of surfaces.values()) {
     const material = materialChanges.get(block.id) ?? block.material;
+    if (block.burning || vegetationBlockIds.has(block.id)) continue;
+    if (material === 'water') {
+      if (random(`kelp:${tick}:${block.id}`) >= KELP_GROWTH_CHANCE) continue;
+      vegetation.push({
+        id: `growth-${nextEntityId++}`,
+        blockId: block.id,
+        kind: 'kelp',
+      });
+      vegetationBlockIds.add(block.id);
+      continue;
+    }
     if (
       material !== 'grass' ||
-      block.burning ||
       convertedToGrass.has(block.id) ||
-      vegetationBlockIds.has(block.id) ||
       random(`sprout:${tick}:${block.id}`) >= VEGETATION_GROWTH_CHANCE
     ) {
       continue;
@@ -649,15 +745,27 @@ export function advanceEcosystem(
     const hungerLossEveryTicks = ANIMALS[animal.kind].hungerLossEveryTicks ?? 1;
     const hunger = animal.hunger - (tick % hungerLossEveryTicks === 0 ? 1 : 0);
     if (hunger <= 0) return [];
-    if (surfaces.has(columnKey(animal.x, animal.z))) {
-      return [{
+    const surface = surfaces.get(columnKey(animal.x, animal.z));
+    if (surface && surfaceSupportsAnimal(animal, surface)) {
+      const inWater = surface.material === 'water';
+      const burning = !inWater && (animal.burning || surface.burning)
+        ? (animal.burning ?? 0) + 1
+        : undefined;
+      const health = animal.health - (burning ? ANIMAL_FIRE_DAMAGE : 0);
+      if (health <= 0) return [];
+      const nextAnimal: Animal = {
         ...animal,
         age,
         hunger,
+        health,
         breedingCooldown: Math.max(0, animal.breedingCooldown - 1),
-      }];
+      };
+      if (burning) nextAnimal.burning = burning;
+      else delete nextAnimal.burning;
+      return [nextAnimal];
     }
     const nearest = availableSurfaces
+      .filter((candidate) => surfaceSupportsAnimal(animal, candidate))
       .slice()
       .sort(
         (a, b) =>
@@ -675,9 +783,33 @@ export function advanceEcosystem(
       : [];
   });
 
+  const rushing = new Set<string>();
+  const rushOccupied = new Set(animals.map(({ x, z }) => columnKey(x, z)));
+  const waterTargetKeys = new Set(
+    [...surfaces.values()]
+      .filter(({ material }) => material === 'water')
+      .map(({ x, z }) => columnKey(x, z)),
+  );
+  animals = animals.map((animal) => {
+    if (!animal.burning) return animal;
+    rushing.add(animal.id);
+    rushOccupied.delete(columnKey(animal.x, animal.z));
+    const moved = moveTowardNearestFood(animal, waterTargetKeys, surfaces, rushOccupied);
+    rushOccupied.add(columnKey(moved.x, moved.z));
+    const surface = surfaces.get(columnKey(moved.x, moved.z));
+    if (surface?.material !== 'water') return moved;
+    const extinguished = { ...moved };
+    delete extinguished.burning;
+    return extinguished;
+  });
+
   const ateThisTick = new Set<string>();
   for (const animal of animals) {
-    if (!animalNeedsMeal(animal) || !animalCanEatOnTick(animal, tick)) continue;
+    if (
+      rushing.has(animal.id) ||
+      !animalNeedsMeal(animal) ||
+      !animalCanEatOnTick(animal, tick)
+    ) continue;
     const surface = surfaces.get(columnKey(animal.x, animal.z));
     if (!surface || surface.burning) continue;
     const growthIndex = vegetation.findIndex(
@@ -718,7 +850,7 @@ export function advanceEcosystem(
 
   const animalsById = new Map(animals.map((animal) => [animal.id, animal]));
   const occupied = new Set(animals.map(({ x, z }) => columnKey(x, z)));
-  const actedThisTick = new Set<string>();
+  const actedThisTick = new Set(rushing);
 
   const predators = [...animalsById.values()]
     .filter(
@@ -734,7 +866,11 @@ export function advanceEcosystem(
     if (hasBreedingPartner(predator, animalsById)) continue;
     const preyKinds = ANIMALS[predator.kind].prey;
     const prey = [...animalsById.values()]
-      .filter((animal) => preyKinds.includes(animal.kind))
+      .filter(
+        (animal) =>
+          preyKinds.includes(animal.kind) &&
+          !actedThisTick.has(animal.id),
+      )
       .sort(
         (a, b) =>
           distance(predator!, a) - distance(predator!, b) ||
@@ -964,7 +1100,7 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
     if (
       typeof growth.id !== 'string' ||
       typeof growth.blockId !== 'string' ||
-      !['grass', 'flower', 'tall-grass', 'sapling'].includes(growth.kind ?? '') ||
+      !['grass', 'flower', 'tall-grass', 'sapling', 'kelp'].includes(growth.kind ?? '') ||
       entityIds.has(growth.id)
     ) {
       return false;
@@ -999,6 +1135,8 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
       !Number.isInteger(animal.facingX) ||
       !Number.isInteger(animal.facingZ) ||
       Math.abs(animal.facingX ?? 0) + Math.abs(animal.facingZ ?? 0) !== 1 ||
+      (animal.burning !== undefined &&
+        (!Number.isInteger(animal.burning) || animal.burning < 1)) ||
       entityIds.has(animal.id)
     ) {
       return false;

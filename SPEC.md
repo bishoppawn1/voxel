@@ -36,7 +36,7 @@ The player can:
    Verdant Touch grassifies exposed Dirt, Wildfire ignites flammable blocks,
    Rain extinguishes fires, Deep Freeze turns Water into Ice and Lava into
    Obsidian, and Thaw melts Ice and Snow into Water.
-10. Select one of 16 herbivorous or predatory animals from the animal palette,
+10. Select one of 18 land or aquatic animals from the animal palette,
     then left-click the top of an unoccupied block column to spawn it.
 
 The palette contains Grass, Dirt, Stone, Sand, Wood, Leaves, Brick, Clay, Snow,
@@ -107,6 +107,10 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   position.
 - Water touching a burning block extinguishes it. Stone, soil, metals, glass,
   and other nonflammable materials never ignite.
+- Animals standing on a burning surface catch fire, take damage, and ignore
+  their normal activity while rushing one cell per ecosystem tick toward the
+  nearest reachable water. Entering water extinguishes them. Land animals can
+  cross connected water surfaces by swimming through them.
 - When fire removes a supporting block, gravity settles the remaining structure
   and liquids again unless gravity is paused.
 
@@ -120,11 +124,12 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   short grass, a flower, tall grass, or—rarely—a tree sapling. These growths are lightweight surface
   attachments keyed to stable block IDs; they do not occupy world cells and
   move with their supporting block.
-- A starter or newly reset world contains two adult sheep on grassy terrain.
+- A starter or newly reset world contains two adult sheep on grassy terrain,
+  naturally seeded kelp, two small fish, and one big fish in its pond.
   The player can spawn Sheep, Cows, Pigs, Rabbits, Goats, Deer, Horses,
   Chickens, Ducks, Turtles, Beavers, Foxes, Wolves, Bears, Eagles, and Crocodiles on any
-  unoccupied, non-burning surface. Only one animal may occupy a surface column
-  at spawn time.
+  unoccupied, non-burning surface, and Small Fish or Big Fish on Water. Only one
+  animal may occupy a surface column at spawn time.
 - Each herbivore follows a shortest reachable path toward food in its diet.
   Species prefer different combinations of short grass, tall grass, and
   flowers. The ten general grazers can also eat grassy dirt, Leaves, and Moss as
@@ -167,11 +172,16 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   movement cadence is ready. A fleeing animal moves to an open reachable
   surface farther from the predator, or is caught if no escape exists. A
   successful hunt feeds the predator.
+- Kelp grows as a lightweight attachment on exposed Water in the same
+  deterministic cycle used for land vegetation. Small Fish remain in connected
+  water and eat kelp; Big Fish remain in connected water and hunt Small Fish.
+  Both fish species can also be spawned from the animal palette, but only on an
+  unoccupied Water surface.
 - The ecosystem builds one surface index per tick and shares food-target indexes
   among animals of the same species. Rendering reuses the same surface and block
   indexes and skips unchanged block, vegetation, and animal models so larger
   populations do not trigger repeated whole-world scans or redraws.
-- Vegetation, animal species, positions, facing, hunger, age, health, meal
+- Vegetation, animal species, positions, facing, hunger, age, health, fire, meal
   counts, and breeding cooldowns persist with the local world. Reset restores a
   fresh ecosystem; Clear removes it.
 
@@ -232,7 +242,7 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   material tolerance.
 - Dirt can become grassy dirt, grassy dirt can sprout non-block vegetation, and
   covered grassy dirt returns to Dirt. Rare tree saplings can grow on exposed
-  grass. All sixteen animals can be spawned and face
+  grass. All eighteen animals can be spawned and face
   their movement direction. Herbivores seek their species-specific growths plus
   shared grassy dirt, Leaves, and Moss without crossing steps taller than one
   block, while beavers slowly eat only saplings or Wood, predators hunt only
@@ -241,7 +251,10 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   predators faster on average but fast herbivores able to keep pace. Animals
   starve at zero and die of old age. Every species can produce smaller babies
   from a well-fed same-species adult pair and grow those babies into adults
-  without displaying overhead bars.
+  without displaying overhead bars. Burning animals rush into
+  reachable water and extinguish; land animals swim across water. Kelp regrows
+  on Water, Small Fish eat kelp, and Big Fish hunt Small Fish without leaving
+  connected water.
 - Removing the last connection beneath or beside a structure makes the detached group settle.
 - Gravity pause and resume work as specified.
 - Verdant Touch, Wildfire, Rain, Deep Freeze, and Thaw affect only eligible
