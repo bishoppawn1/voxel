@@ -8,6 +8,7 @@ import {
   Flame,
   Heart,
   Leaf,
+  PawPrint,
   Pause,
   Play,
   Redo2,
@@ -22,14 +23,18 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type Group, MOUSE, Vector3 } from 'three';
 import {
+  ANIMALS,
+  ANIMAL_KEYS,
   ECOSYSTEM_TICK_MS,
   MAX_ANIMAL_HUNGER,
   advanceEcosystem,
   createInitialEcosystem,
   getSurfaceBlock,
   isValidEcosystem,
+  spawnAnimal,
+  type Animal,
+  type AnimalKind,
   type EcosystemState,
-  type Sheep,
   type Vegetation,
 } from './game/ecosystem';
 import {
@@ -58,7 +63,7 @@ import {
 } from './game/abilities';
 import { getBlockTextures } from './visuals/blockTextures';
 
-type Tool = 'place' | 'erase';
+type Tool = 'place' | 'erase' | 'animal';
 type HoverTarget = Cell & { blockId?: string; valid: boolean };
 
 const STORAGE_KEY = 'voxel-world-v1';
@@ -246,7 +251,21 @@ function VegetationSprout({
   );
 }
 
-function SheepModel({ animal, surfaceY }: { animal: Sheep; surfaceY: number }) {
+const ANIMAL_COLORS: Record<AnimalKind, {
+  body: string;
+  head: string;
+  legs: string;
+  accent: string;
+  scale: number;
+}> = {
+  sheep: { body: '#f5f1df', head: '#4a4942', legs: '#4a4942', accent: '#ded8c4', scale: 1 },
+  cow: { body: '#f0e6d6', head: '#76513b', legs: '#5c4336', accent: '#684531', scale: 1.08 },
+  pig: { body: '#e9a4a1', head: '#edaeaa', legs: '#bb7978', accent: '#c77778', scale: 0.9 },
+  rabbit: { body: '#c9bba5', head: '#b9aa93', legs: '#9b8b75', accent: '#e1a3a5', scale: 0.7 },
+  goat: { body: '#d8d0bc', head: '#b8aa8d', legs: '#625c50', accent: '#8c7655', scale: 0.94 },
+};
+
+function AnimalModel({ animal, surfaceY }: { animal: Animal; surfaceY: number }) {
   const group = useRef<Group>(null);
   const target = useMemo(
     () =>
@@ -264,7 +283,12 @@ function SheepModel({ animal, surfaceY }: { animal: Sheep; surfaceY: number }) {
     group.current.position.lerp(target, 1 - Math.exp(-delta * 7));
   });
 
-  const scale = animal.isBaby ? 0.62 : 1;
+  const colors = ANIMAL_COLORS[animal.kind];
+  const scale = colors.scale * (animal.isBaby ? 0.62 : 1);
+  const rabbit = animal.kind === 'rabbit';
+  const bodyLength = rabbit ? 0.82 : 1.08;
+  const bodyHeight = rabbit ? 0.5 : 0.62;
+  const headX = rabbit ? 0.5 : 0.63;
   const hungerRatio = Math.max(0, Math.min(1, animal.hunger / MAX_ANIMAL_HUNGER));
   const hungerColor = hungerRatio > 0.5
     ? '#72a952'
@@ -277,22 +301,70 @@ function SheepModel({ animal, surfaceY }: { animal: Sheep; surfaceY: number }) {
     <group ref={group} position={initialPosition}>
       <group scale={scale}>
         <mesh position={[0, BLOCK_SIZE * 0.43, 0]} castShadow>
-          <boxGeometry args={[BLOCK_SIZE * 1.08, BLOCK_SIZE * 0.62, BLOCK_SIZE * 0.68]} />
-          <meshStandardMaterial color="#f5f1df" roughness={0.92} />
-        </mesh>
-        <mesh position={[BLOCK_SIZE * 0.63, BLOCK_SIZE * 0.45, 0]} castShadow>
-          <boxGeometry args={[BLOCK_SIZE * 0.38, BLOCK_SIZE * 0.42, BLOCK_SIZE * 0.46]} />
-          <meshStandardMaterial color="#4a4942" roughness={0.9} />
-        </mesh>
-        {[-0.36, 0.36].flatMap((x) =>
-          [-0.22, 0.22].map((z) => (
-            <mesh key={`${x}:${z}`} position={[BLOCK_SIZE * x, BLOCK_SIZE * 0.13, BLOCK_SIZE * z]} castShadow>
-              <boxGeometry args={[BLOCK_SIZE * 0.12, BLOCK_SIZE * 0.3, BLOCK_SIZE * 0.12]} />
-              <meshStandardMaterial color="#4a4942" roughness={0.94} />
+        <boxGeometry args={[BLOCK_SIZE * bodyLength, BLOCK_SIZE * bodyHeight, BLOCK_SIZE * 0.68]} />
+        <meshStandardMaterial color={colors.body} roughness={0.92} />
+      </mesh>
+      <mesh position={[BLOCK_SIZE * headX, BLOCK_SIZE * (rabbit ? 0.49 : 0.45), 0]} castShadow>
+        <boxGeometry args={[
+          BLOCK_SIZE * (rabbit ? 0.34 : 0.38),
+          BLOCK_SIZE * (rabbit ? 0.34 : 0.42),
+          BLOCK_SIZE * (rabbit ? 0.38 : 0.46),
+        ]} />
+        <meshStandardMaterial color={colors.head} roughness={0.9} />
+      </mesh>
+      {[-0.36, 0.36].flatMap((x) =>
+        [-0.22, 0.22].map((z) => (
+          <mesh key={`${x}:${z}`} position={[BLOCK_SIZE * x, BLOCK_SIZE * 0.13, BLOCK_SIZE * z]} castShadow>
+            <boxGeometry args={[
+              BLOCK_SIZE * (rabbit ? 0.16 : 0.12),
+              BLOCK_SIZE * (rabbit ? 0.22 : 0.3),
+              BLOCK_SIZE * (rabbit ? 0.16 : 0.12),
+            ]} />
+            <meshStandardMaterial color={colors.legs} roughness={0.94} />
+          </mesh>
+        )),
+      )}
+      {animal.kind === 'cow' && (
+        <>
+          <mesh position={[-BLOCK_SIZE * 0.16, BLOCK_SIZE * 0.58, BLOCK_SIZE * 0.345]}>
+            <boxGeometry args={[BLOCK_SIZE * 0.32, BLOCK_SIZE * 0.22, BLOCK_SIZE * 0.025]} />
+            <meshStandardMaterial color={colors.accent} roughness={0.9} />
+          </mesh>
+          {[-0.17, 0.17].map((z) => (
+            <mesh key={z} position={[BLOCK_SIZE * 0.69, BLOCK_SIZE * 0.72, BLOCK_SIZE * z]} rotation={[0, 0, -0.4]}>
+              <coneGeometry args={[BLOCK_SIZE * 0.045, BLOCK_SIZE * 0.22, 5]} />
+              <meshStandardMaterial color="#e4d5aa" roughness={0.82} />
             </mesh>
-          )),
-        )}
-        <mesh position={[BLOCK_SIZE * 0.84, BLOCK_SIZE * 0.51, BLOCK_SIZE * 0.18]}>
+          ))}
+        </>
+      )}
+      {animal.kind === 'pig' && (
+        <mesh position={[BLOCK_SIZE * 0.84, BLOCK_SIZE * 0.43, 0]} castShadow>
+          <boxGeometry args={[BLOCK_SIZE * 0.16, BLOCK_SIZE * 0.2, BLOCK_SIZE * 0.3]} />
+          <meshStandardMaterial color={colors.accent} roughness={0.88} />
+        </mesh>
+      )}
+      {animal.kind === 'rabbit' && [-0.11, 0.11].map((z) => (
+        <mesh key={z} position={[BLOCK_SIZE * 0.5, BLOCK_SIZE * 0.82, BLOCK_SIZE * z]}>
+          <boxGeometry args={[BLOCK_SIZE * 0.12, BLOCK_SIZE * 0.48, BLOCK_SIZE * 0.1]} />
+          <meshStandardMaterial color={z < 0 ? colors.head : colors.accent} roughness={0.94} />
+        </mesh>
+      ))}
+      {animal.kind === 'goat' && (
+        <>
+          {[-0.15, 0.15].map((z) => (
+            <mesh key={z} position={[BLOCK_SIZE * 0.62, BLOCK_SIZE * 0.72, BLOCK_SIZE * z]} rotation={[0, 0, -0.35]}>
+              <coneGeometry args={[BLOCK_SIZE * 0.04, BLOCK_SIZE * 0.3, 5]} />
+              <meshStandardMaterial color={colors.accent} roughness={0.86} />
+            </mesh>
+          ))}
+          <mesh position={[BLOCK_SIZE * 0.76, BLOCK_SIZE * 0.25, 0]} rotation={[0, 0, -0.22]}>
+            <coneGeometry args={[BLOCK_SIZE * 0.07, BLOCK_SIZE * 0.26, 5]} />
+            <meshStandardMaterial color="#766b5b" roughness={0.95} />
+          </mesh>
+        </>
+      )}
+        <mesh position={[BLOCK_SIZE * (headX + 0.21), BLOCK_SIZE * 0.51, BLOCK_SIZE * 0.18]}>
           <sphereGeometry args={[BLOCK_SIZE * 0.035, 6, 4]} />
           <meshBasicMaterial color="#171a18" />
         </mesh>
@@ -320,12 +392,14 @@ function WorldScene({
   tool,
   onAdd,
   onRemove,
+  onSpawnAnimal,
 }: {
   blocks: VoxelBlock[];
   ecosystem: EcosystemState;
   tool: Tool;
   onAdd: (cell: Cell) => void;
   onRemove: (id: string) => void;
+  onSpawnAnimal: (x: number, z: number) => void;
 }) {
   const [hover, setHover] = useState<HoverTarget | null>(null);
   const painting = useRef(false);
@@ -381,6 +455,20 @@ function WorldScene({
       setHover({ x: block.x, y: block.y, z: block.z, blockId: block.id, valid: true });
       return;
     }
+    if (tool === 'animal') {
+      const surface = getSurfaceBlock(blocks, block.x, block.z);
+      const occupied = ecosystem.animals.some(
+        (animal) => animal.x === block.x && animal.z === block.z,
+      );
+      setHover({
+        x: block.x,
+        y: block.y + 1,
+        z: block.z,
+        blockId: block.id,
+        valid: surface?.id === block.id && !block.burning && !occupied,
+      });
+      return;
+    }
     const cell = getAdjacentCell(event, block);
     setHover({ ...cell, valid: isInWorld(cell) && !hasBlock(blocks, cell) });
     paintCell(event, cell);
@@ -399,6 +487,17 @@ function WorldScene({
     if (tool === 'erase') {
       onRemove(block.id);
       setHover(null);
+      return;
+    }
+    if (tool === 'animal') {
+      const surface = getSurfaceBlock(blocks, block.x, block.z);
+      const occupied = ecosystem.animals.some(
+        (animal) => animal.x === block.x && animal.z === block.z,
+      );
+      if (surface?.id === block.id && !block.burning && !occupied) {
+        onSpawnAnimal(block.x, block.z);
+        setHover(null);
+      }
       return;
     }
     const cell = getAdjacentCell(event, block);
@@ -489,9 +588,9 @@ function WorldScene({
         return block ? <VegetationSprout key={growth.id} growth={growth} block={block} /> : null;
       })}
 
-      {ecosystem.sheep.map((animal) => {
+      {ecosystem.animals.map((animal) => {
         const surface = getSurfaceBlock(blocks, animal.x, animal.z);
-        return surface ? <SheepModel key={animal.id} animal={animal} surfaceY={surface.y} /> : null;
+        return surface ? <AnimalModel key={animal.id} animal={animal} surfaceY={surface.y} /> : null;
       })}
 
       {hover && (
@@ -504,7 +603,13 @@ function WorldScene({
         >
           <boxGeometry args={[BLOCK_SIZE * 1.08, BLOCK_SIZE * 1.08, BLOCK_SIZE * 1.08]} />
           <meshStandardMaterial
-            color={tool === 'erase' ? '#cc6d55' : hover.valid ? '#e6ed88' : '#cc6d55'}
+            color={
+              tool === 'erase'
+                ? '#cc6d55'
+                : hover.valid
+                  ? tool === 'animal' ? '#a9df9a' : '#e6ed88'
+                  : '#cc6d55'
+            }
             transparent
             opacity={0.48}
             depthWrite={false}
@@ -551,7 +656,9 @@ function BlockPalette({
   return (
     <div className={className}>
       <div className="selection-readout" role="status" aria-live="polite" aria-atomic="true">
-        {tool === 'erase' ? (
+        {tool === 'animal' ? (
+          <span className="selection-chip animal-chip"><PawPrint size={10} /></span>
+        ) : tool === 'erase' ? (
           <span className="selection-chip delete-chip"><Trash2 size={12} /></span>
         ) : (
           <span
@@ -562,7 +669,11 @@ function BlockPalette({
             }}
           />
         )}
-        <span><strong>{selectedLabel}</strong> selected</span>
+        <span>
+          {tool === 'animal'
+            ? <><strong>Animal</strong> tool active</>
+            : <><strong>{selectedLabel}</strong> selected</>}
+        </span>
       </div>
       <div className="swatches" aria-label="Block material">
         <button
@@ -655,6 +766,7 @@ export default function Game() {
   const [ecosystem, setEcosystem] = useState<EcosystemState>(() => loadEcosystem(blocks));
   const [tool, setTool] = useState<Tool>('place');
   const [material, setMaterial] = useState<BlockMaterial>('grass');
+  const [animalKind, setAnimalKind] = useState<AnimalKind>('sheep');
   const [gravityOn, setGravityOn] = useState(true);
   const [past, setPast] = useState<VoxelBlock[][]>([]);
   const [future, setFuture] = useState<VoxelBlock[][]>([]);
@@ -755,6 +867,19 @@ export default function Game() {
     commit(remaining, gravityOn);
   };
 
+  const selectAnimal = (kind: AnimalKind) => {
+    setAnimalKind(kind);
+    setTool('animal');
+  };
+
+  const spawnSelectedAnimal = (x: number, z: number) => {
+    const next = spawnAnimal(blocks, ecosystem, animalKind, x, z);
+    if (next === ecosystem) return;
+    ecosystemRef.current = next;
+    setEcosystem(next);
+    setWelcomeVisible(false);
+  };
+
   const toggleGravity = () => {
     if (gravityOn) {
       setGravityOn(false);
@@ -769,6 +894,7 @@ export default function Game() {
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === '1') setTool('place');
       if (event.key === '2') setTool('erase');
+      if (event.key === '3') setTool('animal');
       if (event.key.toLowerCase() === 'g') toggleGravity();
     };
     window.addEventListener('keydown', handleKey);
@@ -834,6 +960,7 @@ export default function Game() {
             tool={tool}
             onAdd={addBlock}
             onRemove={removeBlock}
+            onSpawnAnimal={spawnSelectedAnimal}
           />
         </Canvas>
       </div>
@@ -873,6 +1000,11 @@ export default function Game() {
           <span><strong>Erase</strong><small>Remove blocks</small></span>
           <kbd>2</kbd>
         </button>
+        <button className={`tool ${tool === 'animal' ? 'active' : ''}`} type="button" onClick={() => setTool('animal')} aria-pressed={tool === 'animal'}>
+          <span className="tool-icon"><PawPrint size={20} /></span>
+          <span><strong>Animals</strong><small>Spawn creatures</small></span>
+          <kbd>3</kbd>
+        </button>
 
         <div className="panel-rule" />
         <div className="material-heading">
@@ -885,6 +1017,18 @@ export default function Game() {
           tool={tool}
           onSelectMaterial={selectMaterial}
           onSelectDelete={() => setTool('erase')}
+        />
+
+        <div className="panel-rule" />
+        <div className="material-heading">
+          <p className="eyebrow">ANIMALS</p>
+          <span>{ANIMAL_KEYS.length} species</span>
+        </div>
+        <AnimalPalette
+          className="animal-picker"
+          animalKind={animalKind}
+          tool={tool}
+          onSelect={selectAnimal}
         />
 
         <div className="panel-rule action-rule" />
@@ -929,23 +1073,82 @@ export default function Game() {
         </span>
         <span className="status-rule" />
         <Heart size={15} />
-        <span>{ecosystem.sheep.length} sheep</span>
+        <span>{ecosystem.animals.length} {ecosystem.animals.length === 1 ? 'animal' : 'animals'}</span>
       </div>
 
       <div className="controls-hint">
         <span><i className="mouse-icon right" /> Right-drag to orbit</span>
-        <span><i className="mouse-icon left" /> Left-click to {tool}</span>
+        <span>
+          <i className="mouse-icon left" /> Left-click to {tool === 'animal'
+            ? `spawn ${ANIMALS[animalKind].label.toLowerCase()}`
+            : tool}
+        </span>
         {tool === 'place' && <span><kbd>Shift</kbd> + drag to pour</span>}
         <span><b>⌁</b> Scroll to zoom</span>
       </div>
 
-      <BlockPalette
-        className="mobile-material-picker"
-        material={material}
-        tool={tool}
-        onSelectMaterial={selectMaterial}
-        onSelectDelete={() => setTool('erase')}
-      />
+      {tool === 'animal' ? (
+        <AnimalPalette
+          className="mobile-animal-picker"
+          animalKind={animalKind}
+          tool={tool}
+          onSelect={selectAnimal}
+        />
+      ) : (
+        <BlockPalette
+          className="mobile-material-picker"
+          material={material}
+          tool={tool}
+          onSelectMaterial={selectMaterial}
+          onSelectDelete={() => setTool('erase')}
+        />
+      )}
     </main>
+  );
+}
+
+function AnimalPalette({
+  className,
+  animalKind,
+  tool,
+  onSelect,
+}: {
+  className: string;
+  animalKind: AnimalKind;
+  tool: Tool;
+  onSelect: (kind: AnimalKind) => void;
+}) {
+  const selected = ANIMALS[animalKind];
+
+  return (
+    <div className={className}>
+      <div className="animal-selection" role="status" aria-live="polite" aria-atomic="true">
+        <span className="animal-selection-emoji" aria-hidden="true">{selected.emoji}</span>
+        <span>
+          <strong>{selected.label}{tool === 'animal' ? ' selected' : ''}</strong>
+          <small>Eats {selected.dietLabel}</small>
+        </span>
+      </div>
+      <div className="animal-buttons" aria-label="Animals to spawn">
+        {ANIMAL_KEYS.map((kind) => {
+          const animal = ANIMALS[kind];
+          const isSelected = tool === 'animal' && animalKind === kind;
+          return (
+            <button
+              key={kind}
+              className={`animal-button ${isSelected ? 'selected' : ''}`}
+              type="button"
+              aria-label={`Spawn ${animal.label}. Eats ${animal.dietLabel}.`}
+              aria-pressed={isSelected}
+              title={`${animal.label} — eats ${animal.dietLabel}`}
+              onClick={() => onSelect(kind)}
+            >
+              <span aria-hidden="true">{animal.emoji}</span>
+              <small>{animal.label}</small>
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }

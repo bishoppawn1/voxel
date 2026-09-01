@@ -19,7 +19,7 @@ On load, the player sees a 24 by 24 build plane, an angled 3D camera, and a few 
 
 The player can:
 
-1. Choose Place or Erase.
+1. Choose Place, Erase, or Animals.
 2. Select one of 34 block materials from a compact block palette.
 3. Left-click the plane or an exposed block face to place a block. Hold Shift
    while left-dragging to pour blocks at a calm, controlled rate.
@@ -29,11 +29,13 @@ The player can:
 6. Scroll to zoom in and out.
 7. Pause or resume gravity.
 8. Undo, redo, clear, or use the visible Reset button to restore the starter
-   terrain, vegetation state, and sheep.
+   terrain, vegetation state, and animals.
 9. Invoke five world-scale powers: Verdant Touch grassifies exposed Dirt;
    Wildfire ignites flammable blocks; Rain extinguishes fires; Deep Freeze
    turns Water into Ice and Lava into Obsidian; and Thaw melts Ice and Snow
    into Water.
+10. Select Sheep, Cow, Pig, Rabbit, or Goat from an animal palette, then
+    left-click the top of an unoccupied block column to spawn it.
 
 The palette contains Grass, Dirt, Stone, Sand, Wood, Leaves, Brick, Clay, Snow,
 Ice, Water, Lava, Obsidian, Coal, Iron, Gold, Copper, Glass, Moss, Mud, Gravel,
@@ -104,18 +106,27 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   attachments keyed to stable block IDs; they do not occupy world cells and
   move with their supporting block.
 - A starter or newly reset world contains two adult sheep on grassy terrain.
-  Sheep walk one cell at a time across neighboring surfaces, seek edible
-  growth or grassy dirt, remove what they eat, and track their meal count.
-- Eating bare grassy dirt changes it back to Dirt, allowing the grass cycle to
-  begin again. Sheep avoid eating burning grass.
+  The player can spawn Sheep, Cows, Pigs, Rabbits, and Goats on any unoccupied,
+  non-burning surface. Only one animal may occupy a surface column at spawn
+  time.
+- Each species walks one neighboring surface cell at a time and seeks food in
+  its own diet:
+  Sheep eat short grass, tall grass, and grassy dirt; Cows eat tall grass and
+  grassy dirt; Pigs eat flowers and grassy dirt; Rabbits eat short grass and
+  flowers; and Goats eat tall grass, flowers, and grassy dirt. Animals remove
+  what they eat and track their meal count.
+- Animals move only one horizontal cell per ecosystem tick and can step up or
+  down by at most one block level at a time. Eating bare grassy dirt changes it
+  back to Dirt, allowing the grass cycle to begin again. Animals avoid eating
+  burning grass.
 - Every animal has an individual, visible hunger bar. Hunger falls on each
   ecosystem tick, eating restores it up to its maximum, and an animal dies and
-  is removed from the world when its hunger reaches zero. The same individual
-  hunger rule applies to future animal species.
-- Once two nearby adult sheep have each eaten three meals, they approach one
-  another. When adjacent and a neighboring surface is open, they reset their
-  meal counts and create a visibly smaller lamb. Lambs graze but do not breed.
-- Vegetation, sheep positions, hunger, meal counts, and breeding cooldowns
+  is removed from the world when its hunger reaches zero.
+- Once two nearby adults of the same species have each eaten three meals, they
+  approach one another. When adjacent and a neighboring surface is open, they
+  reset their meal counts and create a visibly smaller baby of their species.
+  Babies eat but do not breed.
+- Vegetation, animal species, positions, hunger, meal counts, and breeding cooldowns
   persist with the local world. Reset restores a fresh ecosystem; Clear removes
   it.
 
@@ -140,6 +151,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   original one-unit block size. Palette tiles stay very small and compact
   enough to show the expanded collection without covering the world.
 - Controls must expose accessible names, selected states, disabled states, and keyboard shortcuts where applicable.
+- Selecting an animal displays its name and diet, and the spawn preview clearly
+  distinguishes a valid surface from an occupied or otherwise invalid one.
 - The first-use message should leave after the first world edit.
 - Motion should honor the operating system's reduced-motion preference.
 
@@ -160,8 +173,10 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 - Liquids seek their lowest reachable level, flammable blocks burn and spread
   fire, and weak vertical columns cannot exceed their material tolerance.
 - Dirt can become grassy dirt, grassy dirt can sprout non-block vegetation, and
-  sheep graze, display individual hunger, starve at zero, seek eligible
-  partners, and produce smaller lambs.
+  all five animals can be spawned, seek
+  only food in their listed diets without crossing steps taller than one block,
+  starve at zero, seek same-species partners, and produce smaller babies while
+  displaying individual hunger bars.
 - Removing the last connection beneath or beside a structure makes the detached group settle.
 - Gravity pause and resume work as specified.
 - Verdant Touch, Wildfire, Rain, Deep Freeze, and Thaw affect only eligible

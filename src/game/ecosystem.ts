@@ -1,7 +1,7 @@
 import type { BlockMaterial, VoxelBlock } from './world';
 
 export const ECOSYSTEM_TICK_MS = 900;
-export const SHEEP_BREEDING_MEALS = 3;
+export const ANIMAL_BREEDING_MEALS = 3;
 export const MAX_ANIMAL_HUNGER = 100;
 
 const SOIL_TO_GRASS_CHANCE = 0.012;
@@ -10,6 +10,7 @@ const MATE_SEARCH_RADIUS = 20;
 const BREEDING_COOLDOWN_TICKS = 16;
 const HUNGER_LOSS_PER_TICK = 2;
 const HUNGER_PER_MEAL = 34;
+const MAX_ANIMALS = 500;
 
 const DIRECTIONS = [
   { x: 1, z: 0 },
@@ -26,8 +27,56 @@ export type Vegetation = {
   kind: VegetationKind;
 };
 
-export type Sheep = {
+export const ANIMAL_KEYS = ['sheep', 'cow', 'pig', 'rabbit', 'goat'] as const;
+export type AnimalKind = (typeof ANIMAL_KEYS)[number];
+
+export const ANIMALS: Record<AnimalKind, {
+  label: string;
+  emoji: string;
+  dietLabel: string;
+  vegetation: readonly VegetationKind[];
+  materials: readonly BlockMaterial[];
+}> = {
+  sheep: {
+    label: 'Sheep',
+    emoji: '🐑',
+    dietLabel: 'short grass, tall grass, and grassy dirt',
+    vegetation: ['grass', 'tall-grass'],
+    materials: ['grass'],
+  },
+  cow: {
+    label: 'Cow',
+    emoji: '🐄',
+    dietLabel: 'tall grass and grassy dirt',
+    vegetation: ['tall-grass'],
+    materials: ['grass'],
+  },
+  pig: {
+    label: 'Pig',
+    emoji: '🐖',
+    dietLabel: 'flowers and grassy dirt',
+    vegetation: ['flower'],
+    materials: ['grass'],
+  },
+  rabbit: {
+    label: 'Rabbit',
+    emoji: '🐇',
+    dietLabel: 'short grass and flowers',
+    vegetation: ['grass', 'flower'],
+    materials: [],
+  },
+  goat: {
+    label: 'Goat',
+    emoji: '🐐',
+    dietLabel: 'tall grass, flowers, and grassy dirt',
+    vegetation: ['tall-grass', 'flower'],
+    materials: ['grass'],
+  },
+};
+
+export type Animal = {
   id: string;
+  kind: AnimalKind;
   x: number;
   z: number;
   eaten: number;
@@ -39,14 +88,15 @@ export type Sheep = {
 export type EcosystemState = {
   tick: number;
   vegetation: Vegetation[];
-  sheep: Sheep[];
+  animals: Animal[];
   nextEntityId: number;
 };
 
 type RandomSource = (key: string) => number;
+type Position = Pick<Animal, 'x' | 'z'>;
 
 const columnKey = (x: number, z: number) => `${x},${z}`;
-const distance = (a: Pick<Sheep, 'x' | 'z'>, b: Pick<Sheep, 'x' | 'z'>) =>
+const distance = (a: Position, b: Position) =>
   Math.abs(a.x - b.x) + Math.abs(a.z - b.z);
 
 function deterministicRandom(key: string) {
@@ -72,6 +122,18 @@ export function getSurfaceBlock(blocks: VoxelBlock[], x: number, z: number) {
   return surfaceMap(blocks).get(columnKey(x, z));
 }
 
+function createAnimal(kind: AnimalKind, idNumber: number, position: Position): Animal {
+  return {
+    id: `${kind}-${idNumber}`,
+    kind,
+    ...position,
+    eaten: 0,
+    hunger: MAX_ANIMAL_HUNGER,
+    isBaby: false,
+    breedingCooldown: 0,
+  };
+}
+
 export function createInitialEcosystem(blocks: VoxelBlock[]): EcosystemState {
   const grassSurfaces = [...surfaceMap(blocks).values()]
     .filter(({ material }) => material === 'grass')
@@ -83,16 +145,32 @@ export function createInitialEcosystem(blocks: VoxelBlock[]): EcosystemState {
   return {
     tick: 0,
     vegetation: [],
-    sheep: startingSurfaces.map((block, index) => ({
-      id: `sheep-${index}`,
-      x: block.x,
-      z: block.z,
-      eaten: 0,
-      hunger: MAX_ANIMAL_HUNGER,
-      isBaby: false,
-      breedingCooldown: 0,
-    })),
+    animals: startingSurfaces.map((block, index) =>
+      createAnimal('sheep', index, { x: block.x, z: block.z })),
     nextEntityId: startingSurfaces.length,
+  };
+}
+
+export function spawnAnimal(
+  blocks: VoxelBlock[],
+  state: EcosystemState,
+  kind: AnimalKind,
+  x: number,
+  z: number,
+) {
+  if (
+    state.animals.length >= MAX_ANIMALS ||
+    !getSurfaceBlock(blocks, x, z) ||
+    getSurfaceBlock(blocks, x, z)?.burning ||
+    state.animals.some((animal) => animal.x === x && animal.z === z)
+  ) {
+    return state;
+  }
+
+  return {
+    ...state,
+    animals: [...state.animals, createAnimal(kind, state.nextEntityId, { x, z })],
+    nextEntityId: state.nextEntityId + 1,
   };
 }
 
@@ -103,19 +181,19 @@ function chooseVegetation(value: number): VegetationKind {
 }
 
 function moveToward(
-  sheep: Sheep,
-  target: Pick<Sheep, 'x' | 'z'>,
+  animal: Animal,
+  target: Position,
   surfaces: Map<string, VoxelBlock>,
   occupied: Set<string>,
   stopDistance = 0,
 ) {
-  if (distance(sheep, target) <= stopDistance) return sheep;
-  const currentSurface = surfaces.get(columnKey(sheep.x, sheep.z));
-  if (!currentSurface) return sheep;
+  if (distance(animal, target) <= stopDistance) return animal;
+  const currentSurface = surfaces.get(columnKey(animal.x, animal.z));
+  if (!currentSurface) return animal;
 
   const candidates = DIRECTIONS.map((direction, order) => ({
-    x: sheep.x + direction.x,
-    z: sheep.z + direction.z,
+    x: animal.x + direction.x,
+    z: animal.z + direction.z,
     order,
   }))
     .filter((candidate) => {
@@ -133,25 +211,22 @@ function moveToward(
     );
 
   const next = candidates[0];
-  return next ? { ...sheep, x: next.x, z: next.z } : sheep;
+  return next ? { ...animal, x: next.x, z: next.z } : animal;
 }
 
-function nearestTarget(
-  sheep: Sheep,
-  targets: Array<{ x: number; z: number }>,
-) {
+function nearestTarget(animal: Animal, targets: Position[]) {
   return targets
-    .filter((target) => target.x !== sheep.x || target.z !== sheep.z)
+    .filter((target) => target.x !== animal.x || target.z !== animal.z)
     .sort(
       (a, b) =>
-        distance(sheep, a) - distance(sheep, b) ||
+        distance(animal, a) - distance(animal, b) ||
         a.x - b.x ||
         a.z - b.z,
     )[0];
 }
 
 function findBabyCell(
-  parents: [Sheep, Sheep],
+  parents: [Animal, Animal],
   surfaces: Map<string, VoxelBlock>,
   occupied: Set<string>,
 ) {
@@ -164,6 +239,14 @@ function findBabyCell(
     }
   }
   return undefined;
+}
+
+function vegetationIsEdible(animal: Animal, kind: VegetationKind) {
+  return ANIMALS[animal.kind].vegetation.includes(kind);
+}
+
+function materialIsEdible(animal: Animal, material: BlockMaterial) {
+  return ANIMALS[animal.kind].materials.includes(material);
 }
 
 export function advanceEcosystem(
@@ -215,7 +298,7 @@ export function advanceEcosystem(
   }
 
   const availableSurfaces = [...surfaces.values()];
-  let sheep = state.sheep.flatMap((animal) => {
+  let animals = state.animals.flatMap((animal) => {
     const hunger = animal.hunger - HUNGER_LOSS_PER_TICK;
     if (hunger <= 0) return [];
     if (surfaces.has(columnKey(animal.x, animal.z))) {
@@ -239,10 +322,12 @@ export function advanceEcosystem(
   });
 
   const ateThisTick = new Set<string>();
-  for (const animal of sheep) {
+  for (const animal of animals) {
     const surface = surfaces.get(columnKey(animal.x, animal.z));
-    if (!surface) continue;
-    const growthIndex = vegetation.findIndex(({ blockId }) => blockId === surface.id);
+    if (!surface || surface.burning) continue;
+    const growthIndex = vegetation.findIndex(
+      (growth) => growth.blockId === surface.id && vegetationIsEdible(animal, growth.kind),
+    );
     if (growthIndex >= 0) {
       vegetation = vegetation.filter((_, index) => index !== growthIndex);
       animal.eaten += 1;
@@ -251,30 +336,31 @@ export function advanceEcosystem(
       continue;
     }
     const material = materialChanges.get(surface.id) ?? surface.material;
-    if (material === 'grass' && !surface.burning) {
-      materialChanges.set(surface.id, 'soil');
+    if (materialIsEdible(animal, material)) {
+      if (material === 'grass') materialChanges.set(surface.id, 'soil');
       animal.eaten += 1;
       animal.hunger = Math.min(MAX_ANIMAL_HUNGER, animal.hunger + HUNGER_PER_MEAL);
       ateThisTick.add(animal.id);
     }
   }
 
-  const sheepById = new Map(sheep.map((animal) => [animal.id, animal]));
-  const occupied = new Set(sheep.map(({ x, z }) => columnKey(x, z)));
+  const animalsById = new Map(animals.map((animal) => [animal.id, animal]));
+  const occupied = new Set(animals.map(({ x, z }) => columnKey(x, z)));
   const paired = new Set<string>();
-  const eligible = sheep
+  const eligible = animals
     .filter(
       ({ eaten, isBaby, breedingCooldown }) =>
-        !isBaby && eaten >= SHEEP_BREEDING_MEALS && breedingCooldown === 0,
+        !isBaby && eaten >= ANIMAL_BREEDING_MEALS && breedingCooldown === 0,
     )
     .sort((a, b) => a.id.localeCompare(b.id));
 
   for (const first of eligible) {
     if (paired.has(first.id)) continue;
-    const currentFirst = sheepById.get(first.id)!;
+    const currentFirst = animalsById.get(first.id)!;
     const partner = eligible
       .filter(
         (candidate) =>
+          candidate.kind === currentFirst.kind &&
           candidate.id !== first.id &&
           !paired.has(candidate.id) &&
           distance(currentFirst, candidate) <= MATE_SEARCH_RADIUS,
@@ -288,30 +374,31 @@ export function advanceEcosystem(
 
     paired.add(first.id);
     paired.add(partner.id);
-    let currentPartner = sheepById.get(partner.id)!;
+    let currentPartner = animalsById.get(partner.id)!;
 
     if (distance(currentFirst, currentPartner) <= 1) {
       const babyCell = findBabyCell([currentFirst, currentPartner], surfaces, occupied);
       if (babyCell) {
-        sheepById.set(first.id, {
+        animalsById.set(first.id, {
           ...currentFirst,
           eaten: 0,
           breedingCooldown: BREEDING_COOLDOWN_TICKS,
         });
-        sheepById.set(partner.id, {
+        animalsById.set(partner.id, {
           ...currentPartner,
           eaten: 0,
           breedingCooldown: BREEDING_COOLDOWN_TICKS,
         });
-        const baby: Sheep = {
-          id: `sheep-${nextEntityId++}`,
+        const baby: Animal = {
+          id: `${currentFirst.kind}-${nextEntityId++}`,
+          kind: currentFirst.kind,
           ...babyCell,
           eaten: 0,
           hunger: Math.round(MAX_ANIMAL_HUNGER * 0.7),
           isBaby: true,
           breedingCooldown: 0,
         };
-        sheepById.set(baby.id, baby);
+        animalsById.set(baby.id, baby);
         occupied.add(columnKey(baby.x, baby.z));
       }
       continue;
@@ -319,26 +406,30 @@ export function advanceEcosystem(
 
     occupied.delete(columnKey(currentFirst.x, currentFirst.z));
     const movedFirst = moveToward(currentFirst, currentPartner, surfaces, occupied, 1);
-    sheepById.set(first.id, movedFirst);
+    animalsById.set(first.id, movedFirst);
     occupied.add(columnKey(movedFirst.x, movedFirst.z));
 
-    currentPartner = sheepById.get(partner.id)!;
+    currentPartner = animalsById.get(partner.id)!;
     occupied.delete(columnKey(currentPartner.x, currentPartner.z));
     const movedPartner = moveToward(currentPartner, movedFirst, surfaces, occupied, 1);
-    sheepById.set(partner.id, movedPartner);
+    animalsById.set(partner.id, movedPartner);
     occupied.add(columnKey(movedPartner.x, movedPartner.z));
   }
 
-  const remainingGrowthIds = new Set(vegetation.map(({ blockId }) => blockId));
-  const foodTargets = [...surfaces.values()]
-    .filter((block) => {
-      const material = materialChanges.get(block.id) ?? block.material;
-      return !block.burning && (remainingGrowthIds.has(block.id) || material === 'grass');
-    })
-    .map(({ x, z }) => ({ x, z }));
-
-  for (const animal of sheepById.values()) {
+  const growthByBlockId = new Map(vegetation.map((growth) => [growth.blockId, growth]));
+  for (const animal of animalsById.values()) {
     if (paired.has(animal.id) || ateThisTick.has(animal.id)) continue;
+    const foodTargets = [...surfaces.values()]
+      .filter((block) => {
+        if (block.burning) return false;
+        const growth = growthByBlockId.get(block.id);
+        const material = materialChanges.get(block.id) ?? block.material;
+        return (
+          (growth && vegetationIsEdible(animal, growth.kind)) ||
+          materialIsEdible(animal, material)
+        );
+      })
+      .map(({ x, z }) => ({ x, z }));
     const target = nearestTarget(animal, foodTargets);
     if (!target && tick % 4 !== 0) continue;
     const wanderTarget = target ?? {
@@ -347,11 +438,11 @@ export function advanceEcosystem(
     };
     occupied.delete(columnKey(animal.x, animal.z));
     const moved = moveToward(animal, wanderTarget, surfaces, occupied);
-    sheepById.set(animal.id, moved);
+    animalsById.set(animal.id, moved);
     occupied.add(columnKey(moved.x, moved.z));
   }
 
-  sheep = [...sheepById.values()].sort((a, b) => a.id.localeCompare(b.id));
+  animals = [...animalsById.values()].sort((a, b) => a.id.localeCompare(b.id));
   const nextBlocks = materialChanges.size
     ? blocks.map((block) => {
         const material = materialChanges.get(block.id);
@@ -364,7 +455,7 @@ export function advanceEcosystem(
     ecosystem: {
       tick,
       vegetation,
-      sheep,
+      animals,
       nextEntityId,
     } satisfies EcosystemState,
   };
@@ -379,9 +470,9 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
     !Number.isInteger(state.nextEntityId) ||
     (state.nextEntityId ?? -1) < 0 ||
     !Array.isArray(state.vegetation) ||
-    !Array.isArray(state.sheep) ||
+    !Array.isArray(state.animals) ||
     state.vegetation.length > 5000 ||
-    state.sheep.length > 500
+    state.animals.length > MAX_ANIMALS
   ) {
     return false;
   }
@@ -402,28 +493,29 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
     return true;
   });
 
-  const sheepValid = state.sheep.every((item) => {
+  const animalsValid = state.animals.every((item) => {
     if (!item || typeof item !== 'object') return false;
-    const sheep = item as Partial<Sheep>;
+    const animal = item as Partial<Animal>;
     if (
-      typeof sheep.id !== 'string' ||
-      !Number.isInteger(sheep.x) ||
-      !Number.isInteger(sheep.z) ||
-      !Number.isInteger(sheep.eaten) ||
-      (sheep.eaten ?? -1) < 0 ||
-      !Number.isInteger(sheep.hunger) ||
-      (sheep.hunger ?? -1) < 1 ||
-      (sheep.hunger ?? MAX_ANIMAL_HUNGER + 1) > MAX_ANIMAL_HUNGER ||
-      typeof sheep.isBaby !== 'boolean' ||
-      !Number.isInteger(sheep.breedingCooldown) ||
-      (sheep.breedingCooldown ?? -1) < 0 ||
-      entityIds.has(sheep.id)
+      typeof animal.id !== 'string' ||
+      !ANIMAL_KEYS.includes(animal.kind as AnimalKind) ||
+      !Number.isInteger(animal.x) ||
+      !Number.isInteger(animal.z) ||
+      !Number.isInteger(animal.eaten) ||
+      (animal.eaten ?? -1) < 0 ||
+      !Number.isInteger(animal.hunger) ||
+      (animal.hunger ?? -1) < 1 ||
+      (animal.hunger ?? MAX_ANIMAL_HUNGER + 1) > MAX_ANIMAL_HUNGER ||
+      typeof animal.isBaby !== 'boolean' ||
+      !Number.isInteger(animal.breedingCooldown) ||
+      (animal.breedingCooldown ?? -1) < 0 ||
+      entityIds.has(animal.id)
     ) {
       return false;
     }
-    entityIds.add(sheep.id);
+    entityIds.add(animal.id);
     return true;
   });
 
-  return vegetationValid && sheepValid;
+  return vegetationValid && animalsValid;
 }
