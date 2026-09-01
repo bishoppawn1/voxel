@@ -30,6 +30,7 @@ import {
   convertCoveredGrassToSoil,
   createInitialEcosystem,
   createSurfaceIndex,
+  isAquaticAnimal,
   migrateEcosystem,
   spawnAnimal,
   type Animal,
@@ -225,6 +226,7 @@ const VegetationSprout = memo(function VegetationSprout({
   growth: Vegetation;
   block: VoxelBlock;
 }) {
+  const kelp = growth.kind === 'kelp';
   const height = growth.kind === 'tall-grass' ? BLOCK_SIZE * 0.62 : BLOCK_SIZE * 0.38;
   const bladeColor = growth.kind === 'tall-grass' ? '#4f873e' : '#6da24b';
 
@@ -232,11 +234,24 @@ const VegetationSprout = memo(function VegetationSprout({
     <group
       position={[
         cellToWorld(block.x),
-        cellToWorld(block.y + 1) + 0.003,
+        kelp ? cellToWorld(block.y) + 0.003 : cellToWorld(block.y + 1) + 0.003,
         cellToWorld(block.z),
       ]}
     >
-      {growth.kind === 'flower' ? (
+      {kelp ? (
+        <>
+          {[-0.18, 0, 0.18].map((x, index) => (
+            <mesh
+              key={x}
+              position={[BLOCK_SIZE * x, BLOCK_SIZE * (0.34 + index * 0.05), 0]}
+              rotation={[0, 0, (index - 1) * 0.18]}
+            >
+              <boxGeometry args={[BLOCK_SIZE * 0.1, BLOCK_SIZE * (0.68 + index * 0.1), BLOCK_SIZE * 0.08]} />
+              <meshStandardMaterial color={index === 1 ? '#377e5a' : '#4b9566'} roughness={0.88} />
+            </mesh>
+          ))}
+        </>
+      ) : growth.kind === 'flower' ? (
         <>
           <mesh position={[0, BLOCK_SIZE * 0.2, 0]} castShadow>
             <boxGeometry args={[BLOCK_SIZE * 0.045, BLOCK_SIZE * 0.4, BLOCK_SIZE * 0.045]} />
@@ -290,18 +305,28 @@ const ANIMAL_COLORS: Record<AnimalKind, {
   bear: { body: '#65452f', head: '#74513a', legs: '#3e3026', accent: '#b68a61', scale: 1.15 },
   eagle: { body: '#594432', head: '#eee8d7', legs: '#c69231', accent: '#d7aa42', scale: 0.76 },
   crocodile: { body: '#536b3d', head: '#5c7541', legs: '#3e5232', accent: '#9fa268', scale: 1.02 },
+  'small-fish': { body: '#e7a549', head: '#f0b85e', legs: '#d47e37', accent: '#f3d47d', scale: 0.54 },
+  'big-fish': { body: '#397c91', head: '#4b94a8', legs: '#2f6678', accent: '#89c1c6', scale: 0.88 },
 };
 
-const AnimalModel = memo(function AnimalModel({ animal, surfaceY }: { animal: Animal; surfaceY: number }) {
+const AnimalModel = memo(function AnimalModel({
+  animal,
+  surfaceY,
+  inWater,
+}: {
+  animal: Animal;
+  surfaceY: number;
+  inWater: boolean;
+}) {
   const group = useRef<Group>(null);
   const target = useMemo(
     () =>
       new Vector3(
         cellToWorld(animal.x),
-        cellToWorld(surfaceY + 1),
+        cellToWorld(surfaceY + (inWater ? (isAquaticAnimal(animal.kind) ? 0.42 : 0.64) : 1)),
         cellToWorld(animal.z),
       ),
-    [animal.x, animal.z, surfaceY],
+    [animal.kind, animal.x, animal.z, inWater, surfaceY],
   );
   const initialPosition = useRef(target.clone()).current;
   const targetYaw = -Math.atan2(animal.facingZ, animal.facingX);
@@ -318,12 +343,34 @@ const AnimalModel = memo(function AnimalModel({ animal, surfaceY }: { animal: An
 
   const colors = ANIMAL_COLORS[animal.kind];
   const scale = colors.scale * (animal.isBaby ? 0.62 : 1);
+  const fish = isAquaticAnimal(animal.kind);
   const rabbit = animal.kind === 'rabbit';
   const bodyLength = rabbit ? 0.82 : 1.08;
   const bodyHeight = rabbit ? 0.5 : 0.62;
   const headX = rabbit ? 0.5 : 0.63;
   return (
     <group ref={group} position={initialPosition} scale={scale}>
+      {fish ? (
+        <>
+          <mesh position={[0, BLOCK_SIZE * 0.28, 0]} scale={[1.3, 0.72, 0.68]} castShadow>
+            <sphereGeometry args={[BLOCK_SIZE * 0.4, 8, 6]} />
+            <meshStandardMaterial color={colors.body} roughness={0.72} />
+          </mesh>
+          <mesh position={[BLOCK_SIZE * 0.42, BLOCK_SIZE * 0.29, 0]} scale={[0.68, 0.62, 0.62]} castShadow>
+            <sphereGeometry args={[BLOCK_SIZE * 0.32, 8, 6]} />
+            <meshStandardMaterial color={colors.head} roughness={0.7} />
+          </mesh>
+          <mesh position={[-BLOCK_SIZE * 0.5, BLOCK_SIZE * 0.28, 0]} rotation={[0, 0, -Math.PI / 2]}>
+            <coneGeometry args={[BLOCK_SIZE * 0.3, BLOCK_SIZE * 0.48, 4]} />
+            <meshStandardMaterial color={colors.accent} roughness={0.75} />
+          </mesh>
+          <mesh position={[BLOCK_SIZE * 0.55, BLOCK_SIZE * 0.34, BLOCK_SIZE * 0.16]}>
+            <sphereGeometry args={[BLOCK_SIZE * 0.045, 6, 4]} />
+            <meshBasicMaterial color="#132327" />
+          </mesh>
+        </>
+      ) : (
+        <>
         <mesh position={[0, BLOCK_SIZE * 0.43, 0]} castShadow>
         <boxGeometry args={[BLOCK_SIZE * bodyLength, BLOCK_SIZE * bodyHeight, BLOCK_SIZE * 0.68]} />
         <meshStandardMaterial color={colors.body} roughness={0.92} />
@@ -414,22 +461,28 @@ const AnimalModel = memo(function AnimalModel({ animal, surfaceY }: { animal: An
         <sphereGeometry args={[BLOCK_SIZE * 0.035, 6, 4]} />
         <meshBasicMaterial color="#171a18" />
       </mesh>
+        </>
+      )}
+      {animal.burning && !inWater && <BurningEffect />}
     </group>
   );
 }, (previous, next) =>
   previous.surfaceY === next.surfaceY &&
+  previous.inWater === next.inWater &&
   previous.animal.kind === next.animal.kind &&
   previous.animal.x === next.animal.x &&
   previous.animal.z === next.animal.z &&
   previous.animal.facingX === next.animal.facingX &&
   previous.animal.facingZ === next.animal.facingZ &&
-  previous.animal.isBaby === next.animal.isBaby,
+  previous.animal.isBaby === next.animal.isBaby &&
+  previous.animal.burning === next.animal.burning,
 );
 
 function WorldScene({
   blocks,
   ecosystem,
   tool,
+  animalKind,
   activeAbility,
   onAdd,
   onRemove,
@@ -439,6 +492,7 @@ function WorldScene({
   blocks: VoxelBlock[];
   ecosystem: EcosystemState;
   tool: Tool;
+  animalKind: AnimalKind;
   activeAbility: AbilityKey;
   onAdd: (cell: Cell) => void;
   onRemove: (id: string) => void;
@@ -549,7 +603,12 @@ function WorldScene({
         y: block.y + 1,
         z: block.z,
         blockId: block.id,
-        valid: surface?.id === block.id && !block.burning && !occupied,
+        valid:
+          surface?.id === block.id &&
+          !block.burning &&
+          block.material !== 'lava' &&
+          (!isAquaticAnimal(animalKind) || block.material === 'water') &&
+          !occupied,
       });
       return;
     }
@@ -585,7 +644,13 @@ function WorldScene({
       const occupied = ecosystem.animals.some(
         (animal) => animal.x === block.x && animal.z === block.z,
       );
-      if (surface?.id === block.id && !block.burning && !occupied) {
+      if (
+        surface?.id === block.id &&
+        !block.burning &&
+        block.material !== 'lava' &&
+        (!isAquaticAnimal(animalKind) || block.material === 'water') &&
+        !occupied
+      ) {
         onSpawnAnimal(block.x, block.z);
         setHover(null);
       }
@@ -716,14 +781,24 @@ function WorldScene({
       {ecosystem.vegetation.map((growth) => {
         const block = blocksById.get(growth.blockId);
         const surface = block && surfaceAt(block.x, block.z);
-        return block?.material === 'grass' && !block.burning && surface?.id === block.id
+        const supported = growth.kind === 'kelp'
+          ? block?.material === 'water'
+          : block?.material === 'grass';
+        return supported && block && !block.burning && surface?.id === block.id
           ? <VegetationSprout key={growth.id} growth={growth} block={block} />
           : null;
       })}
 
       {ecosystem.animals.map((animal) => {
         const surface = surfaceAt(animal.x, animal.z);
-        return surface ? <AnimalModel key={animal.id} animal={animal} surfaceY={surface.y} /> : null;
+        return surface ? (
+          <AnimalModel
+            key={animal.id}
+            animal={animal}
+            surfaceY={surface.y}
+            inWater={surface.material === 'water'}
+          />
+        ) : null;
       })}
 
       {hover && tool === 'ability' && (
@@ -1154,6 +1229,7 @@ export default function Game() {
             blocks={blocks}
             ecosystem={ecosystem}
             tool={tool}
+            animalKind={animalKind}
             activeAbility={activeAbility}
             onAdd={addBlock}
             onRemove={removeBlock}

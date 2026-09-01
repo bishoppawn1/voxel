@@ -103,16 +103,27 @@ describe('vegetation growth', () => {
     expect(result.blocks).toEqual([grassyDirt]);
     expect(result.ecosystem.vegetation[0].kind).toBe(kind);
   });
+
+  it('grows kelp as a water attachment without creating a block', () => {
+    const water = block('water', 0, 0, 'water');
+    const result = advanceEcosystem([water], emptyEcosystem(), () => 0);
+
+    expect(result.blocks).toEqual([water]);
+    expect(result.ecosystem.vegetation).toEqual([
+      { id: 'growth-0', blockId: 'water', kind: 'kelp' },
+    ]);
+  });
 });
 
 describe('animal spawning and diets', () => {
-  it('offers fifteen species, including nine additional animals', () => {
+  it('offers land animals plus two tiers of fish', () => {
     expect(ANIMAL_KEYS).toEqual([
       'sheep', 'cow', 'pig', 'rabbit', 'goat',
       'deer', 'horse', 'chicken', 'duck', 'turtle',
       'fox', 'wolf', 'bear', 'eagle', 'crocodile',
+      'small-fish', 'big-fish',
     ]);
-    expect(ANIMAL_KEYS).toHaveLength(15);
+    expect(ANIMAL_KEYS).toHaveLength(17);
     expect(ANIMALS.fox).toMatchObject({
       predator: true,
       maxHealth: 12,
@@ -126,6 +137,8 @@ describe('animal spawning and diets', () => {
       });
     }
     for (const kind of PREDATOR_KEYS) expect(ANIMALS[kind].predator).toBe(true);
+    expect(ANIMALS['small-fish'].vegetation).toEqual(['kelp']);
+    expect(ANIMALS['big-fish'].prey).toEqual(['small-fish']);
   });
 
   it('gives species distinct speeds while keeping predators faster on average', () => {
@@ -168,6 +181,18 @@ describe('animal spawning and diets', () => {
 
     expect(spawnAnimal(world, occupied, 'rabbit', 0, 0)).toBe(occupied);
     expect(spawnAnimal(world, occupied, 'goat', 1, 0)).toBe(occupied);
+  });
+
+  it('spawns fish only in water while land animals may enter water to swim', () => {
+    const water = [block('water', 0, 0, 'water')];
+    const land = [block('land', 0, 0, 'stone')];
+
+    expect(spawnAnimal(land, emptyEcosystem(), 'small-fish', 0, 0))
+      .toEqual(emptyEcosystem());
+    expect(spawnAnimal(water, emptyEcosystem(), 'small-fish', 0, 0).animals[0].kind)
+      .toBe('small-fish');
+    expect(spawnAnimal(water, emptyEcosystem(), 'sheep', 0, 0).animals[0].kind)
+      .toBe('sheep');
   });
 
   it.each([
@@ -268,12 +293,77 @@ describe('animal spawning and diets', () => {
 });
 
 describe('animal life cycle', () => {
-  it('starts the starter world with two adult sheep', () => {
+  it('starts the starter world with sheep, kelp, and both sizes of fish', () => {
     const ecosystem = createInitialEcosystem(createStarterWorld());
-    expect(ecosystem.animals).toHaveLength(2);
-    expect(ecosystem.animals.every(({ kind }) => kind === 'sheep')).toBe(true);
+    expect(ecosystem.animals.filter(({ kind }) => kind === 'sheep')).toHaveLength(2);
+    expect(ecosystem.animals.filter(({ kind }) => kind === 'small-fish')).toHaveLength(2);
+    expect(ecosystem.animals.filter(({ kind }) => kind === 'big-fish')).toHaveLength(1);
+    expect(ecosystem.vegetation.some(({ kind }) => kind === 'kelp')).toBe(true);
     expect(ecosystem.animals.every(({ isBaby }) => !isBaby)).toBe(true);
     expect(ecosystem.animals.every(({ hunger }) => hunger === MAX_ANIMAL_HUNGER)).toBe(true);
+  });
+
+  it('lets land animals swim through water to reach food', () => {
+    const world = [
+      block('start', 0, 0, 'stone'),
+      block('water', 1, 0, 'water'),
+      block('food', 2, 0, 'grass'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('rabbit', 'rabbit-0')],
+      nextEntityId: 1,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+
+    expect(result.animals[0]).toMatchObject({ x: 1, z: 0 });
+  });
+
+  it('ignites an animal on a burning surface and makes it rush into water', () => {
+    const world = [
+      { ...block('fire', 0, 0, 'grass'), burning: 1 },
+      block('path', 1, 0, 'stone'),
+      block('water', 2, 0, 'water'),
+    ];
+    let ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('sheep', 'sheep-0')],
+      nextEntityId: 1,
+    };
+
+    ecosystem = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+    expect(ecosystem.animals[0]).toMatchObject({ x: 1, z: 0, burning: 1, health: 3 });
+
+    ecosystem = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+    expect(ecosystem.animals[0]).toMatchObject({ x: 2, z: 0, health: 2 });
+    expect(ecosystem.animals[0].burning).toBeUndefined();
+  });
+
+  it('keeps fish in connected water and lets small fish eat kelp', () => {
+    const world = [
+      block('start-water', 0, 0, 'water'),
+      block('land-barrier', 1, 0, 'stone'),
+      block('kelp-water', 2, 0, 'water'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      vegetation: [{ id: 'kelp', blockId: 'kelp-water', kind: 'kelp' }],
+      animals: [animal('small-fish', 'small-fish-0')],
+      nextEntityId: 1,
+    };
+
+    const blocked = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+    expect(blocked.animals[0]).toMatchObject({ x: 0, z: 0, eaten: 0 });
+
+    const connectedWorld = [world[0], block('middle-water', 1, 0, 'water'), world[2]];
+    const moved = advanceEcosystem(connectedWorld, ecosystem, () => 1).ecosystem;
+    expect(moved.animals[0]).toMatchObject({ x: 1, z: 0 });
+    const fed = advanceEcosystem(connectedWorld, moved, () => 1).ecosystem;
+    expect(fed.animals[0]).toMatchObject({ x: 2, z: 0 });
+    const ate = advanceEcosystem(connectedWorld, fed, () => 1).ecosystem;
+    expect(ate.animals[0].eaten).toBe(1);
+    expect(ate.vegetation).toEqual([]);
   });
 
   it('moves an animal onto adjacent preferred food before eating on the next tick', () => {
@@ -485,6 +575,26 @@ describe('animal life cycle', () => {
 });
 
 describe('predator hunting', () => {
+  it('lets big fish hunt small fish without leaving the water', () => {
+    const world = [
+      block('big-water', 0, 0, 'water'),
+      block('small-water', 1, 0, 'water'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('big-fish', 'big-fish-0', 0, 0),
+        animal('small-fish', 'small-fish-1', 1, 0),
+      ],
+      nextEntityId: 2,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+
+    expect(result.animals).toHaveLength(1);
+    expect(result.animals[0]).toMatchObject({ kind: 'big-fish', eaten: 1 });
+  });
+
   it.each(HERBIVORE_KEYS)(
     'recognizes %s as prey',
     (preyKind) => {
@@ -669,8 +779,8 @@ describe('ecosystem persistence validation', () => {
   });
 
   it('accepts each supported animal kind', () => {
-    const vegetationKinds: VegetationKind[] = ['grass', 'flower', 'tall-grass'];
-    expect(vegetationKinds).toHaveLength(3);
+    const vegetationKinds: VegetationKind[] = ['grass', 'flower', 'tall-grass', 'kelp'];
+    expect(vegetationKinds).toHaveLength(4);
     expect(isValidEcosystem({
       ...emptyEcosystem(),
       animals: ANIMAL_KEYS.map((kind, index) => animal(kind, `${kind}-${index}`, index, 0)),
