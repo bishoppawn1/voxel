@@ -152,11 +152,13 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   of old age after a species-specific long lifespan of
   300 to 600 ecosystem ticks. The same individual hunger and aging rules apply
   to future animal species.
-- Once two nearby adults of the same species have each eaten three meals, they
-  approach one another. When adjacent and a neighboring surface is open, they
-  reset their meal counts and create a visibly smaller baby of their species.
-  Babies eat but do not breed; after three meals, a baby visibly grows into an
-  adult and begins a short breeding cooldown.
+- Two nearby adults of any animal species become breeding partners when both
+  have at least 70 hunger and their breeding cooldowns are ready. They approach
+  one another, including predators choosing a mate before prey. When adjacent
+  and a neighboring surface is open, each parent spends 30 hunger to create a
+  visibly smaller baby of their species. Babies eat but do not breed; after
+  three meals, a baby visibly grows into an adult and begins a short breeding
+  cooldown.
 - Foxes, Wolves, Bears, Eagles, and Crocodiles are predators. Each has a listed
   prey category with multiple species and never treats plants or another
   predator as food. A predator seeks the nearest listed prey and has higher
@@ -237,8 +239,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   their listed prey species, and prey randomly
   fight or flee. Species use distinct, staggered movement cadences, with
   predators faster on average but fast herbivores able to keep pace. Animals
-  starve at zero, die of old age, produce smaller babies, and grow those babies
-  into adults without displaying overhead bars.
+  starve at zero and die of old age. Every species can produce smaller babies
+  from a well-fed same-species adult pair and grow those babies into adults
+  without displaying overhead bars.
 - Removing the last connection beneath or beside a structure makes the detached group settle.
 - Gravity pause and resume work as specified.
 - Verdant Touch, Wildfire, Rain, Deep Freeze, and Thaw affect only eligible

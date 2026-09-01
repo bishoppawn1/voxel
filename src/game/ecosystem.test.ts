@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ANIMALS,
-  ANIMAL_BREEDING_MEALS,
+  ANIMAL_BREEDING_MIN_HUNGER,
   ANIMAL_FEED_THRESHOLD,
   ANIMAL_KEYS,
   BABY_GROWTH_MEALS,
@@ -461,7 +461,7 @@ describe('animal life cycle', () => {
       .toMatchObject({ x: 0, z: 0 });
   });
 
-  it('brings fed adults of the same species together and creates a baby', () => {
+  it.each(ANIMAL_KEYS)('lets a well-fed pair of %s create a baby', (kind) => {
     const world = [
       block('left', 0, 0, 'stone'),
       block('middle', 1, 0, 'stone'),
@@ -470,8 +470,8 @@ describe('animal life cycle', () => {
     const ecosystem: EcosystemState = {
       ...emptyEcosystem(),
       animals: [
-        animal('pig', 'pig-0', 0, 0, { eaten: ANIMAL_BREEDING_MEALS }),
-        animal('pig', 'pig-1', 1, 0, { eaten: ANIMAL_BREEDING_MEALS }),
+        animal(kind, `${kind}-0`, 0, 0),
+        animal(kind, `${kind}-1`, 1, 0),
       ],
       nextEntityId: 2,
     };
@@ -479,12 +479,35 @@ describe('animal life cycle', () => {
 
     expect(result.ecosystem.animals).toHaveLength(3);
     expect(result.ecosystem.animals.find(({ isBaby }) => isBaby)).toMatchObject({
-      id: 'pig-2',
-      kind: 'pig',
+      id: `${kind}-2`,
+      kind,
       x: 2,
       z: 0,
       isBaby: true,
     });
+    expect(
+      result.ecosystem.animals
+        .filter(({ isBaby }) => !isBaby)
+        .every(({ hunger }) => hunger <= ANIMAL_BREEDING_MIN_HUNGER),
+    ).toBe(true);
+  });
+
+  it('does not breed a same-species pair without enough hunger', () => {
+    const world = [
+      block('left', 0, 0, 'stone'),
+      block('middle', 1, 0, 'stone'),
+      block('right', 2, 0, 'stone'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('cow', 'cow-0', 0, 0, { hunger: ANIMAL_BREEDING_MIN_HUNGER - 1 }),
+        animal('cow', 'cow-1', 1, 0, { hunger: ANIMAL_BREEDING_MIN_HUNGER - 1 }),
+      ],
+      nextEntityId: 2,
+    };
+
+    expect(advanceEcosystem(world, ecosystem, () => 1).ecosystem.animals).toHaveLength(2);
   });
 
   it('grows a baby into an adult after its third meal', () => {
@@ -534,8 +557,8 @@ describe('animal life cycle', () => {
     const ecosystem: EcosystemState = {
       ...emptyEcosystem(),
       animals: [
-        animal('cow', 'cow-0', 0, 0, { eaten: ANIMAL_BREEDING_MEALS }),
-        animal('goat', 'goat-1', 1, 0, { eaten: ANIMAL_BREEDING_MEALS }),
+        animal('cow', 'cow-0', 0, 0),
+        animal('goat', 'goat-1', 1, 0),
       ],
       nextEntityId: 2,
     };

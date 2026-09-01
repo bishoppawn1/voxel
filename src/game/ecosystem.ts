@@ -1,7 +1,7 @@
 import type { BlockMaterial, VoxelBlock } from './world';
 
 export const ECOSYSTEM_TICK_MS = 900;
-export const ANIMAL_BREEDING_MEALS = 3;
+export const ANIMAL_BREEDING_MIN_HUNGER = 70;
 export const BABY_GROWTH_MEALS = 3;
 export const MAX_ANIMAL_HUNGER = 100;
 export const HERBIVORE_FIGHT_BACK_CHANCE = 0.15;
@@ -10,6 +10,7 @@ const SOIL_TO_GRASS_CHANCE = 0.012;
 const VEGETATION_GROWTH_CHANCE = 0.028;
 const MATE_SEARCH_RADIUS = 20;
 const BREEDING_COOLDOWN_TICKS = 16;
+const BREEDING_HUNGER_COST = 30;
 const HUNGER_PER_MEAL = 34;
 const MAX_ANIMALS = 500;
 export const ANIMAL_FEED_THRESHOLD = MAX_ANIMAL_HUNGER - HUNGER_PER_MEAL;
@@ -570,6 +571,28 @@ function animalCanEatOnTick(animal: Animal, tick: number) {
   return tick % (ANIMALS[animal.kind].eatEveryTicks ?? 1) === 0;
 }
 
+function isReadyToBreed(animal: Animal) {
+  return (
+    !animal.isBaby &&
+    animal.hunger >= ANIMAL_BREEDING_MIN_HUNGER &&
+    animal.breedingCooldown === 0
+  );
+}
+
+function hasBreedingPartner(
+  animal: Animal,
+  animalsById: ReadonlyMap<string, Animal>,
+) {
+  if (!isReadyToBreed(animal)) return false;
+  return [...animalsById.values()].some(
+    (candidate) =>
+      candidate.id !== animal.id &&
+      candidate.kind === animal.kind &&
+      isReadyToBreed(candidate) &&
+      distance(animal, candidate) <= MATE_SEARCH_RADIUS,
+  );
+}
+
 export function advanceEcosystem(
   blocks: VoxelBlock[],
   state: EcosystemState,
@@ -708,6 +731,7 @@ export function advanceEcosystem(
   for (const originalPredator of predators) {
     let predator = animalsById.get(originalPredator.id);
     if (!predator) continue;
+    if (hasBreedingPartner(predator, animalsById)) continue;
     const preyKinds = ANIMALS[predator.kind].prey;
     const prey = [...animalsById.values()]
       .filter((animal) => preyKinds.includes(animal.kind))
@@ -780,11 +804,8 @@ export function advanceEcosystem(
   const eligible = [...animalsById.values()]
     .filter(
       (animal) =>
-        !ANIMALS[animal.kind].predator &&
         !actedThisTick.has(animal.id) &&
-        !animal.isBaby &&
-        animal.eaten >= ANIMAL_BREEDING_MEALS &&
-        animal.breedingCooldown === 0,
+        isReadyToBreed(animal),
     )
     .sort((a, b) => a.id.localeCompare(b.id));
 
@@ -816,11 +837,13 @@ export function advanceEcosystem(
         animalsById.set(first.id, {
           ...currentFirst,
           eaten: 0,
+          hunger: currentFirst.hunger - BREEDING_HUNGER_COST,
           breedingCooldown: BREEDING_COOLDOWN_TICKS,
         });
         animalsById.set(partner.id, {
           ...currentPartner,
           eaten: 0,
+          hunger: currentPartner.hunger - BREEDING_HUNGER_COST,
           breedingCooldown: BREEDING_COOLDOWN_TICKS,
         });
         const baby: Animal = {
