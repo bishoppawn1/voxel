@@ -10,9 +10,9 @@ const SOIL_TO_GRASS_CHANCE = 0.012;
 const VEGETATION_GROWTH_CHANCE = 0.028;
 const MATE_SEARCH_RADIUS = 20;
 const BREEDING_COOLDOWN_TICKS = 16;
-const HUNGER_LOSS_PER_TICK = 2;
 const HUNGER_PER_MEAL = 34;
 const MAX_ANIMALS = 500;
+export const ANIMAL_FEED_THRESHOLD = MAX_ANIMAL_HUNGER - HUNGER_PER_MEAL;
 
 const DIRECTIONS = [
   { x: 1, z: 0 },
@@ -21,7 +21,7 @@ const DIRECTIONS = [
   { x: 0, z: -1 },
 ] as const;
 
-export type VegetationKind = 'grass' | 'flower' | 'tall-grass';
+export type VegetationKind = 'grass' | 'flower' | 'tall-grass' | 'sapling';
 
 export type Vegetation = {
   id: string;
@@ -40,6 +40,7 @@ export const HERBIVORE_KEYS = [
   'chicken',
   'duck',
   'turtle',
+  'beaver',
 ] as const;
 export const PREDATOR_KEYS = ['fox', 'wolf', 'bear', 'eagle', 'crocodile'] as const;
 export const ANIMAL_KEYS = [...HERBIVORE_KEYS, ...PREDATOR_KEYS] as const;
@@ -60,6 +61,8 @@ export const ANIMALS: Record<AnimalKind, {
   lifespan: number;
   maxHealth: number;
   attackDamage: number;
+  hungerLossEveryTicks?: number;
+  eatEveryTicks?: number;
 }> = {
   sheep: {
     label: 'Sheep',
@@ -190,6 +193,21 @@ export const ANIMALS: Record<AnimalKind, {
     lifespan: 600,
     maxHealth: 6,
     attackDamage: 1,
+  },
+  beaver: {
+    label: 'Beaver',
+    emoji: '🦫',
+    dietLabel: 'tree saplings and exposed tree wood',
+    vegetation: ['sapling'],
+    materials: ['wood'],
+    prey: [],
+    predator: false,
+    moveEveryTicks: 3,
+    lifespan: 540,
+    maxHealth: 6,
+    attackDamage: 1,
+    hungerLossEveryTicks: 4,
+    eatEveryTicks: 8,
   },
   fox: {
     label: 'Fox',
@@ -395,9 +413,10 @@ export function spawnAnimal(
 }
 
 function chooseVegetation(value: number): VegetationKind {
-  if (value < 0.5) return 'grass';
-  if (value < 0.78) return 'tall-grass';
-  return 'flower';
+  if (value < 0.48) return 'grass';
+  if (value < 0.76) return 'tall-grass';
+  if (value < 0.97) return 'flower';
+  return 'sapling';
 }
 
 function withMovementFacing(animal: Animal, position: Position): Animal {
@@ -543,6 +562,14 @@ function materialIsEdible(animal: Animal, material: BlockMaterial) {
   return ANIMALS[animal.kind].materials.includes(material);
 }
 
+function animalNeedsMeal(animal: Animal) {
+  return animal.hunger <= ANIMAL_FEED_THRESHOLD;
+}
+
+function animalCanEatOnTick(animal: Animal, tick: number) {
+  return tick % (ANIMALS[animal.kind].eatEveryTicks ?? 1) === 0;
+}
+
 export function advanceEcosystem(
   blocks: VoxelBlock[],
   state: EcosystemState,
@@ -596,7 +623,8 @@ export function advanceEcosystem(
   let animals = state.animals.flatMap((animal) => {
     const age = animal.age + 1;
     if (age >= ANIMALS[animal.kind].lifespan) return [];
-    const hunger = animal.hunger - HUNGER_LOSS_PER_TICK;
+    const hungerLossEveryTicks = ANIMALS[animal.kind].hungerLossEveryTicks ?? 1;
+    const hunger = animal.hunger - (tick % hungerLossEveryTicks === 0 ? 1 : 0);
     if (hunger <= 0) return [];
     if (surfaces.has(columnKey(animal.x, animal.z))) {
       return [{
@@ -626,6 +654,7 @@ export function advanceEcosystem(
 
   const ateThisTick = new Set<string>();
   for (const animal of animals) {
+    if (!animalNeedsMeal(animal) || !animalCanEatOnTick(animal, tick)) continue;
     const surface = surfaces.get(columnKey(animal.x, animal.z));
     if (!surface || surface.burning) continue;
     const growthIndex = vegetation.findIndex(
@@ -639,10 +668,12 @@ export function advanceEcosystem(
       continue;
     }
     const material = materialChanges.get(surface.id) ?? surface.material;
-    if (materialIsEdible(animal, material)) {
+    const growth = vegetation.find(({ blockId }) => blockId === surface.id);
+    const protectedSapling = growth?.kind === 'sapling' && !vegetationIsEdible(animal, 'sapling');
+    if (!protectedSapling && materialIsEdible(animal, material)) {
       if (material === 'grass' || material === 'moss') {
         materialChanges.set(surface.id, 'soil');
-      } else if (material === 'leaves') {
+      } else {
         consumedBlockIds.add(surface.id);
       }
       animal.eaten += 1;
@@ -667,7 +698,12 @@ export function advanceEcosystem(
   const actedThisTick = new Set<string>();
 
   const predators = [...animalsById.values()]
-    .filter((animal) => ANIMALS[animal.kind].predator)
+    .filter(
+      (animal) =>
+        ANIMALS[animal.kind].predator &&
+        animalNeedsMeal(animal) &&
+        animalCanEatOnTick(animal, tick),
+    )
     .sort((a, b) => a.id.localeCompare(b.id));
   for (const originalPredator of predators) {
     let predator = animalsById.get(originalPredator.id);
@@ -832,9 +868,11 @@ export function advanceEcosystem(
       if (block.burning || consumedBlockIds.has(block.id)) continue;
       const growth = growthByBlockId.get(block.id);
       const material = materialChanges.get(block.id) ?? block.material;
+      const protectedSapling =
+        growth?.kind === 'sapling' && !vegetationIsEdible(animal, 'sapling');
       if (
         (growth && vegetationIsEdible(animal, growth.kind)) ||
-        materialIsEdible(animal, material)
+        (!protectedSapling && materialIsEdible(animal, material))
       ) {
         targetKeys.add(columnKey(block.x, block.z));
       }
@@ -903,7 +941,7 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
     if (
       typeof growth.id !== 'string' ||
       typeof growth.blockId !== 'string' ||
-      !['grass', 'flower', 'tall-grass'].includes(growth.kind ?? '') ||
+      !['grass', 'flower', 'tall-grass', 'sapling'].includes(growth.kind ?? '') ||
       entityIds.has(growth.id)
     ) {
       return false;

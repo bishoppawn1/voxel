@@ -236,7 +236,22 @@ const VegetationSprout = memo(function VegetationSprout({
         cellToWorld(block.z),
       ]}
     >
-      {growth.kind === 'flower' ? (
+      {growth.kind === 'sapling' ? (
+        <>
+          <mesh position={[0, BLOCK_SIZE * 0.22, 0]} castShadow>
+            <boxGeometry args={[BLOCK_SIZE * 0.1, BLOCK_SIZE * 0.44, BLOCK_SIZE * 0.1]} />
+            <meshStandardMaterial color="#765038" roughness={0.96} />
+          </mesh>
+          <mesh position={[0, BLOCK_SIZE * 0.48, 0]} castShadow>
+            <boxGeometry args={[BLOCK_SIZE * 0.48, BLOCK_SIZE * 0.32, BLOCK_SIZE * 0.42]} />
+            <meshStandardMaterial color="#5d8c47" roughness={0.94} />
+          </mesh>
+          <mesh position={[BLOCK_SIZE * 0.13, BLOCK_SIZE * 0.61, 0]} castShadow>
+            <boxGeometry args={[BLOCK_SIZE * 0.26, BLOCK_SIZE * 0.22, BLOCK_SIZE * 0.28]} />
+            <meshStandardMaterial color="#78a454" roughness={0.94} />
+          </mesh>
+        </>
+      ) : growth.kind === 'flower' ? (
         <>
           <mesh position={[0, BLOCK_SIZE * 0.2, 0]} castShadow>
             <boxGeometry args={[BLOCK_SIZE * 0.045, BLOCK_SIZE * 0.4, BLOCK_SIZE * 0.045]} />
@@ -285,6 +300,7 @@ const ANIMAL_COLORS: Record<AnimalKind, {
   chicken: { body: '#eee5d1', head: '#f5ecda', legs: '#bb873b', accent: '#c34e3f', scale: 0.58 },
   duck: { body: '#8d9b63', head: '#52734e', legs: '#b97d2e', accent: '#df9b34', scale: 0.64 },
   turtle: { body: '#66884d', head: '#71965d', legs: '#536f42', accent: '#3f6038', scale: 0.62 },
+  beaver: { body: '#76513a', head: '#825b42', legs: '#49382e', accent: '#4f3527', scale: 0.78 },
   fox: { body: '#d9682f', head: '#df7439', legs: '#342d2a', accent: '#f5e8d0', scale: 0.82 },
   wolf: { body: '#777d7d', head: '#6a7071', legs: '#454b4d', accent: '#c6c1ae', scale: 0.9 },
   bear: { body: '#65452f', head: '#74513a', legs: '#3e3026', accent: '#b68a61', scale: 1.15 },
@@ -407,6 +423,18 @@ const AnimalModel = memo(function AnimalModel({ animal, surfaceY }: { animal: An
           <mesh position={[-BLOCK_SIZE * 0.92, BLOCK_SIZE * 0.7, 0]} rotation={[0, 0, -0.5]} castShadow>
             <boxGeometry args={[BLOCK_SIZE * 0.22, BLOCK_SIZE * 0.21, BLOCK_SIZE * 0.25]} />
             <meshStandardMaterial color={colors.accent} roughness={0.94} />
+          </mesh>
+        </>
+      )}
+      {animal.kind === 'beaver' && (
+        <>
+          <mesh position={[-BLOCK_SIZE * 0.68, BLOCK_SIZE * 0.32, 0]} rotation={[0, 0, -0.42]} castShadow>
+            <boxGeometry args={[BLOCK_SIZE * 0.48, BLOCK_SIZE * 0.1, BLOCK_SIZE * 0.42]} />
+            <meshStandardMaterial color={colors.accent} roughness={0.98} />
+          </mesh>
+          <mesh position={[BLOCK_SIZE * 0.84, BLOCK_SIZE * 0.35, 0]} castShadow>
+            <boxGeometry args={[BLOCK_SIZE * 0.12, BLOCK_SIZE * 0.17, BLOCK_SIZE * 0.2]} />
+            <meshStandardMaterial color="#f0dfbd" roughness={0.84} />
           </mesh>
         </>
       )}

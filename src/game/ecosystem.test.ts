@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ANIMALS,
   ANIMAL_BREEDING_MEALS,
+  ANIMAL_FEED_THRESHOLD,
   ANIMAL_KEYS,
   BABY_GROWTH_MEALS,
   HERBIVORE_FIGHT_BACK_CHANCE,
@@ -59,6 +60,8 @@ const emptyEcosystem = (): EcosystemState => ({
   nextEntityId: 0,
 });
 
+const GRAZER_KEYS = HERBIVORE_KEYS.filter((kind) => kind !== 'beaver');
+
 describe('vegetation growth', () => {
   it('turns covered grassy dirt back into dirt while preserving block identity', () => {
     const grassyDirt = { ...block('grass', 0, 0, 'grass'), burning: 1 };
@@ -92,6 +95,7 @@ describe('vegetation growth', () => {
   it.each([
     ['tall-grass', 0.62],
     ['flower', 0.92],
+    ['sapling', 0.99],
   ] as const)('can grow %s vegetation without occupying another cell', (kind, kindRoll) => {
     const grassyDirt = block('grass', 0, 0, 'grass');
     const result = advanceEcosystem(
@@ -106,13 +110,20 @@ describe('vegetation growth', () => {
 });
 
 describe('animal spawning and diets', () => {
-  it('offers fifteen species, including nine additional animals', () => {
+  it('offers sixteen species, including the beaver', () => {
     expect(ANIMAL_KEYS).toEqual([
       'sheep', 'cow', 'pig', 'rabbit', 'goat',
-      'deer', 'horse', 'chicken', 'duck', 'turtle',
+      'deer', 'horse', 'chicken', 'duck', 'turtle', 'beaver',
       'fox', 'wolf', 'bear', 'eagle', 'crocodile',
     ]);
-    expect(ANIMAL_KEYS).toHaveLength(15);
+    expect(ANIMAL_KEYS).toHaveLength(16);
+    expect(ANIMALS.beaver).toMatchObject({
+      vegetation: ['sapling'],
+      materials: ['wood'],
+      predator: false,
+      hungerLossEveryTicks: 4,
+      eatEveryTicks: 8,
+    });
     expect(ANIMALS.fox).toMatchObject({
       predator: true,
       maxHealth: 12,
@@ -192,7 +203,7 @@ describe('animal spawning and diets', () => {
     const result = advanceEcosystem([grassyDirt], ecosystem, () => 1);
 
     expect(result.ecosystem.vegetation).toEqual([]);
-    expect(result.ecosystem.animals[0]).toMatchObject({ eaten: 1, hunger: 72 });
+    expect(result.ecosystem.animals[0]).toMatchObject({ eaten: 1, hunger: 73 });
   });
 
   it('keeps inedible surface growth while grazing the edible block beneath it', () => {
@@ -206,11 +217,11 @@ describe('animal spawning and diets', () => {
     const result = advanceEcosystem([grassyDirt], ecosystem, () => 1);
 
     expect(result.ecosystem.vegetation).toEqual(ecosystem.vegetation);
-    expect(result.ecosystem.animals[0]).toMatchObject({ eaten: 1, hunger: 72 });
+    expect(result.ecosystem.animals[0]).toMatchObject({ eaten: 1, hunger: 73 });
     expect(result.blocks[0].material).toBe('soil');
   });
 
-  it.each(HERBIVORE_KEYS)(
+  it.each(GRAZER_KEYS)(
     '%s can graze grassy dirt after surface growth is gone',
     (kind) => {
       const grassyDirt = block('grass', 0, 0, 'grass');
@@ -222,16 +233,18 @@ describe('animal spawning and diets', () => {
       const result = advanceEcosystem([grassyDirt], ecosystem, () => 1);
 
       expect(result.blocks[0].material).toBe('soil');
-      expect(result.ecosystem.animals[0]).toMatchObject({ eaten: 1, hunger: 72 });
+      expect(result.ecosystem.animals[0]).toMatchObject({ eaten: 1, hunger: 73 });
     },
   );
 
-  it('gives every non-predatory species leaves and moss as plant foods', () => {
-    for (const kind of HERBIVORE_KEYS) {
+  it('gives general grazers shared plant foods while keeping the beaver tree-only', () => {
+    for (const kind of GRAZER_KEYS) {
       expect(ANIMALS[kind].materials).toEqual(
         expect.arrayContaining(['grass', 'leaves', 'moss']),
       );
     }
+    expect(ANIMALS.beaver.materials).toEqual(['wood']);
+    expect(ANIMALS.beaver.vegetation).toEqual(['sapling']);
     for (const kind of PREDATOR_KEYS) expect(ANIMALS[kind].materials).toEqual([]);
   });
 
@@ -248,7 +261,7 @@ describe('animal spawning and diets', () => {
 
     const result = advanceEcosystem([foodBlock], ecosystem, () => 1);
 
-    expect(result.ecosystem.animals[0]).toMatchObject({ eaten: 1, hunger: 72 });
+    expect(result.ecosystem.animals[0]).toMatchObject({ eaten: 1, hunger: 73 });
     expect(result.blocks[0]?.material).toBe(remainder);
   });
 
@@ -263,7 +276,73 @@ describe('animal spawning and diets', () => {
     const result = advanceEcosystem([moss], ecosystem, () => 1);
 
     expect(result.blocks).toEqual([moss]);
-    expect(result.ecosystem.animals[0]).toMatchObject({ eaten: 0, hunger: 38 });
+    expect(result.ecosystem.animals[0]).toMatchObject({ eaten: 0, hunger: 39 });
+  });
+
+  it('does not consume food until an animal is missing a full meal', () => {
+    const grassyDirt = block('grass', 0, 0, 'grass');
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      vegetation: [{ id: 'food', blockId: grassyDirt.id, kind: 'grass' }],
+      animals: [animal('rabbit', 'rabbit-0')],
+      nextEntityId: 1,
+    };
+
+    const result = advanceEcosystem([grassyDirt], ecosystem, () => 1);
+
+    expect(result.ecosystem.vegetation).toEqual(ecosystem.vegetation);
+    expect(result.ecosystem.animals[0]).toMatchObject({ eaten: 0, hunger: 99 });
+  });
+
+  it('lets a beaver eat saplings only on its slow feeding cadence', () => {
+    const grassyDirt = block('grass', 0, 0, 'grass');
+    let ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      vegetation: [{ id: 'sapling', blockId: grassyDirt.id, kind: 'sapling' }],
+      animals: [animal('beaver', 'beaver-0', 0, 0, { hunger: 40 })],
+      nextEntityId: 1,
+    };
+
+    for (let tick = 1; tick < 8; tick += 1) {
+      ecosystem = advanceEcosystem([grassyDirt], ecosystem, () => 1).ecosystem;
+    }
+    expect(ecosystem.vegetation).toHaveLength(1);
+    expect(ecosystem.animals[0]).toMatchObject({ eaten: 0, hunger: 39 });
+
+    ecosystem = advanceEcosystem([grassyDirt], ecosystem, () => 1).ecosystem;
+    expect(ecosystem.vegetation).toEqual([]);
+    expect(ecosystem.animals[0]).toMatchObject({ eaten: 1, hunger: 72 });
+  });
+
+  it('lets a hungry beaver consume exposed wood', () => {
+    const wood = block('wood', 0, 0, 'wood');
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      tick: 7,
+      animals: [animal('beaver', 'beaver-0', 0, 0, { hunger: 40 })],
+      nextEntityId: 1,
+    };
+
+    const result = advanceEcosystem([wood], ecosystem, () => 1);
+
+    expect(result.blocks).toEqual([]);
+    expect(result.ecosystem.animals[0]).toMatchObject({ eaten: 1, hunger: 73 });
+  });
+
+  it('protects a sapling from ordinary grazers', () => {
+    const grassyDirt = block('grass', 0, 0, 'grass');
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      vegetation: [{ id: 'sapling', blockId: grassyDirt.id, kind: 'sapling' }],
+      animals: [animal('sheep', 'sheep-0', 0, 0, { hunger: ANIMAL_FEED_THRESHOLD })],
+      nextEntityId: 1,
+    };
+
+    const result = advanceEcosystem([grassyDirt], ecosystem, () => 1);
+
+    expect(result.blocks).toEqual([grassyDirt]);
+    expect(result.ecosystem.vegetation).toEqual(ecosystem.vegetation);
+    expect(result.ecosystem.animals[0].eaten).toBe(0);
   });
 });
 
@@ -423,7 +502,7 @@ describe('animal life cycle', () => {
 
     const grown = advanceEcosystem([grassyDirt], ecosystem, () => 1).ecosystem.animals[0];
 
-    expect(grown).toMatchObject({ isBaby: false, eaten: 0, hunger: 72 });
+    expect(grown).toMatchObject({ isBaby: false, eaten: 0, hunger: 73 });
     expect(grown.breedingCooldown).toBeGreaterThan(0);
   });
 
@@ -479,7 +558,7 @@ describe('animal life cycle', () => {
     };
 
     expect(advanceEcosystem(world, ecosystem, () => 1).ecosystem.animals).toMatchObject([
-      { id: 'fed-cow', hunger: MAX_ANIMAL_HUNGER - 2 },
+      { id: 'fed-cow', hunger: MAX_ANIMAL_HUNGER - 1 },
     ]);
   });
 });
@@ -495,7 +574,7 @@ describe('predator hunting', () => {
       const ecosystem: EcosystemState = {
         ...emptyEcosystem(),
         animals: [
-          animal('fox', 'fox-0', 0, 0),
+          animal('fox', 'fox-0', 0, 0, { hunger: 40 }),
           animal(preyKind, `${preyKind}-1`, 1, 0, { health: 1 }),
         ],
         nextEntityId: 2,
@@ -521,7 +600,7 @@ describe('predator hunting', () => {
     const ecosystem: EcosystemState = {
       ...emptyEcosystem(),
       animals: [
-        animal(predatorKind, `${predatorKind}-0`, 0, 0),
+        animal(predatorKind, `${predatorKind}-0`, 0, 0, { hunger: 40 }),
         animal(preyKind, `${preyKind}-1`, 1, 0),
       ],
       nextEntityId: 2,
@@ -542,7 +621,7 @@ describe('predator hunting', () => {
     const ecosystem: EcosystemState = {
       ...emptyEcosystem(),
       animals: [
-        animal('fox', 'fox-0', 0, 0),
+        animal('fox', 'fox-0', 0, 0, { hunger: 40 }),
         animal('sheep', 'sheep-1', 2, 0),
       ],
       nextEntityId: 2,
@@ -566,7 +645,7 @@ describe('predator hunting', () => {
     const ecosystem: EcosystemState = {
       ...emptyEcosystem(),
       animals: [
-        animal('fox', 'fox-0', 0, 0),
+        animal('fox', 'fox-0', 0, 0, { hunger: 40 }),
         animal('sheep', 'sheep-1', 1, 0),
       ],
       nextEntityId: 2,
@@ -588,7 +667,7 @@ describe('predator hunting', () => {
       ...emptyEcosystem(),
       tick: 1,
       animals: [
-        animal('fox', 'fox-0', 0, 0),
+        animal('fox', 'fox-0', 0, 0, { hunger: 40 }),
         animal('sheep', 'sheep-1', 1, 0),
       ],
       nextEntityId: 2,
@@ -620,7 +699,7 @@ describe('predator hunting', () => {
       ...emptyEcosystem(),
       tick: 1,
       animals: [
-        animal('fox', 'fox-0', 0, 0),
+        animal('fox', 'fox-0', 0, 0, { hunger: 40 }),
         animal('sheep', 'sheep-1', 1, 0),
       ],
       nextEntityId: 2,
@@ -645,7 +724,7 @@ describe('predator hunting', () => {
     const ecosystem: EcosystemState = {
       ...emptyEcosystem(),
       animals: [
-        animal('fox', 'fox-0', 0, 0, { health: 1 }),
+        animal('fox', 'fox-0', 0, 0, { health: 1, hunger: 40 }),
         animal('sheep', 'sheep-1', 1, 0),
       ],
       nextEntityId: 2,
@@ -655,6 +734,29 @@ describe('predator hunting', () => {
 
     expect(result.animals).toHaveLength(1);
     expect(result.animals[0]).toMatchObject({ id: 'sheep-1' });
+  });
+
+  it('does not let a well-fed predator consume prey', () => {
+    const world = [
+      block('fox-cell', 0, 0, 'stone'),
+      block('rabbit-cell', 1, 0, 'stone'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('fox', 'fox-0', 0, 0),
+        animal('rabbit', 'rabbit-1', 1, 0),
+      ],
+      nextEntityId: 2,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 0).ecosystem;
+
+    expect(result.animals).toHaveLength(2);
+    expect(result.animals.find(({ id }) => id === 'fox-0')).toMatchObject({
+      eaten: 0,
+      hunger: 99,
+    });
   });
 });
 
@@ -669,8 +771,8 @@ describe('ecosystem persistence validation', () => {
   });
 
   it('accepts each supported animal kind', () => {
-    const vegetationKinds: VegetationKind[] = ['grass', 'flower', 'tall-grass'];
-    expect(vegetationKinds).toHaveLength(3);
+    const vegetationKinds: VegetationKind[] = ['grass', 'flower', 'tall-grass', 'sapling'];
+    expect(vegetationKinds).toHaveLength(4);
     expect(isValidEcosystem({
       ...emptyEcosystem(),
       animals: ANIMAL_KEYS.map((kind, index) => animal(kind, `${kind}-${index}`, index, 0)),
