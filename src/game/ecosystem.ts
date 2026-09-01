@@ -5,6 +5,7 @@ export const ANIMAL_BREEDING_MIN_HUNGER = 70;
 export const BABY_GROWTH_MEALS = 3;
 export const MAX_ANIMAL_HUNGER = 100;
 export const HERBIVORE_FIGHT_BACK_CHANCE = 0.15;
+export const SHORT_GRASS_MATURATION_TICKS = 18;
 
 const SOIL_TO_GRASS_CHANCE = 0.012;
 const VEGETATION_GROWTH_CHANCE = 0.028;
@@ -30,6 +31,7 @@ export type Vegetation = {
   id: string;
   blockId: string;
   kind: VegetationKind;
+  maturesAtTick?: number;
 };
 
 export const HERBIVORE_KEYS = [
@@ -483,6 +485,21 @@ function chooseVegetation(value: number): VegetationKind {
   return 'sapling';
 }
 
+function matureShortGrass(
+  growth: Vegetation,
+  currentTick: number,
+  nextTick: number,
+): Vegetation {
+  if (growth.kind !== 'grass') return growth;
+  const maturesAtTick = growth.maturesAtTick ?? currentTick + SHORT_GRASS_MATURATION_TICKS;
+  if (nextTick < maturesAtTick) {
+    return growth.maturesAtTick === maturesAtTick
+      ? growth
+      : { ...growth, maturesAtTick };
+  }
+  return { id: growth.id, blockId: growth.blockId, kind: 'tall-grass' };
+}
+
 function vegetationCanGrowOn(kind: VegetationKind, block: VoxelBlock) {
   return kind === 'kelp' ? block.material === 'water' : block.material === 'grass';
 }
@@ -689,15 +706,17 @@ export function advanceEcosystem(
   const consumedBlockIds = new Set<string>();
   const convertedToGrass = new Set<string>();
 
-  let vegetation = state.vegetation.filter((growth) => {
-    const block = blocksById.get(growth.blockId);
-    return Boolean(
-      block &&
-      vegetationCanGrowOn(growth.kind, block) &&
-      !block.burning &&
-      surfaceIds.has(block.id),
-    );
-  });
+  let vegetation = state.vegetation
+    .filter((growth) => {
+      const block = blocksById.get(growth.blockId);
+      return Boolean(
+        block &&
+        vegetationCanGrowOn(growth.kind, block) &&
+        !block.burning &&
+        surfaceIds.has(block.id),
+      );
+    })
+    .map((growth) => matureShortGrass(growth, state.tick, tick));
 
   for (const block of surfaces.values()) {
     if (
@@ -730,11 +749,16 @@ export function advanceEcosystem(
     ) {
       continue;
     }
-    vegetation.push({
+    const kind = chooseVegetation(random(`sprout-kind:${tick}:${block.id}`));
+    const sprout: Vegetation = {
       id: `growth-${nextEntityId++}`,
       blockId: block.id,
-      kind: chooseVegetation(random(`sprout-kind:${tick}:${block.id}`)),
-    });
+      kind,
+    };
+    if (kind === 'grass') {
+      sprout.maturesAtTick = tick + SHORT_GRASS_MATURATION_TICKS;
+    }
+    vegetation.push(sprout);
     vegetationBlockIds.add(block.id);
   }
 
@@ -1101,6 +1125,10 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
       typeof growth.id !== 'string' ||
       typeof growth.blockId !== 'string' ||
       !['grass', 'flower', 'tall-grass', 'sapling', 'kelp'].includes(growth.kind ?? '') ||
+      (growth.maturesAtTick !== undefined &&
+        (growth.kind !== 'grass' ||
+          !Number.isInteger(growth.maturesAtTick) ||
+          growth.maturesAtTick < 0)) ||
       entityIds.has(growth.id)
     ) {
       return false;

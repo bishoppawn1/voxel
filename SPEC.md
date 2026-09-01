@@ -123,7 +123,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 - Exposed grassy dirt without an existing growth has a small chance to sprout
   short grass, a flower, tall grass, or—rarely—a tree sapling. These growths are lightweight surface
   attachments keyed to stable block IDs; they do not occupy world cells and
-  move with their supporting block.
+  move with their supporting block. Short grass matures into tall grass after
+  a short, deterministic growth period.
 - A starter or newly reset world contains two adult sheep on grassy terrain,
   naturally seeded kelp, two small fish, and one big fish in its pond.
   The player can spawn Sheep, Cows, Pigs, Rabbits, Goats, Deer, Horses,
@@ -241,8 +242,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   flammables, fire spreads, and weak vertical columns cannot exceed their
   material tolerance.
 - Dirt can become grassy dirt, grassy dirt can sprout non-block vegetation, and
-  covered grassy dirt returns to Dirt. Rare tree saplings can grow on exposed
-  grass. All eighteen animals can be spawned and face
+  covered grassy dirt returns to Dirt. Short grass matures into tall grass, and
+  rare tree saplings can grow on exposed grass. All eighteen animals can be spawned and face
   their movement direction. Herbivores seek their species-specific growths plus
   shared grassy dirt, Leaves, and Moss without crossing steps taller than one
   block, while beavers slowly eat only saplings or Wood, predators hunt only

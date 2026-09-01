@@ -9,6 +9,7 @@ import {
   HERBIVORE_KEYS,
   MAX_ANIMAL_HUNGER,
   PREDATOR_KEYS,
+  SHORT_GRASS_MATURATION_TICKS,
   advanceEcosystem,
   animalMovesOnTick,
   convertCoveredGrassToSoil,
@@ -88,7 +89,12 @@ describe('vegetation growth', () => {
 
     expect(result.blocks).toEqual([grassyDirt]);
     expect(result.ecosystem.vegetation).toEqual([
-      { id: 'growth-0', blockId: 'grass', kind: 'grass' },
+      {
+        id: 'growth-0',
+        blockId: 'grass',
+        kind: 'grass',
+        maturesAtTick: SHORT_GRASS_MATURATION_TICKS + 1,
+      },
     ]);
   });
 
@@ -106,6 +112,34 @@ describe('vegetation growth', () => {
 
     expect(result.blocks).toEqual([grassyDirt]);
     expect(result.ecosystem.vegetation[0].kind).toBe(kind);
+  });
+
+  it('matures short grass into tall grass after its growth period', () => {
+    const grassyDirt = block('grass', 0, 0, 'grass');
+    let ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      vegetation: [{
+        id: 'short-grass',
+        blockId: grassyDirt.id,
+        kind: 'grass',
+        maturesAtTick: SHORT_GRASS_MATURATION_TICKS,
+      }],
+      nextEntityId: 1,
+    };
+
+    for (let tick = 1; tick < SHORT_GRASS_MATURATION_TICKS; tick += 1) {
+      ecosystem = advanceEcosystem([grassyDirt], ecosystem, () => 1).ecosystem;
+    }
+    expect(ecosystem.vegetation[0]).toMatchObject({
+      id: 'short-grass',
+      kind: 'grass',
+    });
+
+    ecosystem = advanceEcosystem([grassyDirt], ecosystem, () => 1).ecosystem;
+
+    expect(ecosystem.vegetation).toEqual([
+      { id: 'short-grass', blockId: grassyDirt.id, kind: 'tall-grass' },
+    ]);
   });
 
   it('grows kelp as a water attachment without creating a block', () => {
@@ -315,7 +349,12 @@ describe('animal spawning and diets', () => {
 
     const result = advanceEcosystem([grassyDirt], ecosystem, () => 1);
 
-    expect(result.ecosystem.vegetation).toEqual(ecosystem.vegetation);
+    expect(result.ecosystem.vegetation).toEqual([
+      {
+        ...ecosystem.vegetation[0],
+        maturesAtTick: SHORT_GRASS_MATURATION_TICKS,
+      },
+    ]);
     expect(result.ecosystem.animals[0]).toMatchObject({ eaten: 0, hunger: 99 });
   });
 
@@ -904,6 +943,19 @@ describe('ecosystem persistence validation', () => {
       animals: [{ ...animal('sheep', 'bad'), kind: 'dragon' }],
     })).toBe(false);
     expect(isValidEcosystem({ ...emptyEcosystem(), animals: [{ id: 'bad' }] })).toBe(false);
+  });
+
+  it('rejects malformed short-grass maturation deadlines', () => {
+    expect(isValidEcosystem({
+      ...emptyEcosystem(),
+      vegetation: [{
+        id: 'bad-grass',
+        blockId: 'grass',
+        kind: 'grass',
+        maturesAtTick: -1,
+      }],
+      nextEntityId: 1,
+    })).toBe(false);
   });
 
   it('accepts each supported animal kind', () => {
