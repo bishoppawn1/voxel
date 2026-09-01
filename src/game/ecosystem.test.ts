@@ -1029,6 +1029,59 @@ describe('animal life cycle', () => {
       .toMatchObject({ x: 0, z: 0 });
   });
 
+  it('plans land-animal routes through traffic, waits, then resumes', () => {
+    const world = Array.from({ length: 6 }, (_, x) => [
+      block(`ground-${x}-0`, x, 0, x === 5 ? 'grass' : 'stone'),
+      block(`ground-${x}-1`, x, 1, 'stone'),
+    ]).flat();
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('rabbit', 'rabbit-forager', 0, 0, { hunger: 40 }),
+        animal('cow', 'cow-traffic', 2, 0, { breedingCooldown: 99 }),
+        animal('goat', 'goat-traffic', 2, 1, { breedingCooldown: 99 }),
+      ],
+      nextEntityId: 3,
+    };
+
+    const approaching = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+    expect(approaching.animals.find(({ id }) => id === 'rabbit-forager'))
+      .toMatchObject({ x: 1, z: 0 });
+
+    const waiting = advanceEcosystem(world, approaching, () => 1).ecosystem;
+    expect(waiting.animals.find(({ id }) => id === 'rabbit-forager'))
+      .toMatchObject({ x: 1, z: 0 });
+
+    const clearedTraffic = {
+      ...waiting,
+      animals: waiting.animals.filter(({ id }) => !id.endsWith('-traffic')),
+    };
+    const resumed = advanceEcosystem(world, clearedTraffic, () => 1).ecosystem;
+    expect(resumed.animals.find(({ id }) => id === 'rabbit-forager'))
+      .toMatchObject({ x: 2, z: 0 });
+  });
+
+  it('still treats an impassable dirt rise as a permanent land-animal barrier', () => {
+    const world = Array.from({ length: 6 }, (_, x) => [
+      block(
+        `ground-${x}-0`,
+        x,
+        0,
+        x === 5 ? 'grass' : x === 2 ? 'soil' : 'stone',
+        x === 2 ? 2 : 0,
+      ),
+      block(`ground-${x}-1`, x, 1, x === 2 ? 'soil' : 'stone', x === 2 ? 2 : 0),
+    ]).flat();
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('rabbit', 'rabbit-forager', 0, 0, { hunger: 40 })],
+      nextEntityId: 1,
+    };
+
+    const blocked = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+    expect(blocked.animals[0]).toMatchObject({ x: 0, z: 0 });
+  });
+
   it('moves an animal onto adjacent preferred food before eating on the next tick', () => {
     const world = [
       block('stone', 0, 0, 'stone'),

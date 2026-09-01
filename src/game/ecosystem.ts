@@ -868,7 +868,6 @@ function moveTowardGoal(
   if (!surfaces.has(startKey)) return animal;
 
   const visited = new Set([startKey]);
-  const occupantsAreTemporaryTraffic = isAquaticAnimal(animal.kind);
   const queue: Array<Position & { firstStep?: Position }> = [{ x: animal.x, z: animal.z }];
   for (let index = 0; index < queue.length; index += 1) {
     const current = queue[index];
@@ -879,7 +878,6 @@ function moveTowardGoal(
       const nextSurface = surfaces.get(key);
       if (
         visited.has(key) ||
-        (!occupantsAreTemporaryTraffic && occupied.has(key)) ||
         !nextSurface ||
         !surfaceIsTraversable(animal, nextSurface) ||
         Math.abs(nextSurface.y - currentSurface.y) > 1

@@ -155,7 +155,10 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   Pigs and Beavers move every three; and Turtles move every four. Slow animals are
   deterministically staggered by individual ID so a herd does not all move on
   the same tick. Predators are therefore faster on average, while the fastest
-  herbivores can still match them. When no food is reachable, animals wait
+  herbivores can still match them. Animals plan through cells occupied by other
+  animals as temporary traffic, but wait before entering an occupied next cell
+  and retry on later ticks. Missing or unsafe terrain and steps taller than one
+  block remain permanent path barriers. When no food is reachable, animals wait
   rather than pacing back and forth. Eating bare grassy dirt changes it back to
   Dirt, allowing the grass cycle to begin again. Animals avoid eating burning
   grass. Every animal visibly turns to face the direction it moves.
@@ -304,7 +307,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   their listed land prey plus both fish species, and prey randomly
   fight or flee. Species use distinct, staggered movement cadences, with
   predators faster on average but fast herbivores able to keep pace. Animals
-  starve at zero and die of old age. Every non-human animal species can produce
+  plan through temporary animal traffic, wait before entering an occupied
+  cell, and never plan through impassable terrain. They starve at zero and die
+  of old age. Every non-human animal species can produce
   smaller babies from a well-fed same-species adult pair and grow those babies into adults
   without displaying overhead bars. Burning animals rush into
   reachable water and extinguish; land animals swim across water. Kelp regrows
