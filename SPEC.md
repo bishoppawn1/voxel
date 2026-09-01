@@ -202,6 +202,10 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 - Controls must expose accessible names, selected states, disabled states, and keyboard shortcuts where applicable.
 - Selecting an animal displays its name and diet, and the spawn preview clearly
   distinguishes a valid surface from an occupied or otherwise invalid one.
+- Every animal has a species-specific low-poly silhouette rather than sharing a
+  recolored quadruped body. Large identifying features stay readable at the
+  normal camera distance: horns and antlers, ears and muzzles, manes and tails,
+  wings and beaks, shells and flippers, and the Crocodile's long body and snout.
 - The first-use message should leave after the first world edit.
 - Motion should honor the operating system's reduced-motion preference.
 
