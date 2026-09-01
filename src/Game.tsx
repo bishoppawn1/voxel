@@ -273,7 +273,16 @@ const ANIMAL_COLORS: Record<AnimalKind, {
   pig: { body: '#e9a4a1', head: '#edaeaa', legs: '#bb7978', accent: '#c77778', scale: 0.9 },
   rabbit: { body: '#c9bba5', head: '#b9aa93', legs: '#9b8b75', accent: '#e1a3a5', scale: 0.7 },
   goat: { body: '#d8d0bc', head: '#b8aa8d', legs: '#625c50', accent: '#8c7655', scale: 0.94 },
+  deer: { body: '#a9784b', head: '#9d6b43', legs: '#5b4636', accent: '#ead3a8', scale: 0.98 },
+  horse: { body: '#865438', head: '#75442f', legs: '#4b3429', accent: '#342821', scale: 1.08 },
+  chicken: { body: '#eee5d1', head: '#f5ecda', legs: '#bb873b', accent: '#c34e3f', scale: 0.58 },
+  duck: { body: '#8d9b63', head: '#52734e', legs: '#b97d2e', accent: '#df9b34', scale: 0.64 },
+  turtle: { body: '#66884d', head: '#71965d', legs: '#536f42', accent: '#3f6038', scale: 0.62 },
   fox: { body: '#d9682f', head: '#df7439', legs: '#342d2a', accent: '#f5e8d0', scale: 0.82 },
+  wolf: { body: '#777d7d', head: '#6a7071', legs: '#454b4d', accent: '#c6c1ae', scale: 0.9 },
+  bear: { body: '#65452f', head: '#74513a', legs: '#3e3026', accent: '#b68a61', scale: 1.15 },
+  eagle: { body: '#594432', head: '#eee8d7', legs: '#c69231', accent: '#d7aa42', scale: 0.76 },
+  crocodile: { body: '#536b3d', head: '#5c7541', legs: '#3e5232', accent: '#9fa268', scale: 1.02 },
 };
 
 function AnimalModel({ animal, surfaceY }: { animal: Animal; surfaceY: number }) {

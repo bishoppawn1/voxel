@@ -396,6 +396,66 @@ function paintMaterial(
         if (y % 4 === 0) context.fillRect(x - 1, y, 3, 1);
       }
       return;
+    case 'diamond':
+      paintOre(context, random, '#2aa9b4', '#9ff4ee');
+      context.fillStyle = '#d6ffff';
+      context.fillRect(4, 3, 1, 1);
+      context.fillRect(11, 10, 1, 1);
+      return;
+    case 'emerald':
+      paintOre(context, random, '#238b50', '#7ee4a0');
+      context.fillStyle = '#c5ffd2';
+      context.fillRect(3, 11, 1, 1);
+      context.fillRect(12, 4, 1, 1);
+      return;
+    case 'quartz':
+      fill(context, '#e8e0d5');
+      scatter(context, random, ['#f8f3e9', '#cfc4ba', '#fffdf6'], 34, 1);
+      context.fillStyle = '#bcaeb0';
+      for (let index = -6; index < SIZE; index += 7) {
+        for (let step = 0; step < 8; step += 1) {
+          context.fillRect(index + step, 3 + step, 1, 1);
+        }
+      }
+      return;
+    case 'bamboo':
+      fill(context, '#76993a');
+      if (face === 'top' || face === 'bottom') {
+        context.fillStyle = '#a8c65c';
+        context.fillRect(2, 2, 12, 12);
+        context.fillStyle = '#4e702c';
+        context.fillRect(3, 3, 10, 1);
+        context.fillRect(3, 12, 10, 1);
+        context.fillRect(3, 3, 1, 10);
+        context.fillRect(12, 3, 1, 10);
+      } else {
+        for (let x = 1; x < SIZE; x += 5) {
+          context.fillStyle = '#a4c252';
+          context.fillRect(x, 0, 3, SIZE);
+          context.fillStyle = '#4f702d';
+          context.fillRect(x, 5, 3, 1);
+          context.fillRect(x, 11, 3, 1);
+        }
+      }
+      return;
+    case 'peat':
+      fill(context, '#4a3329');
+      scatter(context, random, ['#2f211c', '#68483a', '#806049', '#39281f'], 72, 2);
+      context.fillStyle = '#967051';
+      context.fillRect(2, 5, 5, 1);
+      context.fillRect(9, 12, 4, 1);
+      return;
+    case 'coral':
+      fill(context, '#cf6c76');
+      scatter(context, random, ['#ef9c91', '#b34e68', '#f2b09e', '#913d58'], 58, 2);
+      context.fillStyle = '#7e394f';
+      for (const [x, y] of [[3, 3], [11, 2], [7, 8], [13, 12], [2, 13]]) {
+        context.fillRect(x, y, 2, 2);
+        context.fillStyle = '#f3aaa0';
+        context.fillRect(x, y, 1, 1);
+        context.fillStyle = '#7e394f';
+      }
+      return;
   }
 }
 
@@ -428,7 +488,7 @@ export function getBlockTextures(material: BlockMaterial) {
     side: side.texture,
     top: top.texture,
     bottom: bottom.texture,
-    preview: material === 'grass' || material === 'wood' || material === 'snow'
+    preview: material === 'grass' || material === 'wood' || material === 'snow' || material === 'bamboo'
       ? top.preview
       : side.preview,
   };

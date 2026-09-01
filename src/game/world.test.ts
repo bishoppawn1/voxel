@@ -454,7 +454,7 @@ describe('world persistence validation', () => {
     expect(isValidWorld([block('a', 99, 0, 0)])).toBe(false);
   });
 
-  it('supports 34 selectable materials, including ten new building blocks', () => {
+  it('supports 40 selectable materials, including six additional blocks', () => {
     const newMaterials = [
       'cobblestone',
       'limestone',
@@ -468,13 +468,28 @@ describe('world persistence validation', () => {
       'glowstone',
     ] as const;
 
-    expect(MATERIAL_KEYS).toHaveLength(34);
+    const additionalMaterials = [
+      'diamond',
+      'emerald',
+      'quartz',
+      'bamboo',
+      'peat',
+      'coral',
+    ] as const;
+
+    expect(MATERIAL_KEYS).toHaveLength(40);
     expect(MATERIALS.soil.label).toBe('Dirt');
     expect(MATERIALS.wood.label).toBe('Wood');
     expect(newMaterials.every((material) => MATERIAL_KEYS.includes(material))).toBe(true);
+    expect(additionalMaterials.every((material) => MATERIAL_KEYS.includes(material))).toBe(true);
     expect(
       newMaterials.every((material, index) =>
         isValidWorld([block(`new-${material}`, index, 0, 0, material)]),
+      ),
+    ).toBe(true);
+    expect(
+      additionalMaterials.every((material, index) =>
+        isValidWorld([block(`additional-${material}`, index, 0, 1, material)]),
       ),
     ).toBe(true);
   });
@@ -490,6 +505,13 @@ describe('world persistence validation', () => {
       supportTolerance: 5,
     });
     expect(MATERIALS.planks.burnDuration).toBe(6);
+    expect(MATERIALS.diamond.supportTolerance).toBe(11);
+    expect(MATERIALS.bamboo.burnDuration).toBe(5);
+    expect(MATERIALS.peat).toMatchObject({
+      gravityBehavior: 'cohesive',
+      supportTolerance: 2,
+      burnDuration: 8,
+    });
   });
 
   it('validates persisted fire state only on flammable materials', () => {

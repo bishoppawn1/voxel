@@ -33,6 +33,12 @@ export const MATERIAL_KEYS = [
   'concrete',
   'steel',
   'glowstone',
+  'diamond',
+  'emerald',
+  'quartz',
+  'bamboo',
+  'peat',
+  'coral',
 ] as const;
 
 export type BlockMaterial = (typeof MATERIAL_KEYS)[number];
@@ -110,6 +116,12 @@ export const MATERIALS: Record<
   concrete: { label: 'Concrete', color: '#a2a5a0', edge: '#646965', supportTolerance: 11, gravityBehavior: 'structural', roughness: 0.91 },
   steel: { label: 'Steel', color: '#89969c', edge: '#4a565d', supportTolerance: 12, gravityBehavior: 'structural', roughness: 0.25, metalness: 0.8 },
   glowstone: { label: 'Glowstone', color: '#d8a442', edge: '#94621d', supportTolerance: 6, gravityBehavior: 'structural', roughness: 0.55, emissive: '#e58a22', emissiveIntensity: 0.4 },
+  diamond: { label: 'Diamond Ore', color: '#67cbd0', edge: '#286f78', supportTolerance: 11, gravityBehavior: 'structural', roughness: 0.28, metalness: 0.3 },
+  emerald: { label: 'Emerald Ore', color: '#4bb875', edge: '#246842', supportTolerance: 10, gravityBehavior: 'structural', roughness: 0.3, metalness: 0.25 },
+  quartz: { label: 'Quartz', color: '#e7dfd4', edge: '#aaa097', supportTolerance: 9, gravityBehavior: 'structural', roughness: 0.42 },
+  bamboo: { label: 'Bamboo', color: '#85a83f', edge: '#4e6f2d', supportTolerance: 8, gravityBehavior: 'structural', burnDuration: 5, roughness: 0.9 },
+  peat: { label: 'Peat', color: '#4f382d', edge: '#30221d', supportTolerance: 2, gravityBehavior: 'cohesive', burnDuration: 8, roughness: 1 },
+  coral: { label: 'Coral', color: '#dd7f82', edge: '#984f5e', supportTolerance: 5, gravityBehavior: 'cohesive', roughness: 0.95 },
 };
 
 const NEIGHBORS: Cell[] = [

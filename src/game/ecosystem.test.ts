@@ -5,7 +5,9 @@ import {
   ANIMAL_KEYS,
   BABY_GROWTH_MEALS,
   HERBIVORE_FIGHT_BACK_CHANCE,
+  HERBIVORE_KEYS,
   MAX_ANIMAL_HUNGER,
+  PREDATOR_KEYS,
   advanceEcosystem,
   convertCoveredGrassToSoil,
   createInitialEcosystem,
@@ -103,21 +105,26 @@ describe('vegetation growth', () => {
 });
 
 describe('animal spawning and diets', () => {
-  it('offers five grazing species and one predatory fox', () => {
-    expect(ANIMAL_KEYS).toEqual(['sheep', 'cow', 'pig', 'rabbit', 'goat', 'fox']);
+  it('offers fifteen species, including nine additional animals', () => {
+    expect(ANIMAL_KEYS).toEqual([
+      'sheep', 'cow', 'pig', 'rabbit', 'goat',
+      'deer', 'horse', 'chicken', 'duck', 'turtle',
+      'fox', 'wolf', 'bear', 'eagle', 'crocodile',
+    ]);
+    expect(ANIMAL_KEYS).toHaveLength(15);
     expect(ANIMALS.fox).toMatchObject({
       predator: true,
       maxHealth: 12,
       attackDamage: 4,
-      prey: ['sheep', 'cow', 'pig', 'rabbit', 'goat'],
+      prey: HERBIVORE_KEYS,
     });
-    for (const kind of ['sheep', 'cow', 'pig', 'rabbit', 'goat'] as const) {
+    for (const kind of HERBIVORE_KEYS) {
       expect(ANIMALS[kind]).toMatchObject({
         predator: false,
-        maxHealth: 4,
         attackDamage: 1,
       });
     }
+    for (const kind of PREDATOR_KEYS) expect(ANIMALS[kind].predator).toBe(true);
   });
 
   it('spawns the selected animal at full hunger on an open surface', () => {
@@ -144,6 +151,11 @@ describe('animal spawning and diets', () => {
     ['pig', 'flower'],
     ['rabbit', 'grass'],
     ['goat', 'flower'],
+    ['deer', 'tall-grass'],
+    ['horse', 'grass'],
+    ['chicken', 'flower'],
+    ['duck', 'grass'],
+    ['turtle', 'grass'],
   ] as const)('%s eats its preferred vegetation', (kind, food) => {
     const grassyDirt = block('grass', 0, 0, 'grass');
     const ecosystem: EcosystemState = {
@@ -173,7 +185,7 @@ describe('animal spawning and diets', () => {
     expect(result.blocks[0].material).toBe('soil');
   });
 
-  it.each(['sheep', 'cow', 'pig', 'rabbit', 'goat'] as const)(
+  it.each(HERBIVORE_KEYS)(
     '%s can graze grassy dirt after surface growth is gone',
     (kind) => {
       const grassyDirt = block('grass', 0, 0, 'grass');
@@ -190,12 +202,12 @@ describe('animal spawning and diets', () => {
   );
 
   it('gives every non-predatory species leaves and moss as plant foods', () => {
-    for (const kind of ['sheep', 'cow', 'pig', 'rabbit', 'goat'] as const) {
+    for (const kind of HERBIVORE_KEYS) {
       expect(ANIMALS[kind].materials).toEqual(
         expect.arrayContaining(['grass', 'leaves', 'moss']),
       );
     }
-    expect(ANIMALS.fox.materials).toEqual([]);
+    for (const kind of PREDATOR_KEYS) expect(ANIMALS[kind].materials).toEqual([]);
   });
 
   it.each([
@@ -423,8 +435,8 @@ describe('animal life cycle', () => {
   });
 });
 
-describe('fox hunting', () => {
-  it.each(['sheep', 'cow', 'pig', 'rabbit', 'goat'] as const)(
+describe('predator hunting', () => {
+  it.each(HERBIVORE_KEYS)(
     'recognizes %s as prey',
     (preyKind) => {
       const world = [
@@ -435,7 +447,7 @@ describe('fox hunting', () => {
         ...emptyEcosystem(),
         animals: [
           animal('fox', 'fox-0', 0, 0),
-          animal(preyKind, `${preyKind}-1`, 1, 0),
+          animal(preyKind, `${preyKind}-1`, 1, 0, { health: 1 }),
         ],
         nextEntityId: 2,
       };
@@ -446,6 +458,31 @@ describe('fox hunting', () => {
       expect(result.animals[0]).toMatchObject({ id: 'fox-0', eaten: 1 });
     },
   );
+
+  it.each([
+    ['wolf', 'rabbit'],
+    ['bear', 'deer'],
+    ['eagle', 'chicken'],
+    ['crocodile', 'duck'],
+  ] as const)('%s hunts an animal in its prey category', (predatorKind, preyKind) => {
+    const world = [
+      block('predator-cell', 0, 0, 'stone'),
+      block('prey-cell', 1, 0, 'stone'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal(predatorKind, `${predatorKind}-0`, 0, 0),
+        animal(preyKind, `${preyKind}-1`, 1, 0),
+      ],
+      nextEntityId: 2,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 0).ecosystem;
+
+    expect(result.animals).toHaveLength(1);
+    expect(result.animals[0]).toMatchObject({ kind: predatorKind, eaten: 1 });
+  });
 
   it('walks toward the nearest prey and faces its movement direction', () => {
     const world = [
