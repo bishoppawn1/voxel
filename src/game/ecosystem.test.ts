@@ -9,12 +9,12 @@ import {
   HERBIVORE_KEYS,
   MAX_ANIMAL_HUNGER,
   PREDATOR_KEYS,
+  SAPLING_MATURATION_TICKS,
   SHORT_GRASS_MATURATION_TICKS,
   advanceEcosystem,
   animalMovesOnTick,
   convertCoveredGrassToSoil,
   createInitialEcosystem,
-  growSaplingsIntoTrees,
   isValidEcosystem,
   migrateEcosystem,
   spawnAnimal,
@@ -23,7 +23,12 @@ import {
   type EcosystemState,
   type VegetationKind,
 } from './ecosystem';
-import { createStarterWorld, type BlockMaterial, type VoxelBlock } from './world';
+import {
+  advanceWorldStep,
+  createStarterWorld,
+  type BlockMaterial,
+  type VoxelBlock,
+} from './world';
 
 const block = (
   id: string,
@@ -143,6 +148,134 @@ describe('vegetation growth', () => {
     ]);
   });
 
+  it('matures a sapling into a rooted wood-and-leaves tree', () => {
+    const grassyDirt = block('grass', 0, 0, 'grass');
+    let ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      vegetation: [{
+        id: 'sapling',
+        blockId: grassyDirt.id,
+        kind: 'sapling',
+        maturesAtTick: SAPLING_MATURATION_TICKS,
+      }],
+      nextEntityId: 1,
+    };
+    let world = [grassyDirt];
+
+    for (let tick = 1; tick <= SAPLING_MATURATION_TICKS; tick += 1) {
+      const result = advanceEcosystem(world, ecosystem, () => 0);
+      world = result.blocks;
+      ecosystem = result.ecosystem;
+    }
+
+    expect(ecosystem.vegetation).toEqual([]);
+    expect(world.find(({ id }) => id === grassyDirt.id)).toMatchObject({
+      material: 'soil',
+    });
+    expect(world.filter(({ material }) => material === 'wood').length).toBeGreaterThanOrEqual(8);
+    expect(world.filter(({ material }) => material === 'leaves').length).toBeGreaterThan(0);
+    expect(world).toContainEqual(expect.objectContaining({
+      id: 'tree-sapling-0',
+      x: 0,
+      y: 1,
+      z: 0,
+      material: 'wood',
+    }));
+    expect(advanceWorldStep(world, false).structuresMoved).toBe(false);
+  });
+
+  it('uses multiple deterministic tree growth patterns', () => {
+    const growTree = (patternRoll: number) => {
+      const grassyDirt = block('grass', 0, 0, 'grass');
+      const ecosystem: EcosystemState = {
+        ...emptyEcosystem(),
+        vegetation: [{
+          id: 'sapling',
+          blockId: grassyDirt.id,
+          kind: 'sapling',
+          maturesAtTick: 1,
+        }],
+        nextEntityId: 1,
+      };
+      const result = advanceEcosystem(
+        [grassyDirt],
+        ecosystem,
+        (key) => key.startsWith('tree-pattern:') ? patternRoll : 0,
+      );
+      expect(advanceWorldStep(result.blocks, false).structuresMoved).toBe(false);
+      return result.blocks
+        .filter(({ id }) => id.startsWith('tree-'))
+        .map(({ x, y, z, material }) => `${x},${y},${z}:${material}`)
+        .sort();
+    };
+
+    const patterns = [growTree(0), growTree(0.4), growTree(0.8)];
+
+    expect(new Set(patterns.map((pattern) => pattern.join('|'))).size).toBe(3);
+  });
+
+  it('waits to grow a mature sapling until its tree footprint is clear', () => {
+    const grassyDirt = block('grass', 0, 0, 'grass');
+    const obstruction = block('floating-block', 1, 0, 'stone', 7);
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      vegetation: [{
+        id: 'sapling',
+        blockId: grassyDirt.id,
+        kind: 'sapling',
+        maturesAtTick: 1,
+      }],
+      nextEntityId: 1,
+    };
+
+    const blocked = advanceEcosystem([grassyDirt, obstruction], ecosystem, () => 0);
+    expect(blocked.blocks).toEqual([grassyDirt, obstruction]);
+    expect(blocked.ecosystem.vegetation).toEqual(ecosystem.vegetation);
+
+    const grown = advanceEcosystem(
+      [grassyDirt],
+      blocked.ecosystem,
+      () => 0,
+    );
+    expect(grown.ecosystem.vegetation).toEqual([]);
+    expect(grown.blocks.some(({ material }) => material === 'wood')).toBe(true);
+  });
+
+  it('keeps a hungry rabbit on the ground below a mature tree canopy', () => {
+    const grassyDirt = block('grass', 0, 0, 'grass');
+    const grown = advanceEcosystem(
+      [grassyDirt],
+      {
+        ...emptyEcosystem(),
+        vegetation: [{
+          id: 'sapling',
+          blockId: grassyDirt.id,
+          kind: 'sapling',
+          maturesAtTick: 1,
+        }],
+        nextEntityId: 1,
+      },
+      () => 0,
+    );
+    const rabbitGround = block('rabbit-ground', 2, 0, 'stone');
+    const result = advanceEcosystem(
+      [...grown.blocks, rabbitGround],
+      {
+        ...grown.ecosystem,
+        animals: [animal('rabbit', 'rabbit-1', 2, 0, { hunger: 40 })],
+        nextEntityId: 2,
+      },
+      () => 1,
+    );
+
+    expect(result.ecosystem.animals[0]).toMatchObject({
+      x: 2,
+      z: 0,
+      eaten: 0,
+    });
+    expect(result.blocks.some(({ material }) => material === 'leaves')).toBe(true);
+  });
+
   it('grows kelp as a water attachment without creating a block', () => {
     const water = block('water', 0, 0, 'water');
     const result = advanceEcosystem([water], emptyEcosystem(), () => 0);
@@ -153,21 +286,6 @@ describe('vegetation growth', () => {
     ]);
   });
 
-  it('occasionally matures a sapling into a connected wood-and-leaf tree', () => {
-    const ground = block('grass', 0, 0, 'grass');
-    const result = growSaplingsIntoTrees(
-      [ground],
-      [{ id: 'sapling-0', blockId: ground.id, kind: 'sapling' }],
-      1,
-      () => 0,
-    );
-
-    expect(result.vegetation).toEqual([]);
-    expect(result.blocks.filter(({ material }) => material === 'wood')).toHaveLength(2);
-    expect(result.blocks.filter(({ material }) => material === 'leaves')).toHaveLength(5);
-    expect(new Set(result.blocks.map(({ x, y, z }) => `${x},${y},${z}`)).size)
-      .toBe(result.blocks.length);
-  });
 });
 
 describe('animal spawning and diets', () => {
@@ -424,7 +542,10 @@ describe('animal spawning and diets', () => {
     const result = advanceEcosystem([grassyDirt], ecosystem, () => 1);
 
     expect(result.blocks).toEqual([grassyDirt]);
-    expect(result.ecosystem.vegetation).toEqual(ecosystem.vegetation);
+    expect(result.ecosystem.vegetation).toEqual([{
+      ...ecosystem.vegetation[0],
+      maturesAtTick: SAPLING_MATURATION_TICKS,
+    }]);
     expect(result.ecosystem.animals[0].eaten).toBe(0);
   });
 });

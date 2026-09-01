@@ -78,6 +78,7 @@ export const WORLD_RENDER_SIZE = 24;
 export const WORLD_SIZE = WORLD_RENDER_SIZE / BLOCK_SIZE;
 export const WORLD_RADIUS = WORLD_SIZE / 2;
 export const MAX_HEIGHT = 12 / BLOCK_SIZE;
+export const MAX_WORLD_BLOCKS = 2000;
 
 export const MATERIALS: Record<
   BlockMaterial,
@@ -87,7 +88,7 @@ export const MATERIALS: Record<
   soil: { label: 'Dirt', color: '#9a6845', edge: '#70482f', supportTolerance: 2, gravityBehavior: 'cohesive' },
   stone: { label: 'Stone', color: '#7d898e', edge: '#586468', supportTolerance: 7, gravityBehavior: 'structural' },
   sand: { label: 'Sand', color: '#d7bd76', edge: '#a88d4d', supportTolerance: 0, gravityBehavior: 'loose' },
-  wood: { label: 'Wood', color: '#a8733f', edge: '#6f4626', supportTolerance: 10, gravityBehavior: 'structural', burnDuration: 6, roughness: 0.95 },
+  wood: { label: 'Wood', color: '#a8733f', edge: '#6f4626', supportTolerance: 15, gravityBehavior: 'structural', burnDuration: 6, roughness: 0.95 },
   leaves: { label: 'Leaves', color: '#477d46', edge: '#285532', supportTolerance: 5, gravityBehavior: 'cohesive', burnDuration: 3, roughness: 0.9 },
   brick: { label: 'Brick', color: '#a74f3f', edge: '#743327', supportTolerance: 8, gravityBehavior: 'structural', roughness: 0.92 },
   clay: { label: 'Clay', color: '#bf765d', edge: '#894f40', supportTolerance: 4, gravityBehavior: 'cohesive', roughness: 0.9 },
@@ -259,7 +260,13 @@ function anchoredBlockIds(blocks: VoxelBlock[]) {
 
       const neighborTolerance = MATERIALS[neighbor.material].supportTolerance;
       const sourceTolerance = remainingTolerance.get(block.id) ?? 0;
-      const nextTolerance = Math.min(sourceTolerance, neighborTolerance) - 1;
+      const rootedWoodTolerance =
+        offset.y === 1 &&
+        block.material !== 'wood' &&
+        neighbor.material === 'wood'
+          ? neighborTolerance
+          : sourceTolerance;
+      const nextTolerance = Math.min(rootedWoodTolerance, neighborTolerance) - 1;
 
       if (nextTolerance < 0) continue;
       if ((remainingTolerance.get(neighbor.id) ?? -1) >= nextTolerance) continue;
@@ -874,7 +881,7 @@ export function createStarterWorld(random: () => number = Math.random) {
 }
 
 export function isValidWorld(value: unknown): value is VoxelBlock[] {
-  if (!Array.isArray(value) || value.length > 2000) return false;
+  if (!Array.isArray(value) || value.length > MAX_WORLD_BLOCKS) return false;
   const seen = new Set<string>();
 
   return value.every((item) => {

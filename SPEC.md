@@ -74,6 +74,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 - A block touching the plane is grounded.
 - Every material has a support tolerance describing how far it can carry a face-connected structure away from direct support. Each upward or sideways connection consumes that tolerance, so grass and dirt columns topple after only a few levels while marble, obsidian, wood, basalt, brick, and stone can carry taller or longer structures.
 - Rigid and cohesive blocks can transmit support through face connections. Wood can carry a tree canopy, and leaves connect through neighboring wood and leaves within their shorter tolerance.
+- A vertical Wood trunk rooted directly on supported terrain begins with
+  Wood's own support tolerance, allowing a grown tree to remain upright.
 - Loose and fluid materials—including sand, gravel, snow, mud, water, and lava—do not receive or transmit sideways support. They fall and roll downhill until directly supported by the plane or a block below.
 - When an edit disconnects a group from every grounded block, the whole disconnected group falls together one grid level at a time.
 - The group stops once it touches the plane or reconnects to a supported structure.
@@ -121,12 +123,14 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 - If another block occupies the cell directly above grassy dirt, its covered
   grass layer disappears immediately and the supporting block becomes Dirt.
 - Exposed grassy dirt without an existing growth has a small chance to sprout
-  short grass, a flower, tall grass, or—rarely—a tree sapling. A sapling has a
-  small deterministic chance to mature into a two-block Wood trunk with a
-  connected Leaves canopy. These growths are lightweight surface
-  attachments keyed to stable block IDs; they do not occupy world cells and
-  move with their supporting block. Short grass matures into tall grass after
-  a short, deterministic growth period.
+  short grass, a flower, tall grass, or—rarely—a tree sapling. These growths
+  are lightweight surface attachments keyed to stable block IDs; they do not
+  occupy world cells and move with their supporting block. Short grass
+  matures into tall grass after a short, deterministic growth period. A
+  sapling matures into one of three tall Wood-and-Leaves tree patterns. Each
+  keeps its canopy well above the reach of animals on level ground and grows
+  only when its footprint is unobstructed;
+  otherwise it waits and tries again on a later ecosystem tick.
 - A starter or newly reset world contains two adult sheep on grassy terrain,
   naturally seeded kelp, two small fish, and one big fish in its pond.
   The player can spawn Sheep, Cows, Pigs, Rabbits, Goats, Deer, Horses,
@@ -263,8 +267,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   material tolerance.
 - Dirt can become grassy dirt, grassy dirt can sprout non-block vegetation, and
   covered grassy dirt returns to Dirt. Short grass matures into tall grass, and
-  rare tree saplings can grow on exposed grass and mature into trees. All
-  nineteen creatures can be spawned and face
+  rare tree saplings mature into several tall Wood-and-Leaves tree shapes on
+  exposed grass. All nineteen creatures can be spawned and face
   their movement direction. Herbivores seek their species-specific growths plus
   shared grassy dirt, Leaves, and Moss without crossing steps taller than one
   block, while beavers slowly eat only saplings or Wood, predators hunt only

@@ -1,4 +1,11 @@
-import { isInWorld, type BlockMaterial, type VoxelBlock } from './world';
+import {
+  MAX_WORLD_BLOCKS,
+  cellKey,
+  isInWorld,
+  type BlockMaterial,
+  type Cell,
+  type VoxelBlock,
+} from './world';
 
 export const ECOSYSTEM_TICK_MS = 900;
 export const ANIMAL_BREEDING_MIN_HUNGER = 70;
@@ -6,11 +13,11 @@ export const BABY_GROWTH_MEALS = 3;
 export const MAX_ANIMAL_HUNGER = 100;
 export const HERBIVORE_FIGHT_BACK_CHANCE = 0.15;
 export const SHORT_GRASS_MATURATION_TICKS = 18;
+export const SAPLING_MATURATION_TICKS = 28;
 
 const SOIL_TO_GRASS_CHANCE = 0.012;
 const VEGETATION_GROWTH_CHANCE = 0.028;
 const KELP_GROWTH_CHANCE = 0.036;
-const TREE_GROWTH_CHANCE = 0.018;
 const MATE_SEARCH_RADIUS = 20;
 const BREEDING_COOLDOWN_TICKS = 16;
 const BREEDING_HUNGER_COST = 30;
@@ -55,6 +62,70 @@ export type Vegetation = {
   kind: VegetationKind;
   maturesAtTick?: number;
 };
+
+type TreeCell = Cell & { material: 'wood' | 'leaves' };
+
+const treeTrunk = (height: number): TreeCell[] =>
+  Array.from({ length: height }, (_, index) => ({
+    x: 0,
+    y: index + 1,
+    z: 0,
+    material: 'wood',
+  }));
+
+const treeRing = (y: number): TreeCell[] =>
+  [-1, 0, 1].flatMap((x) =>
+    [-1, 0, 1]
+      .filter((z) => x !== 0 || z !== 0)
+      .map((z) => ({ x, y, z, material: 'leaves' as const })));
+
+const TREE_PATTERNS: readonly (readonly TreeCell[])[] = [
+  [
+    ...treeTrunk(8),
+    ...treeRing(7),
+    ...treeRing(8),
+    { x: 0, y: 9, z: 0, material: 'leaves' },
+    { x: 1, y: 9, z: 0, material: 'leaves' },
+    { x: -1, y: 9, z: 0, material: 'leaves' },
+    { x: 0, y: 9, z: 1, material: 'leaves' },
+    { x: 0, y: 9, z: -1, material: 'leaves' },
+  ],
+  [
+    ...treeTrunk(10),
+    { x: 1, y: 7, z: 0, material: 'wood' },
+    { x: -1, y: 8, z: 0, material: 'wood' },
+    { x: 0, y: 7, z: 1, material: 'wood' },
+    { x: 2, y: 7, z: 0, material: 'leaves' },
+    { x: 1, y: 7, z: -1, material: 'leaves' },
+    { x: 1, y: 8, z: 0, material: 'leaves' },
+    { x: -2, y: 8, z: 0, material: 'leaves' },
+    { x: -1, y: 8, z: 1, material: 'leaves' },
+    { x: -1, y: 8, z: -1, material: 'leaves' },
+    { x: 0, y: 7, z: 2, material: 'leaves' },
+    { x: 1, y: 7, z: 1, material: 'leaves' },
+    { x: -1, y: 7, z: 1, material: 'leaves' },
+    { x: 1, y: 10, z: 0, material: 'leaves' },
+    { x: -1, y: 10, z: 0, material: 'leaves' },
+    { x: 0, y: 10, z: 1, material: 'leaves' },
+    { x: 0, y: 10, z: -1, material: 'leaves' },
+    { x: 0, y: 11, z: 0, material: 'leaves' },
+  ],
+  [
+    ...treeTrunk(12),
+    ...treeRing(8),
+    ...treeRing(9),
+    ...treeRing(10),
+    { x: 1, y: 11, z: 0, material: 'leaves' },
+    { x: -1, y: 11, z: 0, material: 'leaves' },
+    { x: 0, y: 11, z: 1, material: 'leaves' },
+    { x: 0, y: 11, z: -1, material: 'leaves' },
+    { x: 1, y: 12, z: 0, material: 'leaves' },
+    { x: -1, y: 12, z: 0, material: 'leaves' },
+    { x: 0, y: 12, z: 1, material: 'leaves' },
+    { x: 0, y: 12, z: -1, material: 'leaves' },
+    { x: 0, y: 13, z: 0, material: 'leaves' },
+  ],
+] as const;
 
 export const HERBIVORE_KEYS = [
   'sheep',
@@ -539,19 +610,105 @@ function chooseVegetation(value: number): VegetationKind {
   return 'sapling';
 }
 
-function matureShortGrass(
+function advanceVegetationMaturation(
   growth: Vegetation,
   currentTick: number,
   nextTick: number,
 ): Vegetation {
-  if (growth.kind !== 'grass') return growth;
-  const maturesAtTick = growth.maturesAtTick ?? currentTick + SHORT_GRASS_MATURATION_TICKS;
+  if (growth.kind !== 'grass' && growth.kind !== 'sapling') return growth;
+  const maturationTicks = growth.kind === 'grass'
+    ? SHORT_GRASS_MATURATION_TICKS
+    : SAPLING_MATURATION_TICKS;
+  const maturesAtTick = growth.maturesAtTick ?? currentTick + maturationTicks;
   if (nextTick < maturesAtTick) {
     return growth.maturesAtTick === maturesAtTick
       ? growth
       : { ...growth, maturesAtTick };
   }
+  if (growth.kind === 'sapling') {
+    return growth.maturesAtTick === maturesAtTick
+      ? growth
+      : { ...growth, maturesAtTick };
+  }
   return { id: growth.id, blockId: growth.blockId, kind: 'tall-grass' };
+}
+
+function rotateTreeCell(cell: TreeCell, quarterTurns: number): TreeCell {
+  let { x, z } = cell;
+  for (let turn = 0; turn < quarterTurns; turn += 1) {
+    [x, z] = [-z, x];
+  }
+  return { ...cell, x, z };
+}
+
+function growMatureSaplings(
+  blocks: VoxelBlock[],
+  vegetation: Vegetation[],
+  animals: Animal[],
+  tick: number,
+  random: RandomSource,
+) {
+  let nextBlocks = blocks;
+  const remainingVegetation: Vegetation[] = [];
+  const occupiedCells = new Set(blocks.map(cellKey));
+  const animalColumns = new Set(animals.map(({ x, z }) => columnKey(x, z)));
+
+  for (const growth of vegetation) {
+    if (
+      growth.kind !== 'sapling' ||
+      growth.maturesAtTick === undefined ||
+      tick < growth.maturesAtTick
+    ) {
+      remainingVegetation.push(growth);
+      continue;
+    }
+
+    const support = nextBlocks.find(({ id }) => id === growth.blockId);
+    if (!support || support.material !== 'grass') continue;
+
+    const patternIndex = Math.min(
+      TREE_PATTERNS.length - 1,
+      Math.floor(random(`tree-pattern:${growth.id}`) * TREE_PATTERNS.length),
+    );
+    const quarterTurns = Math.min(
+      3,
+      Math.floor(random(`tree-rotation:${growth.id}`) * 4),
+    );
+    const treeCells = TREE_PATTERNS[patternIndex].map((relativeCell) => {
+      const rotated = rotateTreeCell(relativeCell, quarterTurns);
+      return {
+        x: support.x + rotated.x,
+        y: support.y + rotated.y,
+        z: support.z + rotated.z,
+        material: rotated.material,
+      };
+    });
+    const obstructed =
+      nextBlocks.length + treeCells.length > MAX_WORLD_BLOCKS ||
+      treeCells.some(
+        (cell) =>
+          !isInWorld(cell) ||
+          occupiedCells.has(cellKey(cell)) ||
+          animalColumns.has(columnKey(cell.x, cell.z)),
+      );
+    if (obstructed) {
+      remainingVegetation.push(growth);
+      continue;
+    }
+
+    nextBlocks = nextBlocks.map((block) =>
+      block.id === support.id
+        ? { ...block, material: 'soil' as const }
+        : block);
+    const treeBlocks = treeCells.map((cell, index) => ({
+      id: `tree-${growth.id}-${index}`,
+      ...cell,
+    }));
+    nextBlocks = [...nextBlocks, ...treeBlocks];
+    for (const treeBlock of treeBlocks) occupiedCells.add(cellKey(treeBlock));
+  }
+
+  return { blocks: nextBlocks, vegetation: remainingVegetation };
 }
 
 function vegetationCanGrowOn(kind: VegetationKind, block: VoxelBlock) {
@@ -747,68 +904,6 @@ function hasBreedingPartner(
   );
 }
 
-export function growSaplingsIntoTrees(
-  blocks: VoxelBlock[],
-  vegetation: Vegetation[],
-  tick: number,
-  random: RandomSource,
-) {
-  const surfaces = createSurfaceIndex(blocks);
-  const blocksById = new Map(blocks.map((block) => [block.id, block]));
-  const occupied = new Set(blocks.map((block) => `${block.x},${block.y},${block.z}`));
-  const blockIds = new Set(blocks.map(({ id }) => id));
-  const matured = new Set<string>();
-  const treeBlocks: VoxelBlock[] = [];
-
-  for (const growth of vegetation) {
-    if (growth.kind !== 'sapling') continue;
-    const ground = blocksById.get(growth.blockId);
-    if (
-      !ground ||
-      ground.material !== 'grass' ||
-      ground.burning ||
-      surfaces.get(columnKey(ground.x, ground.z))?.id !== ground.id ||
-      random(`tree:${tick}:${growth.id}`) >= TREE_GROWTH_CHANCE
-    ) {
-      continue;
-    }
-
-    const parts: Array<Pick<VoxelBlock, 'x' | 'y' | 'z' | 'material'>> = [
-      { x: ground.x, y: ground.y + 1, z: ground.z, material: 'wood' },
-      { x: ground.x, y: ground.y + 2, z: ground.z, material: 'wood' },
-      { x: ground.x, y: ground.y + 3, z: ground.z, material: 'leaves' },
-      ...DIRECTIONS.map(({ x, z }) => ({
-        x: ground.x + x,
-        y: ground.y + 2,
-        z: ground.z + z,
-        material: 'leaves' as const,
-      })),
-    ];
-    const ids = parts.map((_, index) => `tree-${growth.id}-${index}`);
-    if (
-      parts.some((part) => !isInWorld(part) || occupied.has(`${part.x},${part.y},${part.z}`)) ||
-      ids.some((id) => blockIds.has(id))
-    ) {
-      continue;
-    }
-
-    parts.forEach((part, index) => {
-      const block = { id: ids[index], ...part } satisfies VoxelBlock;
-      treeBlocks.push(block);
-      occupied.add(`${part.x},${part.y},${part.z}`);
-      blockIds.add(block.id);
-    });
-    matured.add(growth.id);
-  }
-
-  return {
-    blocks: treeBlocks.length ? [...blocks, ...treeBlocks] : blocks,
-    vegetation: matured.size
-      ? vegetation.filter((growth) => !matured.has(growth.id))
-      : vegetation,
-  };
-}
-
 function nextHumanCraft(tools: readonly HumanTool[]): HumanCraft {
   return HUMAN_TOOL_CRAFT_ORDER.find((tool) => !tools.includes(tool)) ?? 'planks';
 }
@@ -876,8 +971,7 @@ export function advanceEcosystem(
 ) {
   const tick = state.tick + 1;
   let nextEntityId = state.nextEntityId;
-  const treeGrowth = growSaplingsIntoTrees(blocks, state.vegetation, tick, random);
-  const workingBlocks = treeGrowth.blocks;
+  const workingBlocks = blocks;
   const surfaces = createSurfaceIndex(workingBlocks);
   const surfaceIds = new Set([...surfaces.values()].map(({ id }) => id));
   const blocksById = new Map(workingBlocks.map((block) => [block.id, block]));
@@ -889,7 +983,7 @@ export function advanceEcosystem(
     workingBlocks.map((block) => `${block.x},${block.y},${block.z}`),
   );
 
-  let vegetation = treeGrowth.vegetation
+  let vegetation = state.vegetation
     .filter((growth) => {
       const block = blocksById.get(growth.blockId);
       return Boolean(
@@ -899,7 +993,7 @@ export function advanceEcosystem(
         surfaceIds.has(block.id),
       );
     })
-    .map((growth) => matureShortGrass(growth, state.tick, tick));
+    .map((growth) => advanceVegetationMaturation(growth, state.tick, tick));
 
   for (const block of surfaces.values()) {
     if (
@@ -940,6 +1034,8 @@ export function advanceEcosystem(
     };
     if (kind === 'grass') {
       sprout.maturesAtTick = tick + SHORT_GRASS_MATURATION_TICKS;
+    } else if (kind === 'sapling') {
+      sprout.maturesAtTick = tick + SAPLING_MATURATION_TICKS;
     }
     vegetation.push(sprout);
     vegetationBlockIds.add(block.id);
@@ -1446,11 +1542,19 @@ export function advanceEcosystem(
     ? [...changedBlocks, ...createdBlocks]
     : changedBlocks;
 
+  const treeGrowth = growMatureSaplings(
+    nextBlocks,
+    vegetation,
+    animals,
+    tick,
+    random,
+  );
+
   return {
-    blocks: nextBlocks,
+    blocks: treeGrowth.blocks,
     ecosystem: {
       tick,
-      vegetation,
+      vegetation: treeGrowth.vegetation,
       animals,
       nextEntityId,
     } satisfies EcosystemState,
@@ -1482,7 +1586,7 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
       typeof growth.blockId !== 'string' ||
       !['grass', 'flower', 'tall-grass', 'sapling', 'kelp'].includes(growth.kind ?? '') ||
       (growth.maturesAtTick !== undefined &&
-        (growth.kind !== 'grass' ||
+        (!['grass', 'sapling'].includes(growth.kind ?? '') ||
           !Number.isInteger(growth.maturesAtTick) ||
           growth.maturesAtTick < 0)) ||
       entityIds.has(growth.id)
