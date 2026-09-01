@@ -30,6 +30,10 @@ The player can:
 7. Pause or resume gravity.
 8. Undo, redo, clear, or use the visible Reset button to restore the starter
    terrain, vegetation state, and sheep.
+9. Invoke five world-scale powers: Verdant Touch grassifies exposed Dirt;
+   Wildfire ignites flammable blocks; Rain extinguishes fires; Deep Freeze
+   turns Water into Ice and Lava into Obsidian; and Thaw melts Ice and Snow
+   into Water.
 
 The palette contains Grass, Dirt, Stone, Sand, Wood, Leaves, Brick, Clay, Snow,
 Ice, Water, Lava, Obsidian, Coal, Iron, Gold, Copper, Glass, Moss, Mud, Gravel,
@@ -115,6 +119,17 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   persist with the local world. Reset restores a fresh ecosystem; Clear removes
   it.
 
+## God powers
+
+- Powers are immediate world-scale actions, separate from Place and Erase, so
+  they never take over the left-click editing control or right-drag orbit.
+- A power is disabled when the current world contains no eligible block. Its
+  button shows the number of blocks it will affect before activation and a
+  plain-language result afterward.
+- Every power preserves stable block IDs and cell positions. Powers that create
+  fluid or unsupported materials allow gravity to resume settling normally.
+- Power changes participate in the same undo and redo history as direct edits.
+
 ## Interface and visual direction
 
 - Full-screen isometric world with soft sage sky, warm neutral plane, visible grid, subtle fog, and directional shadows.
@@ -149,13 +164,15 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   partners, and produce smaller lambs.
 - Removing the last connection beneath or beside a structure makes the detached group settle.
 - Gravity pause and resume work as specified.
+- Verdant Touch, Wildfire, Rain, Deep Freeze, and Thaw affect only eligible
+  blocks, preserve IDs and positions, and can be undone or redone.
 - Undo, redo, clear, reset, material selection, block count, and local persistence work.
 - `npm test` and `npm run build` succeed.
 - The GitHub Pages deployment succeeds from `main` and loads assets from the repository subpath.
 
 ## Future direction (not part of this release)
 
-The architecture should leave room for god powers, more creatures, biomes,
+The architecture should leave room for more god powers, additional creatures, biomes,
 weather, erosion, procedural terrain, larger worlds, time controls, and
 shareable world files. These ideas must not be added until their behavior and
 performance budgets are specified.

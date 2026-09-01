@@ -3,6 +3,7 @@ import { Canvas, type ThreeEvent, useFrame } from '@react-three/fiber';
 import {
   Box,
   ArrowDown,
+  CloudRain,
   Eraser,
   Flame,
   Heart,
@@ -11,7 +12,10 @@ import {
   Play,
   Redo2,
   RotateCcw,
+  Snowflake,
   Sparkles,
+  Sprout,
+  Sun,
   Trash2,
   Undo2,
 } from 'lucide-react';
@@ -45,6 +49,13 @@ import {
   type Cell,
   type VoxelBlock,
 } from './game/world';
+import {
+  ABILITIES,
+  ABILITY_KEYS,
+  applyAbility,
+  type AbilityKey,
+  type AbilityResult,
+} from './game/abilities';
 import { getBlockTextures } from './visuals/blockTextures';
 
 type Tool = 'place' | 'erase';
@@ -584,6 +595,61 @@ function BlockPalette({
   );
 }
 
+const ABILITY_ICONS = {
+  'verdant-touch': Sprout,
+  wildfire: Flame,
+  rain: CloudRain,
+  'deep-freeze': Snowflake,
+  thaw: Sun,
+} satisfies Record<AbilityKey, typeof Sprout>;
+
+function PowerPanel({
+  results,
+  message,
+  onActivate,
+}: {
+  results: Record<AbilityKey, AbilityResult>;
+  message: string;
+  onActivate: (ability: AbilityKey) => void;
+}) {
+  return (
+    <aside className="power-panel" aria-label="God powers">
+      <div className="power-heading">
+        <p className="eyebrow">POWERS</p>
+        <span>{ABILITY_KEYS.length} abilities</span>
+      </div>
+      <div className="power-list">
+        {ABILITY_KEYS.map((key) => {
+          const ability = ABILITIES[key];
+          const result = results[key];
+          const Icon = ABILITY_ICONS[key];
+          return (
+            <button
+              key={key}
+              className={`power-button power-${key}`}
+              type="button"
+              disabled={!result.changed}
+              aria-label={`${ability.label}: ${ability.description}`}
+              title={`${ability.label} — ${ability.description}`}
+              onClick={() => onActivate(key)}
+            >
+              <span className="power-icon"><Icon size={16} /></span>
+              <span>
+                <strong>{ability.label}</strong>
+                <small>{ability.description}</small>
+              </span>
+              <b className="power-count">{result.affected || '—'}</b>
+            </button>
+          );
+        })}
+      </div>
+      <p className="power-status" role="status" aria-live="polite" aria-atomic="true">
+        {message || 'Powers affect the whole world.'}
+      </p>
+    </aside>
+  );
+}
+
 export default function Game() {
   const [blocks, setBlocks] = useState<VoxelBlock[]>(loadWorld);
   const [ecosystem, setEcosystem] = useState<EcosystemState>(() => loadEcosystem(blocks));
@@ -594,11 +660,19 @@ export default function Game() {
   const [future, setFuture] = useState<VoxelBlock[][]>([]);
   const [settling, setSettling] = useState(false);
   const [welcomeVisible, setWelcomeVisible] = useState(true);
+  const [powerMessage, setPowerMessage] = useState('');
   const idCounter = useRef(0);
   const blocksRef = useRef(blocks);
   const ecosystemRef = useRef(ecosystem);
   const burningCount = blocks.filter((block) => block.burning).length;
   const fireActive = useMemo(() => advanceFire(blocks).changed, [blocks]);
+  const abilityResults = useMemo(
+    () => ABILITY_KEYS.reduce((results, key) => {
+      results[key] = applyAbility(blocks, key);
+      return results;
+    }, {} as Record<AbilityKey, AbilityResult>),
+    [blocks],
+  );
 
   useEffect(() => {
     blocksRef.current = blocks;
@@ -736,6 +810,14 @@ export default function Game() {
     setMaterial(nextMaterial);
     setTool('place');
   };
+  const activateAbility = (ability: AbilityKey) => {
+    const result = abilityResults[ability];
+    if (!result.changed) return;
+    commit(result.blocks, gravityOn && ABILITIES[ability].triggersGravity);
+    setPowerMessage(
+      `${ABILITIES[ability].label} affected ${result.affected} ${result.affected === 1 ? 'block' : 'blocks'}.`,
+    );
+  };
 
   return (
     <main className="game-shell">
@@ -816,6 +898,12 @@ export default function Game() {
           </button>
         </div>
       </aside>
+
+      <PowerPanel
+        results={abilityResults}
+        message={powerMessage}
+        onActivate={activateAbility}
+      />
 
       <section className={`welcome-card ${welcomeVisible ? '' : 'dismissed'}`} aria-live="polite">
         <span className="welcome-icon"><Sparkles size={18} /></span>
