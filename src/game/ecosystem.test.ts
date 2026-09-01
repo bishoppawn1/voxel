@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ANIMALS,
   ANIMAL_BREEDING_MEALS,
   ANIMAL_KEYS,
+  BABY_GROWTH_MEALS,
   MAX_ANIMAL_HUNGER,
   advanceEcosystem,
   convertCoveredGrassToSoil,
   createInitialEcosystem,
   isValidEcosystem,
+  migrateEcosystem,
   spawnAnimal,
   type Animal,
   type AnimalKind,
@@ -38,6 +41,10 @@ const animal = (
   hunger: MAX_ANIMAL_HUNGER,
   isBaby: false,
   breedingCooldown: 0,
+  age: 0,
+  health: ANIMALS[kind].maxHealth,
+  facingX: 1,
+  facingZ: 0,
   ...overrides,
 });
 
@@ -95,8 +102,9 @@ describe('vegetation growth', () => {
 });
 
 describe('animal spawning and diets', () => {
-  it('offers sheep plus four new animal species', () => {
-    expect(ANIMAL_KEYS).toEqual(['sheep', 'cow', 'pig', 'rabbit', 'goat']);
+  it('offers five grazing species and one predatory fox', () => {
+    expect(ANIMAL_KEYS).toEqual(['sheep', 'cow', 'pig', 'rabbit', 'goat', 'fox']);
+    expect(ANIMALS.fox).toMatchObject({ predator: true, maxHealth: 3 });
   });
 
   it('spawns the selected animal at full hunger on an open surface', () => {
@@ -190,7 +198,13 @@ describe('animal life cycle', () => {
     };
     const result = advanceEcosystem(world, ecosystem, () => 1);
 
-    expect(result.ecosystem.animals[0]).toMatchObject({ x: 1, z: 0, eaten: 0 });
+    expect(result.ecosystem.animals[0]).toMatchObject({
+      x: 1,
+      z: 0,
+      eaten: 0,
+      facingX: 1,
+      facingZ: 0,
+    });
   });
 
   it('keeps following a reachable food path instead of pacing back to a dead end', () => {
@@ -280,6 +294,44 @@ describe('animal life cycle', () => {
     });
   });
 
+  it('grows a baby into an adult after its third meal', () => {
+    const grassyDirt = block('grass', 0, 0, 'grass');
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      vegetation: [{ id: 'meal', blockId: grassyDirt.id, kind: 'grass' }],
+      animals: [animal('rabbit', 'rabbit-0', 0, 0, {
+        isBaby: true,
+        eaten: BABY_GROWTH_MEALS - 1,
+        hunger: 40,
+      })],
+      nextEntityId: 1,
+    };
+
+    const grown = advanceEcosystem([grassyDirt], ecosystem, () => 1).ecosystem.animals[0];
+
+    expect(grown).toMatchObject({ isBaby: false, eaten: 0, hunger: 72 });
+    expect(grown.breedingCooldown).toBeGreaterThan(0);
+  });
+
+  it('removes an animal when it reaches the end of its lifespan', () => {
+    const world = [
+      block('left', 0, 0, 'stone'),
+      block('right', 2, 0, 'stone'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('rabbit', 'old-rabbit', 0, 0, { age: ANIMALS.rabbit.lifespan - 1 }),
+        animal('cow', 'young-cow', 2, 0),
+      ],
+      nextEntityId: 2,
+    };
+
+    expect(advanceEcosystem(world, ecosystem, () => 1).ecosystem.animals).toMatchObject([
+      { id: 'young-cow', age: 1 },
+    ]);
+  });
+
   it('does not breed animals of different species', () => {
     const world = [
       block('left', 0, 0, 'stone'),
@@ -318,6 +370,99 @@ describe('animal life cycle', () => {
   });
 });
 
+describe('fox hunting', () => {
+  it('walks toward the nearest prey and faces its movement direction', () => {
+    const world = [
+      block('fox-cell', 0, 0, 'stone'),
+      block('middle', 1, 0, 'stone'),
+      block('sheep-cell', 2, 0, 'stone'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('fox', 'fox-0', 0, 0),
+        animal('sheep', 'sheep-1', 2, 0),
+      ],
+      nextEntityId: 2,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+
+    expect(result.animals.find(({ id }) => id === 'fox-0')).toMatchObject({
+      x: 1,
+      z: 0,
+      facingX: 1,
+      facingZ: 0,
+    });
+  });
+
+  it('survives multiple counterattacks because it has tank-like health', () => {
+    const world = [
+      block('fox-cell', 0, 0, 'stone'),
+      block('sheep-cell', 1, 0, 'stone'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('fox', 'fox-0', 0, 0),
+        animal('sheep', 'sheep-1', 1, 0),
+      ],
+      nextEntityId: 2,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 0).ecosystem;
+
+    expect(result.animals).toHaveLength(1);
+    expect(result.animals[0]).toMatchObject({ id: 'fox-0', health: 2, eaten: 1 });
+  });
+
+  it('lets sheep randomly flee to a safe neighboring cell', () => {
+    const world = [
+      block('fox-cell', 0, 0, 'stone'),
+      block('sheep-cell', 1, 0, 'stone'),
+      block('escape-cell', 2, 0, 'stone'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('fox', 'fox-0', 0, 0),
+        animal('sheep', 'sheep-1', 1, 0),
+      ],
+      nextEntityId: 2,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+
+    expect(result.animals).toHaveLength(2);
+    expect(result.animals.find(({ id }) => id === 'sheep-1')).toMatchObject({
+      x: 2,
+      z: 0,
+      facingX: 1,
+      facingZ: 0,
+    });
+  });
+
+  it('lets a fighting sheep defeat a fox that is down to its last health', () => {
+    const world = [
+      block('fox-cell', 0, 0, 'stone'),
+      block('sheep-cell', 1, 0, 'stone'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('fox', 'fox-0', 0, 0, { health: 1 }),
+        animal('sheep', 'sheep-1', 1, 0),
+      ],
+      nextEntityId: 2,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 0).ecosystem;
+
+    expect(result.animals).toHaveLength(1);
+    expect(result.animals[0]).toMatchObject({ id: 'sheep-1' });
+  });
+});
+
 describe('ecosystem persistence validation', () => {
   it('accepts initial state and rejects malformed or unknown animals', () => {
     expect(isValidEcosystem(createInitialEcosystem(createStarterWorld()))).toBe(true);
@@ -336,5 +481,27 @@ describe('ecosystem persistence validation', () => {
       animals: ANIMAL_KEYS.map((kind, index) => animal(kind, `${kind}-${index}`, index, 0)),
       nextEntityId: ANIMAL_KEYS.length,
     })).toBe(true);
+  });
+
+  it('upgrades saved animals from before age, health, and facing were added', () => {
+    const legacy = createInitialEcosystem(createStarterWorld()) as unknown as {
+      animals: Array<Partial<Animal>>;
+    } & Omit<EcosystemState, 'animals'>;
+    for (const savedAnimal of legacy.animals) {
+      delete savedAnimal.age;
+      delete savedAnimal.health;
+      delete savedAnimal.facingX;
+      delete savedAnimal.facingZ;
+    }
+
+    expect(isValidEcosystem(legacy)).toBe(false);
+    const migrated = migrateEcosystem(legacy);
+    expect(isValidEcosystem(migrated)).toBe(true);
+    expect(migrated?.animals[0]).toMatchObject({
+      age: 0,
+      health: 1,
+      facingX: 1,
+      facingZ: 0,
+    });
   });
 });

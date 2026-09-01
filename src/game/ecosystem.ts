@@ -2,6 +2,7 @@ import type { BlockMaterial, VoxelBlock } from './world';
 
 export const ECOSYSTEM_TICK_MS = 900;
 export const ANIMAL_BREEDING_MEALS = 3;
+export const BABY_GROWTH_MEALS = 3;
 export const MAX_ANIMAL_HUNGER = 100;
 
 const SOIL_TO_GRASS_CHANCE = 0.012;
@@ -27,7 +28,7 @@ export type Vegetation = {
   kind: VegetationKind;
 };
 
-export const ANIMAL_KEYS = ['sheep', 'cow', 'pig', 'rabbit', 'goat'] as const;
+export const ANIMAL_KEYS = ['sheep', 'cow', 'pig', 'rabbit', 'goat', 'fox'] as const;
 export type AnimalKind = (typeof ANIMAL_KEYS)[number];
 
 export const ANIMALS: Record<AnimalKind, {
@@ -36,6 +37,9 @@ export const ANIMALS: Record<AnimalKind, {
   dietLabel: string;
   vegetation: readonly VegetationKind[];
   materials: readonly BlockMaterial[];
+  predator: boolean;
+  lifespan: number;
+  maxHealth: number;
 }> = {
   sheep: {
     label: 'Sheep',
@@ -43,6 +47,9 @@ export const ANIMALS: Record<AnimalKind, {
     dietLabel: 'short grass, tall grass, and grassy dirt',
     vegetation: ['grass', 'tall-grass'],
     materials: ['grass'],
+    predator: false,
+    lifespan: 480,
+    maxHealth: 1,
   },
   cow: {
     label: 'Cow',
@@ -50,6 +57,9 @@ export const ANIMALS: Record<AnimalKind, {
     dietLabel: 'tall grass and grassy dirt',
     vegetation: ['tall-grass'],
     materials: ['grass'],
+    predator: false,
+    lifespan: 540,
+    maxHealth: 1,
   },
   pig: {
     label: 'Pig',
@@ -57,6 +67,9 @@ export const ANIMALS: Record<AnimalKind, {
     dietLabel: 'flowers and grassy dirt',
     vegetation: ['flower'],
     materials: ['grass'],
+    predator: false,
+    lifespan: 420,
+    maxHealth: 1,
   },
   rabbit: {
     label: 'Rabbit',
@@ -64,6 +77,9 @@ export const ANIMALS: Record<AnimalKind, {
     dietLabel: 'short grass and flowers',
     vegetation: ['grass', 'flower'],
     materials: [],
+    predator: false,
+    lifespan: 300,
+    maxHealth: 1,
   },
   goat: {
     label: 'Goat',
@@ -71,6 +87,19 @@ export const ANIMALS: Record<AnimalKind, {
     dietLabel: 'tall grass, flowers, and grassy dirt',
     vegetation: ['tall-grass', 'flower'],
     materials: ['grass'],
+    predator: false,
+    lifespan: 480,
+    maxHealth: 1,
+  },
+  fox: {
+    label: 'Fox',
+    emoji: '🦊',
+    dietLabel: 'other animals',
+    vegetation: [],
+    materials: [],
+    predator: true,
+    lifespan: 360,
+    maxHealth: 3,
   },
 };
 
@@ -83,6 +112,10 @@ export type Animal = {
   hunger: number;
   isBaby: boolean;
   breedingCooldown: number;
+  age: number;
+  health: number;
+  facingX: number;
+  facingZ: number;
 };
 
 export type EcosystemState = {
@@ -149,6 +182,10 @@ function createAnimal(kind: AnimalKind, idNumber: number, position: Position): A
     hunger: MAX_ANIMAL_HUNGER,
     isBaby: false,
     breedingCooldown: 0,
+    age: 0,
+    health: ANIMALS[kind].maxHealth,
+    facingX: 1,
+    facingZ: 0,
   };
 }
 
@@ -198,6 +235,29 @@ function chooseVegetation(value: number): VegetationKind {
   return 'flower';
 }
 
+function withMovementFacing(animal: Animal, position: Position): Animal {
+  const xMovement = position.x - animal.x;
+  const zMovement = position.z - animal.z;
+  if (xMovement === 0 && zMovement === 0) return animal;
+  return {
+    ...animal,
+    ...position,
+    facingX: Math.sign(xMovement),
+    facingZ: Math.sign(zMovement),
+  };
+}
+
+function faceToward(animal: Animal, target: Position): Animal {
+  const xDistance = target.x - animal.x;
+  const zDistance = target.z - animal.z;
+  if (xDistance === 0 && zDistance === 0) return animal;
+  return {
+    ...animal,
+    facingX: Math.abs(xDistance) >= Math.abs(zDistance) ? Math.sign(xDistance) : 0,
+    facingZ: Math.abs(zDistance) > Math.abs(xDistance) ? Math.sign(zDistance) : 0,
+  };
+}
+
 function moveTowardGoal(
   animal: Animal,
   isGoal: (position: Position) => boolean,
@@ -227,7 +287,7 @@ function moveTowardGoal(
       }
       visited.add(key);
       const firstStep = current.firstStep ?? next;
-      if (isGoal(next)) return { ...animal, ...firstStep };
+      if (isGoal(next)) return withMovementFacing(animal, firstStep);
       queue.push({ ...next, firstStep });
     }
   }
@@ -264,6 +324,35 @@ function moveTowardNearestFood(
     surfaces,
     occupied,
   );
+}
+
+function fleeFrom(
+  animal: Animal,
+  predator: Animal,
+  surfaces: Map<string, VoxelBlock>,
+  occupied: Set<string>,
+) {
+  const currentSurface = surfaces.get(columnKey(animal.x, animal.z));
+  if (!currentSurface) return animal;
+  const currentDistance = distance(animal, predator);
+  const escape = DIRECTIONS
+    .map(({ x, z }, order) => ({ x: animal.x + x, z: animal.z + z, order }))
+    .filter((position) => {
+      const surface = surfaces.get(columnKey(position.x, position.z));
+      return Boolean(
+        surface &&
+        !surface.burning &&
+        !occupied.has(columnKey(position.x, position.z)) &&
+        Math.abs(surface.y - currentSurface.y) <= 1 &&
+        distance(position, predator) > currentDistance,
+      );
+    })
+    .sort(
+      (a, b) =>
+        distance(b, predator) - distance(a, predator) ||
+        a.order - b.order,
+    )[0];
+  return escape ? withMovementFacing(animal, escape) : animal;
 }
 
 function findBabyCell(
@@ -340,11 +429,14 @@ export function advanceEcosystem(
 
   const availableSurfaces = [...surfaces.values()];
   let animals = state.animals.flatMap((animal) => {
+    const age = animal.age + 1;
+    if (age >= ANIMALS[animal.kind].lifespan) return [];
     const hunger = animal.hunger - HUNGER_LOSS_PER_TICK;
     if (hunger <= 0) return [];
     if (surfaces.has(columnKey(animal.x, animal.z))) {
       return [{
         ...animal,
+        age,
         hunger,
         breedingCooldown: Math.max(0, animal.breedingCooldown - 1),
       }];
@@ -358,7 +450,12 @@ export function advanceEcosystem(
           a.z - b.z,
       )[0];
     return nearest
-      ? [{ ...animal, x: nearest.x, z: nearest.z, hunger, breedingCooldown: 0 }]
+      ? [{
+          ...withMovementFacing(animal, nearest),
+          age,
+          hunger,
+          breedingCooldown: 0,
+        }]
       : [];
   });
 
@@ -385,13 +482,86 @@ export function advanceEcosystem(
     }
   }
 
+  animals = animals.map((animal) =>
+    animal.isBaby && animal.eaten >= BABY_GROWTH_MEALS
+      ? {
+          ...animal,
+          eaten: 0,
+          isBaby: false,
+          breedingCooldown: BREEDING_COOLDOWN_TICKS,
+        }
+      : animal,
+  );
+
   const animalsById = new Map(animals.map((animal) => [animal.id, animal]));
   const occupied = new Set(animals.map(({ x, z }) => columnKey(x, z)));
+  const actedThisTick = new Set<string>();
+
+  const predators = [...animalsById.values()]
+    .filter((animal) => ANIMALS[animal.kind].predator)
+    .sort((a, b) => a.id.localeCompare(b.id));
+  for (const originalPredator of predators) {
+    let predator = animalsById.get(originalPredator.id);
+    if (!predator) continue;
+    const prey = [...animalsById.values()]
+      .filter((animal) => !ANIMALS[animal.kind].predator)
+      .sort(
+        (a, b) =>
+          distance(predator!, a) - distance(predator!, b) ||
+          a.id.localeCompare(b.id),
+      )[0];
+    if (!prey) continue;
+
+    actedThisTick.add(predator.id);
+    if (distance(predator, prey) > 1) {
+      occupied.delete(columnKey(predator.x, predator.z));
+      const moved = moveToward(predator, prey, surfaces, occupied, 1);
+      animalsById.set(predator.id, moved);
+      occupied.add(columnKey(moved.x, moved.z));
+      continue;
+    }
+
+    predator = faceToward(predator, prey);
+    const defendingPrey = faceToward(prey, predator);
+    animalsById.set(predator.id, predator);
+    animalsById.set(defendingPrey.id, defendingPrey);
+    actedThisTick.add(defendingPrey.id);
+
+    const fightsBack = random(`defend:${tick}:${predator.id}:${defendingPrey.id}`) < 0.5;
+    if (!fightsBack) {
+      occupied.delete(columnKey(defendingPrey.x, defendingPrey.z));
+      const escaped = fleeFrom(defendingPrey, predator, surfaces, occupied);
+      animalsById.set(escaped.id, escaped);
+      occupied.add(columnKey(escaped.x, escaped.z));
+      if (escaped.x !== defendingPrey.x || escaped.z !== defendingPrey.z) continue;
+    } else {
+      predator = { ...predator, health: predator.health - 1 };
+      if (predator.health <= 0) {
+        animalsById.delete(predator.id);
+        occupied.delete(columnKey(predator.x, predator.z));
+        continue;
+      }
+      animalsById.set(predator.id, predator);
+    }
+
+    animalsById.delete(defendingPrey.id);
+    occupied.delete(columnKey(defendingPrey.x, defendingPrey.z));
+    animalsById.set(predator.id, {
+      ...predator,
+      eaten: predator.eaten + 1,
+      hunger: Math.min(MAX_ANIMAL_HUNGER, predator.hunger + HUNGER_PER_MEAL),
+    });
+  }
+
   const paired = new Set<string>();
-  const eligible = animals
+  const eligible = [...animalsById.values()]
     .filter(
-      ({ eaten, isBaby, breedingCooldown }) =>
-        !isBaby && eaten >= ANIMAL_BREEDING_MEALS && breedingCooldown === 0,
+      (animal) =>
+        !ANIMALS[animal.kind].predator &&
+        !actedThisTick.has(animal.id) &&
+        !animal.isBaby &&
+        animal.eaten >= ANIMAL_BREEDING_MEALS &&
+        animal.breedingCooldown === 0,
     )
     .sort((a, b) => a.id.localeCompare(b.id));
 
@@ -438,6 +608,10 @@ export function advanceEcosystem(
           hunger: Math.round(MAX_ANIMAL_HUNGER * 0.7),
           isBaby: true,
           breedingCooldown: 0,
+          age: 0,
+          health: ANIMALS[currentFirst.kind].maxHealth,
+          facingX: currentFirst.facingX,
+          facingZ: currentFirst.facingZ,
         };
         animalsById.set(baby.id, baby);
         occupied.add(columnKey(baby.x, baby.z));
@@ -459,7 +633,14 @@ export function advanceEcosystem(
 
   const growthByBlockId = new Map(vegetation.map((growth) => [growth.blockId, growth]));
   for (const animal of animalsById.values()) {
-    if (paired.has(animal.id) || ateThisTick.has(animal.id)) continue;
+    if (
+      ANIMALS[animal.kind].predator ||
+      paired.has(animal.id) ||
+      ateThisTick.has(animal.id) ||
+      actedThisTick.has(animal.id)
+    ) {
+      continue;
+    }
     const foodTargets = [...surfaces.values()]
       .filter((block) => {
         if (block.burning) return false;
@@ -531,9 +712,10 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
   const animalsValid = state.animals.every((item) => {
     if (!item || typeof item !== 'object') return false;
     const animal = item as Partial<Animal>;
+    const definition = ANIMALS[animal.kind as AnimalKind];
     if (
       typeof animal.id !== 'string' ||
-      !ANIMAL_KEYS.includes(animal.kind as AnimalKind) ||
+      !definition ||
       !Number.isInteger(animal.x) ||
       !Number.isInteger(animal.z) ||
       !Number.isInteger(animal.eaten) ||
@@ -544,6 +726,15 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
       typeof animal.isBaby !== 'boolean' ||
       !Number.isInteger(animal.breedingCooldown) ||
       (animal.breedingCooldown ?? -1) < 0 ||
+      !Number.isInteger(animal.age) ||
+      (animal.age ?? -1) < 0 ||
+      (animal.age ?? Number.POSITIVE_INFINITY) >= definition.lifespan ||
+      !Number.isInteger(animal.health) ||
+      (animal.health ?? 0) < 1 ||
+      (animal.health ?? Number.POSITIVE_INFINITY) > definition.maxHealth ||
+      !Number.isInteger(animal.facingX) ||
+      !Number.isInteger(animal.facingZ) ||
+      Math.abs(animal.facingX ?? 0) + Math.abs(animal.facingZ ?? 0) !== 1 ||
       entityIds.has(animal.id)
     ) {
       return false;
@@ -553,4 +744,26 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
   });
 
   return vegetationValid && animalsValid;
+}
+
+export function migrateEcosystem(value: unknown): EcosystemState | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const state = value as Partial<EcosystemState>;
+  if (!Array.isArray(state.animals)) return undefined;
+  const animals = state.animals.map((item) => {
+    if (!item || typeof item !== 'object') return item;
+    const animal = item as Partial<Animal>;
+    const definition = ANIMALS[animal.kind as AnimalKind];
+    return {
+      ...animal,
+      age: Number.isInteger(animal.age) ? animal.age : 0,
+      health: Number.isInteger(animal.health)
+        ? animal.health
+        : definition?.maxHealth ?? 1,
+      facingX: Number.isInteger(animal.facingX) ? animal.facingX : 1,
+      facingZ: Number.isInteger(animal.facingZ) ? animal.facingZ : 0,
+    };
+  });
+  const migrated = { ...state, animals };
+  return isValidEcosystem(migrated) ? migrated : undefined;
 }

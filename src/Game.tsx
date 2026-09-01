@@ -30,7 +30,7 @@ import {
   convertCoveredGrassToSoil,
   createInitialEcosystem,
   getSurfaceBlock,
-  isValidEcosystem,
+  migrateEcosystem,
   spawnAnimal,
   type Animal,
   type AnimalKind,
@@ -86,7 +86,7 @@ function loadEcosystem(blocks: VoxelBlock[]) {
   try {
     const saved = localStorage.getItem(ECOSYSTEM_STORAGE_KEY);
     const parsed: unknown = saved ? JSON.parse(saved) : null;
-    return isValidEcosystem(parsed) ? parsed : createInitialEcosystem(blocks);
+    return migrateEcosystem(parsed) ?? createInitialEcosystem(blocks);
   } catch {
     return createInitialEcosystem(blocks);
   }
@@ -263,6 +263,7 @@ const ANIMAL_COLORS: Record<AnimalKind, {
   pig: { body: '#e9a4a1', head: '#edaeaa', legs: '#bb7978', accent: '#c77778', scale: 0.9 },
   rabbit: { body: '#c9bba5', head: '#b9aa93', legs: '#9b8b75', accent: '#e1a3a5', scale: 0.7 },
   goat: { body: '#d8d0bc', head: '#b8aa8d', legs: '#625c50', accent: '#8c7655', scale: 0.94 },
+  fox: { body: '#d9682f', head: '#df7439', legs: '#342d2a', accent: '#f5e8d0', scale: 0.82 },
 };
 
 function AnimalModel({ animal, surfaceY }: { animal: Animal; surfaceY: number }) {
@@ -277,10 +278,16 @@ function AnimalModel({ animal, surfaceY }: { animal: Animal; surfaceY: number })
     [animal.x, animal.z, surfaceY],
   );
   const initialPosition = useRef(target.clone()).current;
+  const targetYaw = -Math.atan2(animal.facingZ, animal.facingX);
 
   useFrame((_, delta) => {
     if (!group.current) return;
     group.current.position.lerp(target, 1 - Math.exp(-delta * 7));
+    const turn = Math.atan2(
+      Math.sin(targetYaw - group.current.rotation.y),
+      Math.cos(targetYaw - group.current.rotation.y),
+    );
+    group.current.rotation.y += turn * (1 - Math.exp(-delta * 10));
   });
 
   const colors = ANIMAL_COLORS[animal.kind];
@@ -352,6 +359,28 @@ function AnimalModel({ animal, surfaceY }: { animal: Animal; surfaceY: number })
           <mesh position={[BLOCK_SIZE * 0.76, BLOCK_SIZE * 0.25, 0]} rotation={[0, 0, -0.22]}>
             <coneGeometry args={[BLOCK_SIZE * 0.07, BLOCK_SIZE * 0.26, 5]} />
             <meshStandardMaterial color="#766b5b" roughness={0.95} />
+          </mesh>
+        </>
+      )}
+      {animal.kind === 'fox' && (
+        <>
+          <mesh position={[BLOCK_SIZE * 0.86, BLOCK_SIZE * 0.41, 0]} castShadow>
+            <boxGeometry args={[BLOCK_SIZE * 0.25, BLOCK_SIZE * 0.22, BLOCK_SIZE * 0.3]} />
+            <meshStandardMaterial color={colors.accent} roughness={0.9} />
+          </mesh>
+          {[-0.14, 0.14].map((z) => (
+            <mesh key={z} position={[BLOCK_SIZE * 0.63, BLOCK_SIZE * 0.77, BLOCK_SIZE * z]}>
+              <coneGeometry args={[BLOCK_SIZE * 0.1, BLOCK_SIZE * 0.28, 4]} />
+              <meshStandardMaterial color={colors.head} roughness={0.9} />
+            </mesh>
+          ))}
+          <mesh position={[-BLOCK_SIZE * 0.66, BLOCK_SIZE * 0.56, 0]} rotation={[0, 0, -0.5]} castShadow>
+            <boxGeometry args={[BLOCK_SIZE * 0.6, BLOCK_SIZE * 0.2, BLOCK_SIZE * 0.24]} />
+            <meshStandardMaterial color={colors.body} roughness={0.92} />
+          </mesh>
+          <mesh position={[-BLOCK_SIZE * 0.92, BLOCK_SIZE * 0.7, 0]} rotation={[0, 0, -0.5]} castShadow>
+            <boxGeometry args={[BLOCK_SIZE * 0.22, BLOCK_SIZE * 0.21, BLOCK_SIZE * 0.25]} />
+            <meshStandardMaterial color={colors.accent} roughness={0.94} />
           </mesh>
         </>
       )}

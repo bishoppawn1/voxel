@@ -34,7 +34,7 @@ The player can:
    Wildfire ignites flammable blocks; Rain extinguishes fires; Deep Freeze
    turns Water into Ice and Lava into Obsidian; and Thaw melts Ice and Snow
    into Water.
-10. Select Sheep, Cow, Pig, Rabbit, or Goat from an animal palette, then
+10. Select Sheep, Cow, Pig, Rabbit, Goat, or Fox from an animal palette, then
     left-click the top of an unoccupied block column to spawn it.
 
 The palette contains Grass, Dirt, Stone, Sand, Wood, Leaves, Brick, Clay, Snow,
@@ -60,7 +60,9 @@ same device the next time the game opens.
   levels (`y = 0` through `y = 47`).
 - A cell contains at most one block.
 - Every block has a stable ID, cell position, and material.
-- Saved data must be validated before it is loaded. Invalid or outdated data falls back to the starter world.
+- Saved data must be validated before it is loaded. Compatible older ecosystem
+  saves are upgraded with lifecycle defaults; invalid data falls back to the
+  starter world.
 
 ## Structural gravity
 
@@ -108,9 +110,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   attachments keyed to stable block IDs; they do not occupy world cells and
   move with their supporting block.
 - A starter or newly reset world contains two adult sheep on grassy terrain.
-  The player can spawn Sheep, Cows, Pigs, Rabbits, and Goats on any unoccupied,
-  non-burning surface. Only one animal may occupy a surface column at spawn
-  time.
+  The player can spawn Sheep, Cows, Pigs, Rabbits, Goats, and Foxes on any
+  unoccupied, non-burning surface. Only one animal may occupy a surface column
+  at spawn time.
 - Each species follows a shortest reachable path toward food in its own diet:
   Sheep eat short grass, tall grass, and grassy dirt; Cows eat tall grass and
   grassy dirt; Pigs eat flowers and grassy dirt; Rabbits eat short grass and
@@ -120,18 +122,27 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   down by at most one block level at a time. When no food is reachable, they
   wait rather than pacing back and forth. Eating bare grassy dirt changes it
   back to Dirt, allowing the grass cycle to begin again. Animals avoid eating
-  burning grass.
+  burning grass. Every animal visibly turns to face the direction it moves.
 - Every animal has individual hunger, but no overhead health or hunger bar.
   Hunger falls on each ecosystem tick, eating restores it up to its maximum,
   and an animal dies and is removed from the world when its hunger reaches
-  zero. The same individual hunger rule applies to future animal species.
+  zero. Animals also die of old age after a species-specific long lifespan of
+  300 to 540 ecosystem ticks. The same individual hunger and aging rules apply
+  to future animal species.
 - Once two nearby adults of the same species have each eaten three meals, they
   approach one another. When adjacent and a neighboring surface is open, they
   reset their meal counts and create a visibly smaller baby of their species.
-  Babies eat but do not breed.
-- Vegetation, animal species, positions, hunger, meal counts, and breeding cooldowns
-  persist with the local world. Reset restores a fresh ecosystem; Clear removes
-  it.
+  Babies eat but do not breed; after three meals, a baby visibly grows into an
+  adult and begins a short breeding cooldown.
+- The Fox is the single predatory species. It seeks the nearest non-predatory
+  animal instead of vegetation and can withstand three hits. When it reaches a
+  Sheep or another prey animal, that animal makes a deterministic random choice
+  to fight back or flee. A fighter deals one hit before the Fox attacks; a
+  fleeing animal moves to an open reachable neighboring surface farther from
+  the Fox, or is caught if no escape exists. A successful hunt feeds the Fox.
+- Vegetation, animal species, positions, facing, hunger, age, health, meal
+  counts, and breeding cooldowns persist with the local world. Reset restores a
+  fresh ecosystem; Clear removes it.
 
 ## God powers
 
@@ -176,10 +187,12 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 - Liquids seek their lowest reachable level, flammable blocks burn and spread
   fire, and weak vertical columns cannot exceed their material tolerance.
 - Dirt can become grassy dirt, grassy dirt can sprout non-block vegetation, and
-  covered grassy dirt returns to Dirt. All five animals can be spawned, seek
-  only food in their listed diets without crossing steps taller than one block,
-  starve at zero, seek same-species partners, and produce smaller babies without
-  displaying overhead bars.
+  covered grassy dirt returns to Dirt. All six animals can be spawned and face
+  their movement direction. Herbivores seek only food in their listed diets
+  without crossing steps taller than one block, while Foxes hunt other animals
+  and prey randomly fight or flee. Animals starve at zero, die of old age,
+  produce smaller babies, and grow those babies into adults without displaying
+  overhead bars.
 - Removing the last connection beneath or beside a structure makes the detached group settle.
 - Gravity pause and resume work as specified.
 - Verdant Touch, Wildfire, Rain, Deep Freeze, and Thaw affect only eligible
