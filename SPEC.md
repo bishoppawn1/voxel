@@ -130,7 +130,10 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   sapling matures into one of three tall Wood-and-Leaves tree patterns. Each
   keeps its canopy well above the reach of animals on level ground and grows
   only when its footprint is unobstructed;
-  otherwise it waits and tries again on a later ecosystem tick.
+  otherwise it waits and tries again on a later ecosystem tick. Generated
+  canopies do not become animal platforms: animals walk on clear ground below
+  high branches, cannot enter trunk columns, and move to nearby safe ground if
+  an older save left them inside a trunk.
 - A starter or newly reset world contains two adult sheep on grassy terrain,
   naturally seeded kelp, two small fish, and one big fish in its pond.
   The player can spawn Sheep, Cows, Pigs, Rabbits, Goats, Deer, Horses,
@@ -203,8 +206,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   work or reproduce, and grow up after 30 ecosystem ticks. Survival and access
   to food determine which traits continue; there is no hidden “best” score.
 - Foxes, Wolves, Bears, Eagles, and Crocodiles are predators. Each has a listed
-  prey category with multiple species and never treats plants or another
-  predator as food. A predator seeks the nearest listed prey and has higher
+  prey category with multiple species and never treats plants or another land
+  predator as food. All five can enter Water to hunt both Small Fish and Big
+  Fish. A predator seeks the nearest listed prey and has higher
   health and attack damage than herbivores. When it reaches prey, that animal
   has a 15% deterministic chance to fight back and otherwise flees if its own
   movement cadence is ready. A fleeing animal moves to an open reachable
@@ -296,8 +300,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   exposed grass. All nineteen creatures can be spawned and face
   their movement direction. Herbivores seek their species-specific growths plus
   shared grassy dirt, Leaves, and Moss without crossing steps taller than one
-  block, while beavers slowly eat only saplings or Wood, predators hunt only
-  their listed prey species, and prey randomly
+  block, while beavers slowly eat only saplings or Wood, land predators hunt
+  their listed land prey plus both fish species, and prey randomly
   fight or flee. Species use distinct, staggered movement cadences, with
   predators faster on average but fast herbivores able to keep pace. Animals
   starve at zero and die of old age. Every non-human animal species can produce

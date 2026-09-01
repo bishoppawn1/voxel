@@ -32,6 +32,7 @@ import {
   HUMAN_TRAIT_KEYS,
   advanceEcosystem,
   convertCoveredGrassToSoil,
+  createAnimalSurfaceIndex,
   createInitialEcosystem,
   createSurfaceIndex,
   isAquaticAnimal,
@@ -358,6 +359,10 @@ function WorldScene({
   const painting = useRef(false);
   const lastPaintAt = useRef(-Infinity);
   const surfaceByColumn = useMemo(() => createSurfaceIndex(blocks), [blocks]);
+  const animalSurfaceByColumn = useMemo(
+    () => createAnimalSurfaceIndex(blocks),
+    [blocks],
+  );
   const blocksById = useMemo(
     () => new Map(blocks.map((block) => [block.id, block])),
     [blocks],
@@ -365,6 +370,10 @@ function WorldScene({
   const surfaceAt = useCallback(
     (x: number, z: number) => surfaceByColumn.get(`${x},${z}`),
     [surfaceByColumn],
+  );
+  const animalSurfaceAt = useCallback(
+    (x: number, z: number) => animalSurfaceByColumn.get(`${x},${z}`),
+    [animalSurfaceByColumn],
   );
 
   useEffect(() => {
@@ -449,7 +458,7 @@ function WorldScene({
       return;
     }
     if (tool === 'animal') {
-      const surface = surfaceAt(block.x, block.z);
+      const surface = animalSurfaceAt(block.x, block.z);
       const occupied = ecosystem.animals.some(
         (animal) => animal.x === block.x && animal.z === block.z,
       );
@@ -495,7 +504,7 @@ function WorldScene({
       return;
     }
     if (tool === 'animal') {
-      const surface = surfaceAt(block.x, block.z);
+      const surface = animalSurfaceAt(block.x, block.z);
       const occupied = ecosystem.animals.some(
         (animal) => animal.x === block.x && animal.z === block.z,
       );
@@ -645,7 +654,7 @@ function WorldScene({
       })}
 
       {ecosystem.animals.map((animal) => {
-        const surface = surfaceAt(animal.x, animal.z);
+        const surface = animalSurfaceAt(animal.x, animal.z);
         return surface
           ? (
               <AnimalModel

@@ -325,10 +325,10 @@ export const ANIMALS: Record<AnimalKind, {
   fox: {
     label: 'Fox',
     emoji: '🦊',
-    dietLabel: 'rabbits, sheep, and other prey animals',
+    dietLabel: 'fish, rabbits, sheep, and other prey animals',
     vegetation: [],
     materials: [],
-    prey: HERBIVORE_KEYS,
+    prey: [...HERBIVORE_KEYS, ...AQUATIC_KEYS],
     predator: true,
     moveEveryTicks: 1,
     lifespan: 360,
@@ -338,10 +338,10 @@ export const ANIMALS: Record<AnimalKind, {
   wolf: {
     label: 'Wolf',
     emoji: '🐺',
-    dietLabel: 'rabbits, deer, livestock, and other prey animals',
+    dietLabel: 'fish, rabbits, deer, livestock, and other prey animals',
     vegetation: [],
     materials: [],
-    prey: [...HERBIVORE_KEYS, 'human'],
+    prey: [...HERBIVORE_KEYS, ...AQUATIC_KEYS, 'human'],
     predator: true,
     moveEveryTicks: 1,
     lifespan: 420,
@@ -351,10 +351,10 @@ export const ANIMALS: Record<AnimalKind, {
   bear: {
     label: 'Bear',
     emoji: '🐻',
-    dietLabel: 'deer, livestock, birds, and other prey animals',
+    dietLabel: 'fish, deer, livestock, birds, and other prey animals',
     vegetation: [],
     materials: [],
-    prey: [...HERBIVORE_KEYS, 'human'],
+    prey: [...HERBIVORE_KEYS, ...AQUATIC_KEYS, 'human'],
     predator: true,
     moveEveryTicks: 2,
     lifespan: 540,
@@ -364,10 +364,10 @@ export const ANIMALS: Record<AnimalKind, {
   eagle: {
     label: 'Eagle',
     emoji: '🦅',
-    dietLabel: 'rabbits, chickens, and ducks',
+    dietLabel: 'fish, rabbits, chickens, and ducks',
     vegetation: [],
     materials: [],
-    prey: ['rabbit', 'chicken', 'duck'],
+    prey: ['rabbit', 'chicken', 'duck', ...AQUATIC_KEYS],
     predator: true,
     moveEveryTicks: 1,
     lifespan: 360,
@@ -377,10 +377,10 @@ export const ANIMALS: Record<AnimalKind, {
   crocodile: {
     label: 'Crocodile',
     emoji: '🐊',
-    dietLabel: 'livestock, birds, turtles, and other prey animals',
+    dietLabel: 'fish, livestock, birds, turtles, and other prey animals',
     vegetation: [],
     materials: [],
-    prey: [...HERBIVORE_KEYS, 'human'],
+    prey: [...HERBIVORE_KEYS, ...AQUATIC_KEYS, 'human'],
     predator: true,
     moveEveryTicks: 2,
     lifespan: 600,
@@ -567,8 +567,39 @@ export function createSurfaceIndex(blocks: VoxelBlock[]) {
   return surfaces;
 }
 
+/** Keeps high generated canopies from becoming animal platforms while treating
+ * a trunk directly above the ground as a blocked column. */
+export function createAnimalSurfaceIndex(blocks: VoxelBlock[]) {
+  const surfaces = new Map<string, VoxelBlock>();
+  const generatedTreeYByColumn = new Map<string, number[]>();
+
+  for (const block of blocks) {
+    const key = columnKey(block.x, block.z);
+    if (block.id.startsWith('tree-')) {
+      const treeLevels = generatedTreeYByColumn.get(key) ?? [];
+      treeLevels.push(block.y);
+      generatedTreeYByColumn.set(key, treeLevels);
+      continue;
+    }
+    const current = surfaces.get(key);
+    if (!current || block.y > current.y) surfaces.set(key, block);
+  }
+
+  for (const [key, surface] of surfaces) {
+    if (generatedTreeYByColumn.get(key)?.includes(surface.y + 1)) {
+      surfaces.delete(key);
+    }
+  }
+
+  return surfaces;
+}
+
 export function getSurfaceBlock(blocks: VoxelBlock[], x: number, z: number) {
   return createSurfaceIndex(blocks).get(columnKey(x, z));
+}
+
+export function getAnimalSurfaceBlock(blocks: VoxelBlock[], x: number, z: number) {
+  return createAnimalSurfaceIndex(blocks).get(columnKey(x, z));
 }
 
 export function convertCoveredGrassToSoil(blocks: VoxelBlock[]) {
@@ -661,7 +692,7 @@ export function spawnAnimal(
   x: number,
   z: number,
 ) {
-  const surface = getSurfaceBlock(blocks, x, z);
+  const surface = getAnimalSurfaceBlock(blocks, x, z);
   if (
     state.animals.length >= MAX_ANIMALS ||
     (kind === 'human' &&
@@ -1131,8 +1162,9 @@ export function advanceEcosystem(
   const tick = state.tick + 1;
   let nextEntityId = state.nextEntityId;
   const workingBlocks = blocks;
-  const surfaces = createSurfaceIndex(workingBlocks);
-  const surfaceIds = new Set([...surfaces.values()].map(({ id }) => id));
+  const worldSurfaces = createSurfaceIndex(workingBlocks);
+  const surfaces = createAnimalSurfaceIndex(workingBlocks);
+  const surfaceIds = new Set([...worldSurfaces.values()].map(({ id }) => id));
   const blocksById = new Map(workingBlocks.map((block) => [block.id, block]));
   const materialChanges = new Map<string, BlockMaterial>();
   const consumedBlockIds = new Set<string>();
@@ -1154,7 +1186,7 @@ export function advanceEcosystem(
     })
     .map((growth) => advanceVegetationMaturation(growth, state.tick, tick));
 
-  for (const block of surfaces.values()) {
+  for (const block of worldSurfaces.values()) {
     if (
       block.material === 'soil' &&
       random(`soil:${tick}:${block.id}`) < SOIL_TO_GRASS_CHANCE
@@ -1165,7 +1197,7 @@ export function advanceEcosystem(
   }
 
   const vegetationBlockIds = new Set(vegetation.map(({ blockId }) => blockId));
-  for (const block of surfaces.values()) {
+  for (const block of worldSurfaces.values()) {
     const material = materialChanges.get(block.id) ?? block.material;
     if (block.burning || vegetationBlockIds.has(block.id)) continue;
     if (material === 'water') {

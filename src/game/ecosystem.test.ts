@@ -17,6 +17,7 @@ import {
   advanceEcosystem,
   animalMovesOnTick,
   convertCoveredGrassToSoil,
+  createAnimalSurfaceIndex,
   createFounderHumanTraits,
   createInitialEcosystem,
   inheritHumanTraits,
@@ -78,6 +79,7 @@ const emptyEcosystem = (): EcosystemState => ({
 });
 
 const GRAZER_KEYS = HERBIVORE_KEYS.filter((kind) => kind !== 'beaver');
+const LAND_PREDATOR_KEYS = ['fox', 'wolf', 'bear', 'eagle', 'crocodile'] as const;
 
 describe('vegetation growth', () => {
   it('turns covered grassy dirt back into dirt while preserving block identity', () => {
@@ -251,6 +253,42 @@ describe('vegetation growth', () => {
     expect(grown.blocks.some(({ material }) => material === 'wood')).toBe(true);
   });
 
+  it('waits to grow while an animal occupies any tree footprint column', () => {
+    const grassyDirt = block('grass', 0, 0, 'grass');
+    const rabbitGround = block('rabbit-ground', 1, 0, 'stone');
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      vegetation: [{
+        id: 'sapling',
+        blockId: grassyDirt.id,
+        kind: 'sapling',
+        maturesAtTick: 1,
+      }],
+      animals: [animal('rabbit', 'rabbit-1', 1, 0)],
+      nextEntityId: 2,
+    };
+
+    const result = advanceEcosystem([grassyDirt, rabbitGround], ecosystem, () => 0);
+
+    expect(result.blocks).toEqual([grassyDirt, rabbitGround]);
+    expect(result.ecosystem.vegetation).toEqual(ecosystem.vegetation);
+    expect(result.ecosystem.animals[0]).toMatchObject({ x: 1, z: 0 });
+  });
+
+  it('keeps ground walkable below high canopies but blocks tree trunks', () => {
+    const canopyGround = block('canopy-ground', 0, 0, 'stone');
+    const trunkGround = block('trunk-ground', 1, 0, 'soil');
+    const surfaces = createAnimalSurfaceIndex([
+      canopyGround,
+      block('tree-canopy', 0, 0, 'leaves', 8),
+      trunkGround,
+      block('tree-trunk', 1, 0, 'wood', 1),
+    ]);
+
+    expect(surfaces.get('0,0')).toEqual(canopyGround);
+    expect(surfaces.has('1,0')).toBe(false);
+  });
+
   it('keeps a hungry rabbit on the ground below a mature tree canopy', () => {
     const grassyDirt = block('grass', 0, 0, 'grass');
     const grown = advanceEcosystem(
@@ -319,8 +357,8 @@ describe('animal spawning and diets', () => {
       predator: true,
       maxHealth: 12,
       attackDamage: 4,
-      prey: HERBIVORE_KEYS,
     });
+    expect(ANIMALS.fox.prey).toEqual([...HERBIVORE_KEYS, 'small-fish', 'big-fish']);
     for (const kind of HERBIVORE_KEYS) {
       expect(ANIMALS[kind]).toMatchObject({
         predator: false,
@@ -859,6 +897,23 @@ describe('animal life cycle', () => {
     expect(ecosystem.animals.every(({ hunger }) => hunger === MAX_ANIMAL_HUNGER)).toBe(true);
   });
 
+  it('moves an animal saved inside a generated trunk to nearby safe ground', () => {
+    const world = [
+      block('tree-ground', 0, 0, 'soil'),
+      block('tree-sapling-0', 0, 0, 'wood', 1),
+      block('safe-ground', 1, 0, 'stone'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('sheep', 'sheep-0', 0, 0)],
+      nextEntityId: 1,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+
+    expect(result.animals[0]).toMatchObject({ x: 1, z: 0 });
+  });
+
   it('lets land animals swim through water to reach food', () => {
     const world = [
       block('start', 0, 0, 'stone'),
@@ -1248,6 +1303,55 @@ describe('predator hunting', () => {
 
     expect(result.animals).toHaveLength(1);
     expect(result.animals[0]).toMatchObject({ kind: 'big-fish', eaten: 1 });
+  });
+
+  it.each(
+    LAND_PREDATOR_KEYS.flatMap((predatorKind) =>
+      (['small-fish', 'big-fish'] as const).map((fishKind) => [predatorKind, fishKind] as const)),
+  )('%s eats %s at the water edge', (predatorKind, fishKind) => {
+    const world = [
+      block('predator-ground', 0, 0, 'stone'),
+      block('fish-water', 1, 0, 'water'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal(predatorKind, `${predatorKind}-0`, 0, 0, { hunger: 40 }),
+        animal(fishKind, `${fishKind}-1`, 1, 0, { health: 1 }),
+      ],
+      nextEntityId: 2,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+
+    expect(result.animals).toHaveLength(1);
+    expect(result.animals[0]).toMatchObject({
+      id: `${predatorKind}-0`,
+      eaten: 1,
+    });
+  });
+
+  it('lets a fox swim toward fish farther into the water', () => {
+    const world = [
+      block('fox-ground', 0, 0, 'stone'),
+      block('near-water', 1, 0, 'water'),
+      block('fish-water', 2, 0, 'water'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('fox', 'fox-0', 0, 0, { hunger: 40 }),
+        animal('small-fish', 'small-fish-1', 2, 0),
+      ],
+      nextEntityId: 2,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+
+    expect(result.animals.find(({ id }) => id === 'fox-0')).toMatchObject({
+      x: 1,
+      z: 0,
+    });
   });
 
   it.each(HERBIVORE_KEYS)(
