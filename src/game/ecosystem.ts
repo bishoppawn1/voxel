@@ -4,6 +4,7 @@ export const ECOSYSTEM_TICK_MS = 900;
 export const ANIMAL_BREEDING_MEALS = 3;
 export const BABY_GROWTH_MEALS = 3;
 export const MAX_ANIMAL_HUNGER = 100;
+export const HERBIVORE_FIGHT_BACK_CHANCE = 0.15;
 
 const SOIL_TO_GRASS_CHANCE = 0.012;
 const VEGETATION_GROWTH_CHANCE = 0.028;
@@ -44,6 +45,7 @@ export const ANIMALS: Record<AnimalKind, {
   predator: boolean;
   lifespan: number;
   maxHealth: number;
+  attackDamage: number;
 }> = {
   sheep: {
     label: 'Sheep',
@@ -54,7 +56,8 @@ export const ANIMALS: Record<AnimalKind, {
     prey: [],
     predator: false,
     lifespan: 480,
-    maxHealth: 1,
+    maxHealth: 4,
+    attackDamage: 1,
   },
   cow: {
     label: 'Cow',
@@ -65,7 +68,8 @@ export const ANIMALS: Record<AnimalKind, {
     prey: [],
     predator: false,
     lifespan: 540,
-    maxHealth: 1,
+    maxHealth: 4,
+    attackDamage: 1,
   },
   pig: {
     label: 'Pig',
@@ -76,7 +80,8 @@ export const ANIMALS: Record<AnimalKind, {
     prey: [],
     predator: false,
     lifespan: 420,
-    maxHealth: 1,
+    maxHealth: 4,
+    attackDamage: 1,
   },
   rabbit: {
     label: 'Rabbit',
@@ -87,7 +92,8 @@ export const ANIMALS: Record<AnimalKind, {
     prey: [],
     predator: false,
     lifespan: 300,
-    maxHealth: 1,
+    maxHealth: 4,
+    attackDamage: 1,
   },
   goat: {
     label: 'Goat',
@@ -98,7 +104,8 @@ export const ANIMALS: Record<AnimalKind, {
     prey: [],
     predator: false,
     lifespan: 480,
-    maxHealth: 1,
+    maxHealth: 4,
+    attackDamage: 1,
   },
   fox: {
     label: 'Fox',
@@ -109,7 +116,8 @@ export const ANIMALS: Record<AnimalKind, {
     prey: ['sheep', 'cow', 'pig', 'rabbit', 'goat'],
     predator: true,
     lifespan: 360,
-    maxHealth: 3,
+    maxHealth: 12,
+    attackDamage: 4,
   },
 };
 
@@ -543,7 +551,9 @@ export function advanceEcosystem(
     animalsById.set(defendingPrey.id, defendingPrey);
     actedThisTick.add(defendingPrey.id);
 
-    const fightsBack = random(`defend:${tick}:${predator.id}:${defendingPrey.id}`) < 0.5;
+    const fightsBack =
+      random(`defend:${tick}:${predator.id}:${defendingPrey.id}`) <
+      HERBIVORE_FIGHT_BACK_CHANCE;
     if (!fightsBack) {
       occupied.delete(columnKey(defendingPrey.x, defendingPrey.z));
       const escaped = fleeFrom(defendingPrey, predator, surfaces, occupied);
@@ -551,13 +561,25 @@ export function advanceEcosystem(
       occupied.add(columnKey(escaped.x, escaped.z));
       if (escaped.x !== defendingPrey.x || escaped.z !== defendingPrey.z) continue;
     } else {
-      predator = { ...predator, health: predator.health - 1 };
+      predator = {
+        ...predator,
+        health: predator.health - ANIMALS[defendingPrey.kind].attackDamage,
+      };
       if (predator.health <= 0) {
         animalsById.delete(predator.id);
         occupied.delete(columnKey(predator.x, predator.z));
         continue;
       }
       animalsById.set(predator.id, predator);
+    }
+
+    const attackedPrey = {
+      ...defendingPrey,
+      health: defendingPrey.health - ANIMALS[predator.kind].attackDamage,
+    };
+    if (attackedPrey.health > 0) {
+      animalsById.set(attackedPrey.id, attackedPrey);
+      continue;
     }
 
     animalsById.delete(defendingPrey.id);

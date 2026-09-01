@@ -4,6 +4,7 @@ import {
   ANIMAL_BREEDING_MEALS,
   ANIMAL_KEYS,
   BABY_GROWTH_MEALS,
+  HERBIVORE_FIGHT_BACK_CHANCE,
   MAX_ANIMAL_HUNGER,
   advanceEcosystem,
   convertCoveredGrassToSoil,
@@ -106,9 +107,17 @@ describe('animal spawning and diets', () => {
     expect(ANIMAL_KEYS).toEqual(['sheep', 'cow', 'pig', 'rabbit', 'goat', 'fox']);
     expect(ANIMALS.fox).toMatchObject({
       predator: true,
-      maxHealth: 3,
+      maxHealth: 12,
+      attackDamage: 4,
       prey: ['sheep', 'cow', 'pig', 'rabbit', 'goat'],
     });
+    for (const kind of ['sheep', 'cow', 'pig', 'rabbit', 'goat'] as const) {
+      expect(ANIMALS[kind]).toMatchObject({
+        predator: false,
+        maxHealth: 4,
+        attackDamage: 1,
+      });
+    }
   });
 
   it('spawns the selected animal at full hunger on an open surface', () => {
@@ -480,7 +489,38 @@ describe('fox hunting', () => {
     const result = advanceEcosystem(world, ecosystem, () => 0).ecosystem;
 
     expect(result.animals).toHaveLength(1);
-    expect(result.animals[0]).toMatchObject({ id: 'fox-0', health: 2, eaten: 1 });
+    expect(result.animals[0]).toMatchObject({ id: 'fox-0', health: 11, eaten: 1 });
+  });
+
+  it('gives herbivores only a fifteen-percent chance to fight back', () => {
+    const world = [
+      block('fox-cell', 0, 0, 'stone'),
+      block('sheep-cell', 1, 0, 'stone'),
+      block('escape-cell', 2, 0, 'stone'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('fox', 'fox-0', 0, 0),
+        animal('sheep', 'sheep-1', 1, 0),
+      ],
+      nextEntityId: 2,
+    };
+
+    const fighter = advanceEcosystem(
+      world,
+      ecosystem,
+      (key) => key.startsWith('defend:') ? HERBIVORE_FIGHT_BACK_CHANCE - 0.001 : 1,
+    ).ecosystem;
+    const runner = advanceEcosystem(
+      world,
+      ecosystem,
+      (key) => key.startsWith('defend:') ? HERBIVORE_FIGHT_BACK_CHANCE : 1,
+    ).ecosystem;
+
+    expect(fighter.animals.find(({ id }) => id === 'fox-0')?.health).toBe(11);
+    expect(fighter.animals.some(({ id }) => id === 'sheep-1')).toBe(false);
+    expect(runner.animals.find(({ id }) => id === 'sheep-1')).toMatchObject({ x: 2, z: 0 });
   });
 
   it('lets sheep randomly flee to a safe neighboring cell', () => {
@@ -566,7 +606,7 @@ describe('ecosystem persistence validation', () => {
     expect(isValidEcosystem(migrated)).toBe(true);
     expect(migrated?.animals[0]).toMatchObject({
       age: 0,
-      health: 1,
+      health: 4,
       facingX: 1,
       facingZ: 0,
     });

@@ -150,11 +150,13 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 - The Fox is the single predatory species. Its prey category contains Sheep,
   Cows, Pigs, Rabbits, and Goats, so it can choose among multiple animal species
   but never treats plants or another predator as food. It seeks the nearest
-  listed prey and can withstand three hits. When it reaches a prey animal, that
-  animal makes a deterministic random choice to fight back or flee. A fighter
-  deals one hit before the Fox attacks; a fleeing animal moves to an open
-  reachable neighboring surface farther from the Fox, or is caught if no
-  escape exists. A successful hunt feeds the Fox.
+  listed prey. Foxes have twelve health compared with four for herbivores, so
+  they can withstand many weak counterattacks. When a Fox reaches prey, that
+  animal has a 15% deterministic chance to fight back and otherwise flees. A
+  herbivore counterattack deals one damage before the Fox attacks, while a Fox
+  attack deals four damage. A fleeing animal moves to an open reachable surface
+  farther from the Fox, or is caught if no escape exists. A successful hunt
+  feeds the Fox.
 - Vegetation, animal species, positions, facing, hunger, age, health, meal
   counts, and breeding cooldowns persist with the local world. Reset restores a
   fresh ecosystem; Clear removes it.
