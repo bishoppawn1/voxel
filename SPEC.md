@@ -85,11 +85,16 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 
 ## Liquids and fire
 
-- Water and lava fall vertically whenever possible. When blocked, they travel
-  across connected supported surfaces to the lowest reachable open drop rather
-  than remaining perched on a ledge. Flow advances one neighboring cell per
-  simulation tick and remains visible throughout its route.
-- Lava ignites face-adjacent grass, wood, planks, leaves, moss, and coal. Burning blocks
+- Water and lava use four conserved depth levels: quarter, half, three-quarter,
+  and full blocks. They fall vertically whenever possible; when blocked, a full
+  cell balances its volume across all four horizontal directions at once.
+  Thinner neighboring cells continue balancing only when their depth differs by
+  at least two quarters, keeping flow finite and even without creating liquid.
+- Liquid flow advances on a slower cadence than structural gravity. Each flow
+  step remains visible, preserves an original stable ID when a cell moves or
+  splits, and never places more than one liquid block in a cell.
+- Lava radiates heat up to two horizontal cells away and one level vertically,
+  igniting nearby grass, wood, planks, leaves, moss, and coal. Burning blocks
   show visible flames and ignite adjacent flammable blocks. Wood, planks,
   leaves, moss, and coal disappear after a material-specific burn duration; grassy dirt loses
   only its grass layer and becomes an ordinary Dirt block with the same ID and
@@ -184,8 +189,10 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 - Place and Erase work on valid grid cells without duplicates.
 - Right-drag orbits; left-click never rotates the camera.
 - Left-drag never rotates the camera, including while painting blocks.
-- Liquids seek their lowest reachable level, flammable blocks burn and spread
-  fire, and weak vertical columns cannot exceed their material tolerance.
+- Liquids conserve four quarter-block depth levels, spread evenly on their
+  slower cadence, and seek lower open cells. Lava heat ignites nearby
+  flammables, fire spreads, and weak vertical columns cannot exceed their
+  material tolerance.
 - Dirt can become grassy dirt, grassy dirt can sprout non-block vegetation, and
   covered grassy dirt returns to Dirt. All six animals can be spawned and face
   their movement direction. Herbivores seek only food in their listed diets

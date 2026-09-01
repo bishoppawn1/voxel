@@ -67,8 +67,8 @@ describe('god powers', () => {
 
   it('freezes water into ice and lava into obsidian', () => {
     const result = applyAbility([
-      block('water', 0, 0, 0, 'water'),
-      block('lava', 1, 0, 0, 'lava'),
+      { ...block('water', 0, 0, 0, 'water'), liquidLevel: 2 },
+      { ...block('lava', 1, 0, 0, 'lava'), liquidLevel: 1 },
       block('snow', 2, 0, 0, 'snow'),
     ], 'deep-freeze');
 
@@ -78,6 +78,7 @@ describe('god powers', () => {
       ['lava', 'obsidian'],
       ['snow', 'snow'],
     ]);
+    expect(result.blocks.every(({ liquidLevel }) => liquidLevel === undefined)).toBe(true);
   });
 
   it('thaws ice and snow into flowing water', () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BLOCK_SIZE,
+  MAX_LIQUID_LEVEL,
   MATERIALS,
   MATERIAL_KEYS,
   MAX_HEIGHT,
@@ -9,6 +10,7 @@ import {
   advanceWorldStep,
   cellToWorld,
   createStarterWorld,
+  getLiquidLevel,
   isValidWorld,
   settleLiquids,
   settlePlacedBlock,
@@ -239,17 +241,36 @@ describe('liquid flow', () => {
     expect(first.liquidsMoved).toBe(true);
   });
 
-  it('shows liquid flowing over a ledge before it reaches the ground', () => {
+  it('splits a full liquid block evenly into four quarter-height directions', () => {
     const world = [
       block('base', 0, 0, 0),
       block('ledge', 0, 1, 0),
       block('water', 0, 2, 0, 'water'),
     ];
     const first = advanceWorldStep(world);
-    const water = first.blocks.find(({ id }) => id === 'water');
+    const water = first.blocks.filter(({ material }) => material === 'water');
 
-    expect(water?.y).toBe(1);
-    expect(Math.abs(water?.x ?? 0) + Math.abs(water?.z ?? 0)).toBe(1);
+    expect(water).toHaveLength(4);
+    expect(water.every(({ x, y, z }) => y === 2 && Math.abs(x) + Math.abs(z) === 1))
+      .toBe(true);
+    expect(water.map(getLiquidLevel)).toEqual([1, 1, 1, 1]);
+    expect(water.reduce((volume, block) => volume + getLiquidLevel(block), 0))
+      .toBe(MAX_LIQUID_LEVEL);
+    expect(new Set(water.map(({ id }) => id)).size).toBe(4);
+    expect(water.some(({ id }) => id === 'water')).toBe(true);
+  });
+
+  it('can skip fluid flow while structures continue on faster simulation ticks', () => {
+    const world = [
+      block('water', 0, 4, 0, 'water'),
+      block('stone', 2, 4, 0),
+    ];
+    const result = advanceWorldStep(world, false);
+
+    expect(result.blocks.find(({ id }) => id === 'water')?.y).toBe(4);
+    expect(result.blocks.find(({ id }) => id === 'stone')?.y).toBe(3);
+    expect(result.liquidsMoved).toBe(false);
+    expect(result.structuresMoved).toBe(true);
   });
 
   it.each(['water', 'lava'] as const)(
@@ -262,11 +283,17 @@ describe('liquid flow', () => {
       ];
       const result = settleLiquids(world);
       const liquid = result.blocks.find(({ id }) => id === 'liquid');
+      const liquidCells = result.blocks.filter((block) => block.material === material);
 
       expect(result.moved).toBe(true);
       expect(liquid?.y).toBe(0);
       expect(liquid?.x === 0 && liquid?.z === 0).toBe(false);
-      expect(new Set(result.blocks.map(({ x, y, z }) => `${x},${y},${z}`)).size).toBe(3);
+      expect(liquidCells).toHaveLength(4);
+      expect(liquidCells.every(({ y }) => y === 0)).toBe(true);
+      expect(liquidCells.reduce((volume, block) => volume + getLiquidLevel(block), 0))
+        .toBe(MAX_LIQUID_LEVEL);
+      expect(new Set(result.blocks.map(({ x, y, z }) => `${x},${y},${z}`)).size)
+        .toBe(result.blocks.length);
     },
   );
 
@@ -312,6 +339,18 @@ describe('fire', () => {
     expect(world.some(({ id }) => id === 'wood')).toBe(false);
   });
 
+  it('lets lava heat ignite surrounding grass without direct contact', () => {
+    const world = [
+      block('lava', 0, 1, 0, 'lava'),
+      block('nearby-grass', 2, 0, 2, 'grass'),
+      block('far-grass', 3, 0, 0, 'grass'),
+    ];
+    const result = advanceFire(world);
+
+    expect(result.blocks.find(({ id }) => id === 'nearby-grass')?.burning).toBe(1);
+    expect(result.blocks.find(({ id }) => id === 'far-grass')?.burning).toBeUndefined();
+  });
+
   it('spreads fire through flammable neighbors but not stone', () => {
     const world = [
       { ...block('wood', 0, 0, 0, 'wood'), burning: 1 },
@@ -338,6 +377,17 @@ describe('fire', () => {
 describe('world persistence validation', () => {
   it('accepts the starter world', () => {
     expect(isValidWorld(createStarterWorld())).toBe(true);
+  });
+
+  it('accepts four liquid levels and rejects partial solid blocks', () => {
+    for (let level = 1; level <= MAX_LIQUID_LEVEL; level += 1) {
+      expect(isValidWorld([{ ...block(`water-${level}`, level, 0, 0, 'water'), liquidLevel: level }]))
+        .toBe(true);
+    }
+    expect(isValidWorld([{ ...block('too-deep', 0, 0, 0, 'water'), liquidLevel: 5 }]))
+      .toBe(false);
+    expect(isValidWorld([{ ...block('partial-stone', 0, 0, 0), liquidLevel: 2 }]))
+      .toBe(false);
   });
 
   it('rejects duplicate and out-of-bounds cells', () => {

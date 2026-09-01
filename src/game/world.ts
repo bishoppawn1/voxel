@@ -58,7 +58,11 @@ export type VoxelBlock = {
   z: number;
   material: BlockMaterial;
   burning?: number;
+  liquidLevel?: LiquidLevel;
 };
+
+export const MAX_LIQUID_LEVEL = 4;
+export type LiquidLevel = 1 | 2 | 3 | 4;
 
 export type Cell = Pick<VoxelBlock, 'x' | 'y' | 'z'>;
 
@@ -136,6 +140,10 @@ export const cellKey = ({ x, y, z }: Cell) => `${x},${y},${z}`;
 export const cellToWorld = (coordinate: number) => coordinate * BLOCK_SIZE;
 
 export const worldToCell = (coordinate: number) => Math.round(coordinate / BLOCK_SIZE);
+
+export function getLiquidLevel(block: VoxelBlock): LiquidLevel {
+  return block.liquidLevel ?? MAX_LIQUID_LEVEL;
+}
 
 export function isInWorld({ x, y, z }: Cell) {
   return (
@@ -353,99 +361,222 @@ function settleStructures(input: VoxelBlock[]) {
   return { blocks, moved };
 }
 
-function verticalLanding(cell: Cell, occupied: Set<string>) {
-  let y = cell.y;
-  while (y > 0 && !occupied.has(cellKey({ x: cell.x, y: y - 1, z: cell.z }))) {
-    y -= 1;
-  }
-  return y;
+type LiquidTransfer = {
+  sourceId: string;
+  target: Cell;
+  targetKey: string;
+  material: BlockMaterial;
+};
+
+function liquidDirections(block: VoxelBlock) {
+  const offset = Math.abs(block.x * 31 + block.y * 17 + block.z * 13) % HORIZONTAL_DIRECTIONS.length;
+  return HORIZONTAL_DIRECTIONS.map(
+    (_, index) => HORIZONTAL_DIRECTIONS[(index + offset) % HORIZONTAL_DIRECTIONS.length],
+  );
 }
 
-function nextLiquidCell(block: VoxelBlock, occupied: Set<string>): Cell | null {
-  const directY = verticalLanding(block, occupied);
-  if (directY < block.y) return { x: block.x, y: block.y - 1, z: block.z };
+function flowBlockId(sourceId: string, target: Cell, usedIds: Set<string>) {
+  const root = `${sourceId}:flow:${target.x}:${target.y}:${target.z}`;
+  let id = root;
+  let suffix = 1;
+  while (usedIds.has(id)) {
+    id = `${root}:${suffix}`;
+    suffix += 1;
+  }
+  return id;
+}
 
-  const start = { x: block.x, y: block.y, z: block.z };
-  const queue: Array<Cell & { distance: number; firstStep?: Cell }> = [
-    { ...start, distance: 0 },
-  ];
-  const visited = new Set([cellKey(start)]);
-  let best: { landing: Cell; distance: number; next: Cell } | null = null;
+/**
+ * Advances fluid by one visible step while conserving quarter-block units.
+ * Full cells split across all four horizontal directions at once; thinner
+ * cells settle only when they are at least two quarters deeper than a neighbor.
+ */
+export function settleLiquidsStep(input: VoxelBlock[]) {
+  const byId = new Map(input.map((block) => [block.id, block]));
+  const byCell = new Map(input.map((block) => [cellKey(block), block]));
+  const verticallyChanged = new Set<string>();
+  let moved = false;
 
-  for (let index = 0; index < queue.length; index += 1) {
-    const current = queue[index];
-    for (const offset of HORIZONTAL_DIRECTIONS) {
-      const candidate = {
-        x: current.x + offset.x,
-        y: block.y,
-        z: current.z + offset.z,
+  const liquids = input
+    .filter((block) => MATERIALS[block.material].gravityBehavior === 'fluid')
+    .sort((a, b) => a.y - b.y || a.id.localeCompare(b.id));
+
+  for (const original of liquids) {
+    const block = byId.get(original.id);
+    if (!block || block.y === 0) continue;
+    const below = { x: block.x, y: block.y - 1, z: block.z };
+    const belowKey = cellKey(below);
+    const target = byCell.get(belowKey);
+
+    if (!target) {
+      byCell.delete(cellKey(block));
+      const next = { ...block, ...below, liquidLevel: getLiquidLevel(block) };
+      byId.set(block.id, next);
+      byCell.set(belowKey, next);
+      verticallyChanged.add(block.id);
+      moved = true;
+      continue;
+    }
+
+    if (
+      target.material !== block.material ||
+      MATERIALS[target.material].gravityBehavior !== 'fluid'
+    ) {
+      continue;
+    }
+
+    const sourceLevel = getLiquidLevel(block);
+    const targetLevel = getLiquidLevel(target);
+    const transferred = Math.min(sourceLevel, MAX_LIQUID_LEVEL - targetLevel);
+    if (transferred === 0) continue;
+
+    const filledTarget = {
+      ...target,
+      liquidLevel: (targetLevel + transferred) as LiquidLevel,
+    };
+    byId.set(target.id, filledTarget);
+    byCell.set(belowKey, filledTarget);
+    verticallyChanged.add(target.id);
+
+    if (transferred === sourceLevel) {
+      byId.delete(block.id);
+      byCell.delete(cellKey(block));
+    } else {
+      const remainder = {
+        ...block,
+        liquidLevel: (sourceLevel - transferred) as LiquidLevel,
       };
-      const key = cellKey(candidate);
-      if (!isInWorld(candidate) || occupied.has(key) || visited.has(key)) continue;
-      visited.add(key);
+      byId.set(block.id, remainder);
+      byCell.set(cellKey(block), remainder);
+      verticallyChanged.add(block.id);
+    }
+    moved = true;
+  }
 
-      const distance = current.distance + 1;
-      const landingY = verticalLanding(candidate, occupied);
-      if (landingY < block.y) {
-        const landing = { ...candidate, y: landingY };
-        const next = current.firstStep ?? {
-          x: candidate.x,
-          y: block.y - 1,
-          z: candidate.z,
-        };
-        if (
-          !best ||
-          landing.y < best.landing.y ||
-          (landing.y === best.landing.y && distance < best.distance) ||
-          (landing.y === best.landing.y &&
-            distance === best.distance &&
-            cellKey(landing) < cellKey(best.landing))
-        ) {
-          best = { landing, distance, next };
-        }
-        continue;
-      }
+  const snapshot = [...byId.values()];
+  const snapshotById = new Map(snapshot.map((block) => [block.id, block]));
+  const snapshotByCell = new Map(snapshot.map((block) => [cellKey(block), block]));
+  const proposals: LiquidTransfer[] = [];
 
-      queue.push({
-        ...candidate,
-        distance,
-        firstStep: current.firstStep ?? candidate,
+  for (const source of snapshot) {
+    if (
+      MATERIALS[source.material].gravityBehavior !== 'fluid' ||
+      verticallyChanged.has(source.id)
+    ) {
+      continue;
+    }
+
+    const sourceLevel = getLiquidLevel(source);
+    const eligible = liquidDirections(source)
+      .map((offset): Cell => ({
+        x: source.x + offset.x,
+        y: source.y,
+        z: source.z + offset.z,
+      }))
+      .filter((target) => {
+        if (!isInWorld(target)) return false;
+        const neighbor = snapshotByCell.get(cellKey(target));
+        if (neighbor && neighbor.material !== source.material) return false;
+        const neighborLevel = neighbor ? getLiquidLevel(neighbor) : 0;
+        return sourceLevel > neighborLevel + 1;
+      })
+      .slice(0, sourceLevel);
+
+    for (const target of eligible) {
+      proposals.push({
+        sourceId: source.id,
+        target,
+        targetKey: cellKey(target),
+        material: source.material,
       });
     }
   }
 
-  return best?.next ?? null;
-}
+  proposals.sort(
+    (a, b) => a.targetKey.localeCompare(b.targetKey) || a.sourceId.localeCompare(b.sourceId),
+  );
 
-/** Advances every water and lava block at most one visible cell. */
-export function settleLiquidsStep(input: VoxelBlock[]) {
-  const occupied = new Set(input.map((block) => cellKey(block)));
-  const byId = new Map(input.map((block) => [block.id, block]));
-  let moved = false;
+  const outgoing = new Map<string, number>();
+  const incoming = new Map<string, number>();
+  const targetMaterials = new Map<string, BlockMaterial>();
+  const targetCells = new Map<string, Cell>();
+  const contributors = new Map<string, string[]>();
 
-  for (const original of input) {
-    const block = byId.get(original.id) ?? original;
-    if (MATERIALS[block.material].gravityBehavior !== 'fluid') continue;
+  for (const proposal of proposals) {
+    const source = snapshotById.get(proposal.sourceId);
+    if (!source) continue;
+    const sent = outgoing.get(source.id) ?? 0;
+    if (sent >= getLiquidLevel(source)) continue;
 
-    occupied.delete(cellKey(block));
-    const destination = nextLiquidCell(block, occupied);
-    if (destination) {
-      const next = { ...block, ...destination };
-      byId.set(block.id, next);
-      occupied.add(cellKey(next));
-      moved = true;
-    } else {
-      occupied.add(cellKey(block));
+    const existingTarget = snapshotByCell.get(proposal.targetKey);
+    const targetMaterial = existingTarget?.material ?? targetMaterials.get(proposal.targetKey);
+    if (targetMaterial && targetMaterial !== proposal.material) continue;
+    const targetLevel = existingTarget ? getLiquidLevel(existingTarget) : 0;
+    const received = incoming.get(proposal.targetKey) ?? 0;
+    if (targetLevel + received >= MAX_LIQUID_LEVEL) continue;
+
+    outgoing.set(source.id, sent + 1);
+    incoming.set(proposal.targetKey, received + 1);
+    targetMaterials.set(proposal.targetKey, proposal.material);
+    targetCells.set(proposal.targetKey, proposal.target);
+    contributors.set(proposal.targetKey, [
+      ...(contributors.get(proposal.targetKey) ?? []),
+      source.id,
+    ]);
+  }
+
+  const nextById = new Map<string, VoxelBlock>();
+  const finalLevels = new Map<string, number>();
+  for (const block of snapshot) {
+    if (MATERIALS[block.material].gravityBehavior !== 'fluid') {
+      nextById.set(block.id, block);
+      continue;
+    }
+    const level = getLiquidLevel(block) - (outgoing.get(block.id) ?? 0) +
+      (incoming.get(cellKey(block)) ?? 0);
+    finalLevels.set(block.id, level);
+    if (level > 0) {
+      nextById.set(block.id, level === getLiquidLevel(block)
+        ? block
+        : { ...block, liquidLevel: level as LiquidLevel });
     }
   }
 
-  return {
-    blocks: moved ? input.map((block) => byId.get(block.id) ?? block) : input,
-    moved,
-  };
+  const usedIds = new Set(nextById.keys());
+  const inheritedIds = new Set<string>();
+  const created: VoxelBlock[] = [];
+  const emptyTargets = [...incoming.keys()]
+    .filter((key) => !snapshotByCell.has(key))
+    .sort();
+
+  for (const key of emptyTargets) {
+    const target = targetCells.get(key);
+    const material = targetMaterials.get(key);
+    const level = incoming.get(key) ?? 0;
+    if (!target || !material || level === 0) continue;
+    const sources = contributors.get(key) ?? [];
+    const inheritedSource = sources.find(
+      (id) => finalLevels.get(id) === 0 && !inheritedIds.has(id) && !usedIds.has(id),
+    );
+    const sourceId = sources[0] ?? material;
+    const id = inheritedSource ?? flowBlockId(sourceId, target, usedIds);
+    if (inheritedSource) inheritedIds.add(inheritedSource);
+    usedIds.add(id);
+    created.push({ ...target, id, material, liquidLevel: level as LiquidLevel });
+  }
+
+  if (outgoing.size > 0) moved = true;
+  if (!moved) return { blocks: input, moved: false };
+
+  const blocks = input.flatMap((block) => {
+    const next = nextById.get(block.id);
+    return next ? [next] : [];
+  });
+  blocks.push(...created);
+  return { blocks, moved: true };
 }
 
-/** Moves water and lava to the lowest reachable drop without changing IDs. */
+/** Settles water and lava while conserving quarter-block volume. */
 export function settleLiquids(input: VoxelBlock[]) {
   let blocks = input;
   let moved = false;
@@ -460,10 +591,12 @@ export function settleLiquids(input: VoxelBlock[]) {
   return { blocks, moved };
 }
 
-/** Advances gravity and liquid flow by one cell for visible simulation. */
-export function advanceWorldStep(input: VoxelBlock[]) {
+/** Advances gravity and, on slower liquid ticks, one visible flow step. */
+export function advanceWorldStep(input: VoxelBlock[], flowLiquids = true) {
   const structures = settleStructuresStep(input);
-  const liquids = settleLiquidsStep(structures.blocks);
+  const liquids = flowLiquids
+    ? settleLiquidsStep(structures.blocks)
+    : { blocks: structures.blocks, moved: false };
   return {
     blocks: liquids.blocks,
     moved: structures.moved || liquids.moved,
@@ -498,6 +631,7 @@ export function advanceFire(input: VoxelBlock[]): {
   burned: number;
 } {
   const byCell = new Map(input.map((block) => [cellKey(block), block]));
+  const lavaSources = input.filter((block) => block.material === 'lava');
   let ignited = 0;
   let burned = 0;
   let changed = false;
@@ -535,9 +669,13 @@ export function advanceFire(input: VoxelBlock[]): {
       return [{ ...block, burning: block.burning + 1 }];
     }
 
-    const catchesFire = neighbors.some(
-      (neighbor) => neighbor.material === 'lava' || Boolean(neighbor.burning),
+    const heatedByLava = lavaSources.some(
+      (lava) =>
+        Math.abs(lava.x - block.x) <= 2 &&
+        Math.abs(lava.z - block.z) <= 2 &&
+        Math.abs(lava.y - block.y) <= 1,
     );
+    const catchesFire = heatedByLava || neighbors.some((neighbor) => Boolean(neighbor.burning));
     if (!catchesFire) return [block];
 
     changed = true;
@@ -598,12 +736,22 @@ export function isValidWorld(value: unknown): value is VoxelBlock[] {
       return false;
     }
     const material = block.material as BlockMaterial;
+    const isFluid = MATERIALS[material].gravityBehavior === 'fluid';
     if (
       block.burning !== undefined &&
       (!Number.isInteger(block.burning) ||
         block.burning < 1 ||
         !MATERIALS[material].burnDuration ||
         block.burning > (MATERIALS[material].burnDuration ?? 0))
+    ) {
+      return false;
+    }
+    if (
+      block.liquidLevel !== undefined &&
+      (!isFluid ||
+        !Number.isInteger(block.liquidLevel) ||
+        block.liquidLevel < 1 ||
+        block.liquidLevel > MAX_LIQUID_LEVEL)
     ) {
       return false;
     }

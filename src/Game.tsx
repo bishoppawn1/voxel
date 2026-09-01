@@ -39,6 +39,7 @@ import {
 } from './game/ecosystem';
 import {
   BLOCK_SIZE,
+  MAX_LIQUID_LEVEL,
   MATERIALS,
   MATERIAL_KEYS,
   WORLD_RENDER_SIZE,
@@ -46,6 +47,7 @@ import {
   advanceWorldStep,
   cellToWorld,
   createStarterWorld,
+  getLiquidLevel,
   hasBlock,
   isInWorld,
   isValidWorld,
@@ -71,6 +73,7 @@ const ECOSYSTEM_STORAGE_KEY = 'voxel-ecosystem-v1';
 const PAINT_INTERVAL_MS = 160;
 const FIRE_TICK_MS = 650;
 const WORLD_TICK_MS = 140;
+const LIQUID_TICK_DIVISOR = 3;
 
 function loadWorld() {
   try {
@@ -131,17 +134,20 @@ function AnimatedBlock({
   onPaintStart: (event: ThreeEvent<PointerEvent>, block: VoxelBlock) => void;
 }) {
   const group = useRef<Group>(null);
+  const colors = MATERIALS[block.material];
+  const blockHeight = colors.gravityBehavior === 'fluid'
+    ? BLOCK_SIZE * getLiquidLevel(block) / MAX_LIQUID_LEVEL
+    : BLOCK_SIZE;
   const target = useMemo(
     () =>
       new Vector3(
         cellToWorld(block.x),
-        cellToWorld(block.y) + BLOCK_SIZE / 2,
+        cellToWorld(block.y) + blockHeight / 2,
         cellToWorld(block.z),
       ),
-    [block.x, block.y, block.z],
+    [block.x, block.y, block.z, blockHeight],
   );
   const initialPosition = useRef(target.clone()).current;
-  const colors = MATERIALS[block.material];
   const grassCapHeight = block.material === 'grass' ? BLOCK_SIZE * 0.06 : 0;
   const textures = useMemo(() => getBlockTextures(block.material), [block.material]);
   const faceTextures = useMemo(
@@ -172,7 +178,7 @@ function AnimatedBlock({
       onClick={(event) => onSelect(event, block)}
     >
       <mesh position={[0, -grassCapHeight / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[BLOCK_SIZE, BLOCK_SIZE - grassCapHeight, BLOCK_SIZE]} />
+        <boxGeometry args={[BLOCK_SIZE, blockHeight - grassCapHeight, BLOCK_SIZE]} />
         {faceTextures.map((map, index) => (
           <meshStandardMaterial
             key={index}
@@ -783,6 +789,7 @@ export default function Game() {
   const [welcomeVisible, setWelcomeVisible] = useState(true);
   const [powerMessage, setPowerMessage] = useState('');
   const idCounter = useRef(0);
+  const worldTickCounter = useRef(0);
   const blocksRef = useRef(blocks);
   const ecosystemRef = useRef(ecosystem);
   const burningCount = blocks.filter((block) => block.burning).length;
@@ -820,12 +827,17 @@ export default function Game() {
 
   useEffect(() => {
     if (!gravityOn) {
+      worldTickCounter.current = 0;
       setSettling(false);
       return;
     }
 
     const worldTimer = window.setInterval(() => {
-      const step = advanceWorldStep(blocksRef.current);
+      worldTickCounter.current = (worldTickCounter.current + 1) % LIQUID_TICK_DIVISOR;
+      const step = advanceWorldStep(
+        blocksRef.current,
+        worldTickCounter.current === 0,
+      );
       if (!step.moved) {
         setSettling(false);
         return;

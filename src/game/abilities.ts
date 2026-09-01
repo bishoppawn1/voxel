@@ -79,13 +79,15 @@ export function applyAbility(input: VoxelBlock[], ability: AbilityKey): AbilityR
     }
 
     if (ability === 'deep-freeze' && block.material === 'water') {
+      const { liquidLevel: _liquidLevel, ...solid } = block;
       affected += 1;
-      return { ...block, material: 'ice' };
+      return { ...solid, material: 'ice' };
     }
 
     if (ability === 'deep-freeze' && block.material === 'lava') {
+      const { liquidLevel: _liquidLevel, ...solid } = block;
       affected += 1;
-      return { ...block, material: 'obsidian' };
+      return { ...solid, material: 'obsidian' };
     }
 
     if (ability === 'thaw' && (block.material === 'ice' || block.material === 'snow')) {
