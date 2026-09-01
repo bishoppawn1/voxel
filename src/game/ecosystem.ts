@@ -31,12 +31,16 @@ export type Vegetation = {
 export const ANIMAL_KEYS = ['sheep', 'cow', 'pig', 'rabbit', 'goat', 'fox'] as const;
 export type AnimalKind = (typeof ANIMAL_KEYS)[number];
 
+const HERBIVORE_MATERIALS = ['grass', 'leaves', 'moss'] as const satisfies
+  readonly BlockMaterial[];
+
 export const ANIMALS: Record<AnimalKind, {
   label: string;
   emoji: string;
   dietLabel: string;
   vegetation: readonly VegetationKind[];
   materials: readonly BlockMaterial[];
+  prey: readonly AnimalKind[];
   predator: boolean;
   lifespan: number;
   maxHealth: number;
@@ -44,9 +48,10 @@ export const ANIMALS: Record<AnimalKind, {
   sheep: {
     label: 'Sheep',
     emoji: '🐑',
-    dietLabel: 'short grass, tall grass, and grassy dirt',
+    dietLabel: 'grass, grassy dirt, leaves, and moss',
     vegetation: ['grass', 'tall-grass'],
-    materials: ['grass'],
+    materials: HERBIVORE_MATERIALS,
+    prey: [],
     predator: false,
     lifespan: 480,
     maxHealth: 1,
@@ -54,9 +59,10 @@ export const ANIMALS: Record<AnimalKind, {
   cow: {
     label: 'Cow',
     emoji: '🐄',
-    dietLabel: 'tall grass and grassy dirt',
+    dietLabel: 'tall grass, grassy dirt, leaves, and moss',
     vegetation: ['tall-grass'],
-    materials: ['grass'],
+    materials: HERBIVORE_MATERIALS,
+    prey: [],
     predator: false,
     lifespan: 540,
     maxHealth: 1,
@@ -64,9 +70,10 @@ export const ANIMALS: Record<AnimalKind, {
   pig: {
     label: 'Pig',
     emoji: '🐖',
-    dietLabel: 'flowers and grassy dirt',
+    dietLabel: 'flowers, grassy dirt, leaves, and moss',
     vegetation: ['flower'],
-    materials: ['grass'],
+    materials: HERBIVORE_MATERIALS,
+    prey: [],
     predator: false,
     lifespan: 420,
     maxHealth: 1,
@@ -74,9 +81,10 @@ export const ANIMALS: Record<AnimalKind, {
   rabbit: {
     label: 'Rabbit',
     emoji: '🐇',
-    dietLabel: 'short grass and flowers',
+    dietLabel: 'short grass, flowers, grassy dirt, leaves, and moss',
     vegetation: ['grass', 'flower'],
-    materials: [],
+    materials: HERBIVORE_MATERIALS,
+    prey: [],
     predator: false,
     lifespan: 300,
     maxHealth: 1,
@@ -84,9 +92,10 @@ export const ANIMALS: Record<AnimalKind, {
   goat: {
     label: 'Goat',
     emoji: '🐐',
-    dietLabel: 'tall grass, flowers, and grassy dirt',
+    dietLabel: 'tall grass, flowers, grassy dirt, leaves, and moss',
     vegetation: ['tall-grass', 'flower'],
-    materials: ['grass'],
+    materials: HERBIVORE_MATERIALS,
+    prey: [],
     predator: false,
     lifespan: 480,
     maxHealth: 1,
@@ -94,9 +103,10 @@ export const ANIMALS: Record<AnimalKind, {
   fox: {
     label: 'Fox',
     emoji: '🦊',
-    dietLabel: 'other animals',
+    dietLabel: 'rabbits, sheep, and other prey animals',
     vegetation: [],
     materials: [],
+    prey: ['sheep', 'cow', 'pig', 'rabbit', 'goat'],
     predator: true,
     lifespan: 360,
     maxHealth: 3,
@@ -390,6 +400,7 @@ export function advanceEcosystem(
   const surfaceIds = new Set([...surfaces.values()].map(({ id }) => id));
   const blocksById = new Map(blocks.map((block) => [block.id, block]));
   const materialChanges = new Map<string, BlockMaterial>();
+  const consumedBlockIds = new Set<string>();
   const convertedToGrass = new Set<string>();
 
   let vegetation = state.vegetation.filter((growth) => {
@@ -475,7 +486,11 @@ export function advanceEcosystem(
     }
     const material = materialChanges.get(surface.id) ?? surface.material;
     if (materialIsEdible(animal, material)) {
-      if (material === 'grass') materialChanges.set(surface.id, 'soil');
+      if (material === 'grass' || material === 'moss') {
+        materialChanges.set(surface.id, 'soil');
+      } else if (material === 'leaves') {
+        consumedBlockIds.add(surface.id);
+      }
       animal.eaten += 1;
       animal.hunger = Math.min(MAX_ANIMAL_HUNGER, animal.hunger + HUNGER_PER_MEAL);
       ateThisTick.add(animal.id);
@@ -503,8 +518,9 @@ export function advanceEcosystem(
   for (const originalPredator of predators) {
     let predator = animalsById.get(originalPredator.id);
     if (!predator) continue;
+    const preyKinds = ANIMALS[predator.kind].prey;
     const prey = [...animalsById.values()]
-      .filter((animal) => !ANIMALS[animal.kind].predator)
+      .filter((animal) => preyKinds.includes(animal.kind))
       .sort(
         (a, b) =>
           distance(predator!, a) - distance(predator!, b) ||
@@ -643,7 +659,7 @@ export function advanceEcosystem(
     }
     const foodTargets = [...surfaces.values()]
       .filter((block) => {
-        if (block.burning) return false;
+        if (block.burning || consumedBlockIds.has(block.id)) return false;
         const growth = growthByBlockId.get(block.id);
         const material = materialChanges.get(block.id) ?? block.material;
         return (
@@ -659,12 +675,15 @@ export function advanceEcosystem(
   }
 
   animals = [...animalsById.values()].sort((a, b) => a.id.localeCompare(b.id));
+  const survivingBlocks = consumedBlockIds.size
+    ? blocks.filter((block) => !consumedBlockIds.has(block.id))
+    : blocks;
   const nextBlocks = materialChanges.size
-    ? blocks.map((block) => {
+    ? survivingBlocks.map((block) => {
         const material = materialChanges.get(block.id);
         return material ? { ...block, material } : block;
       })
-    : blocks;
+    : survivingBlocks;
 
   return {
     blocks: nextBlocks,

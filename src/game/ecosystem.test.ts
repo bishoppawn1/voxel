@@ -104,7 +104,11 @@ describe('vegetation growth', () => {
 describe('animal spawning and diets', () => {
   it('offers five grazing species and one predatory fox', () => {
     expect(ANIMAL_KEYS).toEqual(['sheep', 'cow', 'pig', 'rabbit', 'goat', 'fox']);
-    expect(ANIMALS.fox).toMatchObject({ predator: true, maxHealth: 3 });
+    expect(ANIMALS.fox).toMatchObject({
+      predator: true,
+      maxHealth: 3,
+      prey: ['sheep', 'cow', 'pig', 'rabbit', 'goat'],
+    });
   });
 
   it('spawns the selected animal at full hunger on an open surface', () => {
@@ -145,7 +149,7 @@ describe('animal spawning and diets', () => {
     expect(result.ecosystem.animals[0]).toMatchObject({ eaten: 1, hunger: 72 });
   });
 
-  it('keeps inedible vegetation for another species', () => {
+  it('keeps inedible surface growth while grazing the edible block beneath it', () => {
     const grassyDirt = block('grass', 0, 0, 'grass');
     const ecosystem: EcosystemState = {
       ...emptyEcosystem(),
@@ -156,11 +160,11 @@ describe('animal spawning and diets', () => {
     const result = advanceEcosystem([grassyDirt], ecosystem, () => 1);
 
     expect(result.ecosystem.vegetation).toEqual(ecosystem.vegetation);
-    expect(result.ecosystem.animals[0]).toMatchObject({ eaten: 0, hunger: 38 });
-    expect(result.blocks[0].material).toBe('grass');
+    expect(result.ecosystem.animals[0]).toMatchObject({ eaten: 1, hunger: 72 });
+    expect(result.blocks[0].material).toBe('soil');
   });
 
-  it.each(['sheep', 'cow', 'pig', 'goat'] as const)(
+  it.each(['sheep', 'cow', 'pig', 'rabbit', 'goat'] as const)(
     '%s can graze grassy dirt after surface growth is gone',
     (kind) => {
       const grassyDirt = block('grass', 0, 0, 'grass');
@@ -175,6 +179,46 @@ describe('animal spawning and diets', () => {
       expect(result.ecosystem.animals[0]).toMatchObject({ eaten: 1, hunger: 72 });
     },
   );
+
+  it('gives every non-predatory species leaves and moss as plant foods', () => {
+    for (const kind of ['sheep', 'cow', 'pig', 'rabbit', 'goat'] as const) {
+      expect(ANIMALS[kind].materials).toEqual(
+        expect.arrayContaining(['grass', 'leaves', 'moss']),
+      );
+    }
+    expect(ANIMALS.fox.materials).toEqual([]);
+  });
+
+  it.each([
+    ['leaves', undefined],
+    ['moss', 'soil'],
+  ] as const)('consumes %s plant blocks instead of eating them forever', (material, remainder) => {
+    const foodBlock = block('food', 0, 0, material);
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('rabbit', 'rabbit-0', 0, 0, { hunger: 40 })],
+      nextEntityId: 1,
+    };
+
+    const result = advanceEcosystem([foodBlock], ecosystem, () => 1);
+
+    expect(result.ecosystem.animals[0]).toMatchObject({ eaten: 1, hunger: 72 });
+    expect(result.blocks[0]?.material).toBe(remainder);
+  });
+
+  it('does not let a predator graze plant blocks', () => {
+    const moss = block('moss', 0, 0, 'moss');
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('fox', 'fox-0', 0, 0, { hunger: 40 })],
+      nextEntityId: 1,
+    };
+
+    const result = advanceEcosystem([moss], ecosystem, () => 1);
+
+    expect(result.blocks).toEqual([moss]);
+    expect(result.ecosystem.animals[0]).toMatchObject({ eaten: 0, hunger: 38 });
+  });
 });
 
 describe('animal life cycle', () => {
@@ -371,6 +415,29 @@ describe('animal life cycle', () => {
 });
 
 describe('fox hunting', () => {
+  it.each(['sheep', 'cow', 'pig', 'rabbit', 'goat'] as const)(
+    'recognizes %s as prey',
+    (preyKind) => {
+      const world = [
+        block('fox-cell', 0, 0, 'stone'),
+        block('prey-cell', 1, 0, 'stone'),
+      ];
+      const ecosystem: EcosystemState = {
+        ...emptyEcosystem(),
+        animals: [
+          animal('fox', 'fox-0', 0, 0),
+          animal(preyKind, `${preyKind}-1`, 1, 0),
+        ],
+        nextEntityId: 2,
+      };
+
+      const result = advanceEcosystem(world, ecosystem, () => 0).ecosystem;
+
+      expect(result.animals).toHaveLength(1);
+      expect(result.animals[0]).toMatchObject({ id: 'fox-0', eaten: 1 });
+    },
+  );
+
   it('walks toward the nearest prey and faces its movement direction', () => {
     const world = [
       block('fox-cell', 0, 0, 'stone'),
