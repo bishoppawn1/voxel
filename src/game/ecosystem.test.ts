@@ -652,6 +652,38 @@ describe('human crafting and building', () => {
     expect(human.heldItem).toBeUndefined();
   });
 
+  it('lets nearby humans adopt and simultaneously use one communal bench', () => {
+    const bench = block('shared-bench', 0, 0, 'crafting-bench', 1);
+    const world = [
+      block('left-ground', -1, 0, 'stone'),
+      block('bench-ground', 0, 0, 'stone'),
+      block('right-ground', 1, 0, 'stone'),
+      bench,
+    ];
+    const fastCrafting = { ...createFounderHumanTraits('fast'), craftsmanship: 100 };
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('human', 'human-0', -1, 0, {
+          heldItem: 'wood',
+          traits: fastCrafting,
+        }),
+        animal('human', 'human-1', 1, 0, {
+          heldItem: 'wood',
+          traits: fastCrafting,
+        }),
+      ],
+      nextEntityId: 2,
+    };
+    const result = advanceEcosystem(world, ecosystem, () => 1);
+
+    expect(result.blocks.filter(({ material }) => material === 'crafting-bench')).toEqual([bench]);
+    expect(result.ecosystem.animals).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'human-0', workbenchId: bench.id, crafting: 'axe' }),
+      expect.objectContaining({ id: 'human-1', workbenchId: bench.id, crafting: 'axe' }),
+    ]));
+  });
+
   it('puts one log into the bench, waits, and takes one plank out', () => {
     const bench = block('bench', 1, 0, 'crafting-bench', 1);
     const world = [block('ground', 0, 0, 'stone'), block('bench-ground', 1, 0, 'stone'), bench];
@@ -734,6 +766,42 @@ describe('human crafting and building', () => {
     expect(result.animals).toHaveLength(1);
     expect(result.animals[0]).toMatchObject({ kind: 'human', eaten: 1, hunger: 63 });
   });
+
+  it('actively explores instead of standing still when no task is visible', () => {
+    const world = Array.from({ length: 5 }, (_, index) =>
+      block(`ground-${index}`, index - 2, 0, 'stone'));
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('human', 'human-0')],
+      nextEntityId: 1,
+    };
+    const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem.animals[0];
+
+    expect({ x: result.x, z: result.z }).not.toEqual({ x: 0, z: 0 });
+  });
+
+  it('searches beyond its normal exploration range in a hunger emergency', () => {
+    const world = Array.from({ length: 11 }, (_, x) => block(`ground-${x}`, x, 0, 'stone'));
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('human', 'human-0', 0, 0, {
+          hunger: 36,
+          traits: {
+            ...createFounderHumanTraits('human-0'),
+            aggression: 0,
+            caution: 100,
+            exploration: 0,
+          },
+        }),
+        animal('rabbit', 'rabbit-1', 10, 0),
+      ],
+      nextEntityId: 2,
+    };
+    const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+
+    expect(result.animals.find(({ id }) => id === 'human-0')).toMatchObject({ x: 1, z: 0 });
+  });
 });
 
 describe('human inheritance and selection', () => {
@@ -786,6 +854,66 @@ describe('human inheritance and selection', () => {
     expect(result.animals.filter(({ isBaby }) => !isBaby).every(
       ({ hunger }) => hunger < HUMAN_REPRODUCTION_MIN_HUNGER,
     )).toBe(true);
+  });
+
+  it('reaches reproduction age before ordinary hunger can block a founder pair', () => {
+    const world = [
+      block('left', 0, 0, 'stone'),
+      block('middle', 1, 0, 'stone'),
+      block('right', 2, 0, 'stone'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('human', 'human-0', 0, 0, {
+          age: 11,
+          hunger: HUMAN_REPRODUCTION_MIN_HUNGER + 1,
+          traits: { ...createFounderHumanTraits('human-0'), efficiency: 0 },
+        }),
+        animal('human', 'human-1', 1, 0, {
+          age: 11,
+          hunger: HUMAN_REPRODUCTION_MIN_HUNGER + 1,
+          traits: { ...createFounderHumanTraits('human-1'), efficiency: 0 },
+        }),
+      ],
+      nextEntityId: 2,
+    };
+
+    expect(advanceEcosystem(world, ecosystem, () => 0.5).ecosystem.animals)
+      .toHaveLength(3);
+  });
+
+  it('lets a founder pair form one workshop and begin a family over time', () => {
+    let world = [
+      ...Array.from({ length: 9 }, (_, x) => block(`ground-${x}`, x, 0, 'stone')),
+      block('log-0', 0, 0, 'wood', 1),
+      block('log-1', 1, 0, 'wood', 1),
+    ];
+    let ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('human', 'human-0', 2, 0),
+        animal('human', 'human-1', 3, 0),
+      ],
+      nextEntityId: 2,
+    };
+
+    for (let tick = 0; tick < 24; tick += 1) {
+      const result = advanceEcosystem(world, ecosystem, () => 1);
+      world = result.blocks;
+      ecosystem = result.ecosystem;
+    }
+
+    expect(ecosystem.animals.filter(({ kind }) => kind === 'human').length)
+      .toBeGreaterThanOrEqual(3);
+    expect(world.filter(({ material }) => material === 'crafting-bench')).toHaveLength(1);
+    const workbenchIds = new Set(
+      ecosystem.animals
+        .filter(({ kind, isBaby }) => kind === 'human' && !isBaby)
+        .map(({ workbenchId }) => workbenchId)
+        .filter(Boolean),
+    );
+    expect(workbenchIds.size).toBeLessThanOrEqual(1);
   });
 
   it('prevents siblings and parent-child pairs from reproducing', () => {

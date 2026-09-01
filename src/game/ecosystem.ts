@@ -27,12 +27,14 @@ export const ANIMAL_FEED_THRESHOLD = MAX_ANIMAL_HUNGER - HUNGER_PER_MEAL;
 const ANIMAL_FIRE_DAMAGE = 1;
 const HUMAN_TOOL_CRAFT_ORDER = ['axe', 'hammer', 'spear'] as const;
 export const HUMAN_MAX_POPULATION = 40;
-export const HUMAN_REPRODUCTION_MIN_HUNGER = 78;
+export const HUMAN_REPRODUCTION_MIN_HUNGER = 70;
 export const HUMAN_CHILDHOOD_TICKS = 30;
 const HUMAN_REPRODUCTION_HUNGER_COST = 35;
 const HUMAN_REPRODUCTION_COOLDOWN_TICKS = 28;
-const HUMAN_REPRODUCTION_AGE = 24;
+const HUMAN_REPRODUCTION_AGE = 12;
 const HUMAN_MUTATION_RANGE = 8;
+const HUMAN_EMERGENCY_HUNGER = 36;
+const HUMAN_MIN_MATE_SEARCH_RADIUS = 24;
 
 const DIRECTIONS = [
   { x: 1, z: 0 },
@@ -416,10 +418,10 @@ export const ANIMALS: Record<AnimalKind, {
   human: {
     label: 'Human',
     emoji: '🧑',
-    dietLabel: 'animals hunted with a crafted spear',
+    dietLabel: 'animals and reachable fish',
     vegetation: [],
     materials: [],
-    prey: [...HERBIVORE_KEYS, ...LAND_PREDATOR_KEYS],
+    prey: [...HERBIVORE_KEYS, ...LAND_PREDATOR_KEYS, ...AQUATIC_KEYS],
     predator: false,
     moveEveryTicks: 1,
     lifespan: 720,
@@ -957,6 +959,35 @@ function fleeFrom(
   return escape ? withMovementFacing(animal, escape) : animal;
 }
 
+function exploreWorld(
+  human: Animal,
+  tick: number,
+  surfaces: Map<string, VoxelBlock>,
+  occupied: Set<string>,
+) {
+  const epoch = Math.floor(tick / 8);
+  const radius = humanSearchRadius(human);
+  let target: VoxelBlock | undefined;
+  let targetScore = Number.POSITIVE_INFINITY;
+  for (const surface of surfaces.values()) {
+    const targetDistance = distance(human, surface);
+    if (
+      targetDistance < 2 ||
+      targetDistance > radius ||
+      occupied.has(columnKey(surface.x, surface.z)) ||
+      !surfaceIsTraversable(human, surface)
+    ) {
+      continue;
+    }
+    const score = hashString(`${human.id}:explore:${epoch}:${surface.x},${surface.z}`);
+    if (score < targetScore) {
+      target = surface;
+      targetScore = score;
+    }
+  }
+  return target ? moveToward(human, target, surfaces, occupied) : human;
+}
+
 function findBabyCell(
   parents: [Animal, Animal],
   surfaces: Map<string, VoxelBlock>,
@@ -999,7 +1030,7 @@ function humanHungerLossEveryTicks(human: Animal) {
 }
 
 function humanHuntThreshold(human: Animal) {
-  return 35 + Math.round(traitsFor(human).aggression * 0.4);
+  return 55 + Math.round(traitsFor(human).aggression * 0.3);
 }
 
 function humanSearchRadius(human: Animal) {
@@ -1464,9 +1495,12 @@ export function advanceEcosystem(
           ) {
             return false;
           }
-          const sharedSearchRadius = Math.min(
-            humanSearchRadius(currentFirst),
-            humanSearchRadius(candidate),
+          const sharedSearchRadius = Math.max(
+            HUMAN_MIN_MATE_SEARCH_RADIUS,
+            Math.min(
+              humanSearchRadius(currentFirst),
+              humanSearchRadius(candidate),
+            ),
           );
           return distance(currentFirst, candidate) <= sharedSearchRadius;
         })
@@ -1557,12 +1591,35 @@ export function advanceEcosystem(
       workbench = undefined;
       animalsById.set(human.id, human);
     }
+    if (!workbench) {
+      const sharedWorkbench = [...blocksById.values()]
+        .filter(
+          (block) =>
+            block.material === 'crafting-bench' &&
+            !consumedBlockIds.has(block.id) &&
+            distance(human!, block) <= humanSearchRadius(human!),
+        )
+        .sort(
+          (a, b) =>
+            distance(human!, a) - distance(human!, b) ||
+            a.id.localeCompare(b.id),
+        )[0];
+      if (sharedWorkbench) {
+        human = { ...human, workbenchId: sharedWorkbench.id };
+        workbench = sharedWorkbench;
+        animalsById.set(human.id, human);
+      }
+    }
 
     const humanTraits = traitsFor(human);
     const huntHealthFloor = Math.ceil(
       ANIMALS.human.maxHealth * (0.25 + humanTraits.caution * 0.004),
     );
-    if (human.hunger <= humanHuntThreshold(human) && human.health >= huntHealthFloor) {
+    const emergencyHunt = human.hunger <= HUMAN_EMERGENCY_HUNGER;
+    if (
+      human.hunger <= humanHuntThreshold(human) &&
+      (human.health >= huntHealthFloor || emergencyHunt)
+    ) {
       const prey = [...animalsById.values()]
         .filter(
           (candidate) => {
@@ -1571,10 +1628,10 @@ export function advanceEcosystem(
               (human!.tools ?? []).includes('spear') &&
               humanTraits.aggression >= humanTraits.caution;
             return (
-            candidate.id !== human!.id &&
-            ANIMALS.human.prey.includes(candidate.kind) &&
-            distance(human!, candidate) <= humanSearchRadius(human!) &&
-            (!dangerous || acceptsDanger)
+              candidate.id !== human!.id &&
+              ANIMALS.human.prey.includes(candidate.kind) &&
+              (emergencyHunt || distance(human!, candidate) <= humanSearchRadius(human!)) &&
+              (!dangerous || acceptsDanger || emergencyHunt)
             );
           },
         )
@@ -1649,7 +1706,7 @@ export function advanceEcosystem(
       if (!workbench) {
         const cell = findWorkbenchCell(human, surfaces, occupied, occupiedBlockCells);
         if (!cell) {
-          saveHuman(human);
+          saveHuman(exploreWorld(human, tick, surfaces, occupied));
           continue;
         }
         const block: VoxelBlock = {
@@ -1721,7 +1778,7 @@ export function advanceEcosystem(
           a.id.localeCompare(b.id),
       )[0];
     if (!wood) {
-      saveHuman(human);
+      saveHuman(exploreWorld(human, tick, surfaces, occupied));
       continue;
     }
     if (distance(human, wood) > 1) {

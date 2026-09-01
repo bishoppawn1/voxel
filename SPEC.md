@@ -179,12 +179,18 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   three meals, a baby visibly grows into an adult and begins a short breeding
   cooldown.
 - Humans use a deterministic work routine shaped by six individual inherited
-  traits. A hungry Human seeks and attacks a nearby land animal; a crafted Spear
+  traits. A hungry Human seeks and attacks a nearby animal, including fish it
+  can reach by swimming; a crafted Spear
   increases its hunting damage. At other times it seeks Wood, chops one exposed
-  Wood block at a time, and carries that one log in a single hand slot. Its
-  first log becomes a Basic Crafting Bench on a neighboring safe surface.
-- A Human places one carried log into its own bench and leaves its hand empty
-  while the bench works. The next tick it takes the result. Its first three
+  Wood block at a time, and carries that one log in a single hand slot. If no
+  communal bench is nearby, its first log becomes a Basic Crafting Bench on a
+  neighboring safe surface.
+- Before constructing a bench, a Human adopts the nearest existing Basic
+  Crafting Bench inside its exploration range. Nearby Humans therefore share a
+  communal workshop and contribute planks to the same house instead of each
+  creating a duplicate bench. A Human places one carried log into its adopted
+  bench and leaves its hand empty while the bench works. It takes the result
+  when the recipe finishes. Its first three
   recipes produce an Axe, Hammer, and Spear in that order; the Axe makes logging
   faster, the Hammer enables construction work, and the Spear improves hunting.
   Later logs become one Planks block each. Tools are worn equipment rather than
@@ -197,8 +203,11 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   it hunts and its attack strength; Caution changes the health risk it accepts;
   Exploration sets its resource and mate search distance; Gathering changes
   logging cadence; Craftsmanship changes bench time; and Efficiency changes how
-  often hunger falls. A colored sash makes individuals visually distinct.
-- A healthy Human can reproduce after age 24 when it has at least 78 hunger,
+  often hunger falls. With no visible task, a Human actively explores toward a
+  deterministic destination rather than standing still. At emergency hunger it
+  searches the entire reachable world for prey and accepts risks it would
+  normally avoid. A colored sash makes individuals visually distinct.
+- A healthy Human can reproduce after age 12 when it has at least 70 hunger,
   at least 60% health, no cooldown, and a reachable unrelated partner meeting
   the same rules. Parent-child and sibling pairs are rejected. Each parent
   spends 35 hunger and receives a 28-tick cooldown. Human population is capped
@@ -316,8 +325,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   on Water, Small Fish eat kelp, and Big Fish hunt Small Fish without leaving
   connected water. Fish keep planning through temporary animal traffic, wait
   before entering an occupied cell, and never plan through solid terrain.
-- Humans carry one resource, hunt land animals, chop Wood, build and use a Basic
-  Crafting Bench, craft an Axe, Hammer, and Spear, turn later logs into Planks,
+- Humans carry one resource, hunt animals, chop Wood, share and use a nearby
+  Basic Crafting Bench, craft an Axe, Hammer, and Spear, turn later logs into
+  Planks,
   and place those planks into a small house one trip at a time. Healthy mature
   unrelated pairs can produce children whose six behavior traits average both
   parents with bounded mutation. Parent-child and sibling pairing is blocked,
