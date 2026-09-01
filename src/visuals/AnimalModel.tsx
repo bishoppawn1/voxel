@@ -1,4 +1,4 @@
-import { useFrame } from '@react-three/fiber';
+import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import { memo, useMemo, useRef } from 'react';
 import { type Group, Vector3 } from 'three';
 import type { Animal } from '../game/ecosystem';
@@ -247,7 +247,11 @@ function AnimalFire() {
 function HumanEquipment({ animal }: { animal: Animal }) {
   if (animal.kind !== 'human') return null;
   const tool = animal.tools?.at(-1);
+  const traitHue = animal.traits
+    ? Math.round((animal.traits.exploration * 2.2 + animal.traits.aggression) % 300)
+    : 170;
   return <>
+    <Part part={box([0.22, 0.84, 0], [0.035, 0.48, 0.46], `hsl(${traitHue} 54% 55%)`, [0.62, 0, 0])} />
     {animal.heldItem && <Part part={box(
       [0.28, 0.7, -0.42],
       [0.3, 0.3, 0.3],
@@ -266,10 +270,12 @@ export const AnimalModel = memo(function AnimalModel({
   animal,
   surfaceY,
   inWater,
+  onInspect,
 }: {
   animal: Animal;
   surfaceY: number;
   inWater: boolean;
+  onInspect?: (animal: Animal) => void;
 }) {
   const group = useRef<Group>(null);
   const aquatic = animal.kind === 'small-fish' || animal.kind === 'big-fish';
@@ -293,7 +299,17 @@ export const AnimalModel = memo(function AnimalModel({
 
   const appearance = APPEARANCES[animal.kind as string] ?? APPEARANCES.sheep;
   const scale = appearance.scale * (animal.isBaby ? 0.62 : 1);
-  return <group ref={group} position={initialPosition} scale={scale}>
+  return <group
+    ref={group}
+    position={initialPosition}
+    scale={scale}
+    onClick={animal.kind === 'human' && onInspect
+      ? (event: ThreeEvent<MouseEvent>) => {
+          event.stopPropagation();
+          onInspect(animal);
+        }
+      : undefined}
+  >
     {appearance.parts.map((part, index) => <Part key={index} part={part} />)}
     <HumanEquipment animal={animal} />
     {animal.burning && !inWater && <AnimalFire />}
@@ -309,5 +325,7 @@ export const AnimalModel = memo(function AnimalModel({
   previous.animal.isBaby === next.animal.isBaby &&
   previous.animal.burning === next.animal.burning &&
   previous.animal.heldItem === next.animal.heldItem &&
-  previous.animal.tools?.join(',') === next.animal.tools?.join(','),
+  previous.animal.tools?.join(',') === next.animal.tools?.join(',') &&
+  previous.animal.traits?.aggression === next.animal.traits?.aggression &&
+  previous.animal.traits?.exploration === next.animal.traits?.exploration,
 );

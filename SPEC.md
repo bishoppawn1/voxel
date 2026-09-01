@@ -172,8 +172,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   visibly smaller baby of their species. Babies eat but do not breed; after
   three meals, a baby visibly grows into an adult and begins a short breeding
   cooldown.
-- Humans use a fixed, deterministic work routine in this release and do not
-  breed. A hungry Human seeks and attacks a nearby land animal; a crafted Spear
+- Humans use a deterministic work routine shaped by six individual inherited
+  traits. A hungry Human seeks and attacks a nearby land animal; a crafted Spear
   increases its hunting damage. At other times it seeks Wood, chops one exposed
   Wood block at a time, and carries that one log in a single hand slot. Its
   first log becomes a Basic Crafting Bench on a neighboring safe surface.
@@ -186,6 +186,22 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 - Once equipped, a Human carries each Planks result to the next cell in a small
   square-house blueprint around its bench. It places only one Planks block per
   trip. Destroying the bench cancels anything left inside it.
+- Every founder receives bounded individual Aggression, Caution, Exploration,
+  Gathering, Craftsmanship, and Efficiency values. Aggression changes how early
+  it hunts and its attack strength; Caution changes the health risk it accepts;
+  Exploration sets its resource and mate search distance; Gathering changes
+  logging cadence; Craftsmanship changes bench time; and Efficiency changes how
+  often hunger falls. A colored sash makes individuals visually distinct.
+- A healthy Human can reproduce after age 24 when it has at least 78 hunger,
+  at least 60% health, no cooldown, and a reachable unrelated partner meeting
+  the same rules. Parent-child and sibling pairs are rejected. Each parent
+  spends 35 hunger and receives a 28-tick cooldown. Human population is capped
+  at 40, including player-spawned founders and children.
+- A Human child records both parent IDs and a generation number. Each of its six
+  traits is the rounded mean of the parents plus a deterministic mutation of at
+  most eight points, clamped from 0 to 100. Children are visibly smaller, do not
+  work or reproduce, and grow up after 30 ecosystem ticks. Survival and access
+  to food determine which traits continue; there is no hidden “best” score.
 - Foxes, Wolves, Bears, Eagles, and Crocodiles are predators. Each has a listed
   prey category with multiple species and never treats plants or another
   predator as food. A predator seeks the nearest listed prey and has higher
@@ -194,6 +210,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   movement cadence is ready. A fleeing animal moves to an open reachable
   surface farther from the predator, or is caught if no escape exists. A
   successful hunt feeds the predator.
+  Wolves, Bears, and Crocodiles also treat Humans as prey, creating real
+  selection pressure; cautious Humans avoid hunting dangerous predators unless
+  their Aggression is at least as high and they have a Spear.
 - Kelp grows as a lightweight attachment on exposed Water in the same
   deterministic cycle used for land vegetation. Small Fish remain in connected
   water and eat kelp; Big Fish remain in connected water and hunt Small Fish.
@@ -204,8 +223,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   indexes and skips unchanged block, vegetation, and animal models so larger
   populations do not trigger repeated whole-world scans or redraws.
 - Vegetation, animal species, positions, facing, hunger, age, health, fire, meal
-  counts, breeding cooldowns, and Human hands, tools, benches, and unfinished
-  recipes persist with the local world. Reset restores a
+  counts, breeding cooldowns, and Human hands, tools, benches, unfinished
+  recipes, traits, generation, and parent IDs persist with the local world.
+  Older Human saves receive deterministic founder traits during migration. Reset restores a
   fresh ecosystem; Clear removes it.
 
 ## God powers
@@ -242,7 +262,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   normal camera distance: horns and antlers, ears and muzzles, manes and tails,
   wings and beaks, shells and flippers, and the Crocodile's long body and snout.
   Humans have an upright silhouette and visibly show a carried log or plank and
-  their most recently crafted tool.
+  their most recently crafted tool. Clicking a Human opens a compact individual
+  inspector with its name, activity, generation, parents, vitals, equipment,
+  and six trait values.
 - The first-use message should leave after the first world edit.
 - Motion should honor the operating system's reduced-motion preference.
 
@@ -281,10 +303,12 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   reachable water and extinguish; land animals swim across water. Kelp regrows
   on Water, Small Fish eat kelp, and Big Fish hunt Small Fish without leaving
   connected water.
-- Humans never reproduce in this release. They carry one resource, hunt land
-  animals, chop Wood, build and use a Basic Crafting Bench, craft an Axe,
-  Hammer, and Spear, turn later logs into Planks, and place those planks into a
-  small house one trip at a time.
+- Humans carry one resource, hunt land animals, chop Wood, build and use a Basic
+  Crafting Bench, craft an Axe, Hammer, and Spear, turn later logs into Planks,
+  and place those planks into a small house one trip at a time. Healthy mature
+  unrelated pairs can produce children whose six behavior traits average both
+  parents with bounded mutation. Parent-child and sibling pairing is blocked,
+  childhood takes 30 ticks, and total Human population never exceeds 40.
 - Removing the last connection beneath or beside a structure makes the detached group settle.
 - Gravity pause and resume work as specified.
 - Verdant Touch, Wildfire, Rain, Deep Freeze, and Thaw affect only eligible
@@ -298,7 +322,7 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 
 The architecture should leave room for more god powers, additional creatures, biomes,
 weather, erosion, richer terrain generation, larger worlds, time controls, and
-shareable world files. Inherited Human behavior, mutation, fitness selection,
-and Human reproduction are specifically not part of this release and require a
-separate approved design. These ideas must not be added until their behavior and
-performance budgets are specified.
+shareable world files. Broader genetics, multi-generation ancestry graphs,
+social groups, settlements, and warfare remain outside this release. These
+ideas must not be added until their behavior and performance budgets are
+specified.

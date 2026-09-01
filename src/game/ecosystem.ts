@@ -25,8 +25,14 @@ const HUNGER_PER_MEAL = 34;
 const MAX_ANIMALS = 500;
 export const ANIMAL_FEED_THRESHOLD = MAX_ANIMAL_HUNGER - HUNGER_PER_MEAL;
 const ANIMAL_FIRE_DAMAGE = 1;
-const HUMAN_HUNT_THRESHOLD = 55;
 const HUMAN_TOOL_CRAFT_ORDER = ['axe', 'hammer', 'spear'] as const;
+export const HUMAN_MAX_POPULATION = 40;
+export const HUMAN_REPRODUCTION_MIN_HUNGER = 78;
+export const HUMAN_CHILDHOOD_TICKS = 30;
+const HUMAN_REPRODUCTION_HUNGER_COST = 35;
+const HUMAN_REPRODUCTION_COOLDOWN_TICKS = 28;
+const HUMAN_REPRODUCTION_AGE = 24;
+const HUMAN_MUTATION_RANGE = 8;
 
 const DIRECTIONS = [
   { x: 1, z: 0 },
@@ -335,7 +341,7 @@ export const ANIMALS: Record<AnimalKind, {
     dietLabel: 'rabbits, deer, livestock, and other prey animals',
     vegetation: [],
     materials: [],
-    prey: HERBIVORE_KEYS,
+    prey: [...HERBIVORE_KEYS, 'human'],
     predator: true,
     moveEveryTicks: 1,
     lifespan: 420,
@@ -348,7 +354,7 @@ export const ANIMALS: Record<AnimalKind, {
     dietLabel: 'deer, livestock, birds, and other prey animals',
     vegetation: [],
     materials: [],
-    prey: HERBIVORE_KEYS,
+    prey: [...HERBIVORE_KEYS, 'human'],
     predator: true,
     moveEveryTicks: 2,
     lifespan: 540,
@@ -374,7 +380,7 @@ export const ANIMALS: Record<AnimalKind, {
     dietLabel: 'livestock, birds, turtles, and other prey animals',
     vegetation: [],
     materials: [],
-    prey: HERBIVORE_KEYS,
+    prey: [...HERBIVORE_KEYS, 'human'],
     predator: true,
     moveEveryTicks: 2,
     lifespan: 600,
@@ -427,6 +433,24 @@ export const HUMAN_TOOL_KEYS = ['axe', 'hammer', 'spear'] as const;
 export type HumanTool = (typeof HUMAN_TOOL_KEYS)[number];
 export type HumanHeldItem = 'wood' | 'planks';
 export type HumanCraft = HumanTool | 'planks';
+export const HUMAN_TRAIT_KEYS = [
+  'aggression',
+  'caution',
+  'exploration',
+  'gathering',
+  'craftsmanship',
+  'efficiency',
+] as const;
+export type HumanTraitKey = (typeof HUMAN_TRAIT_KEYS)[number];
+export type HumanTraits = Record<HumanTraitKey, number>;
+export const HUMAN_TRAITS: Record<HumanTraitKey, { label: string; low: string; high: string }> = {
+  aggression: { label: 'Aggression', low: 'patient hunter', high: 'hunts early' },
+  caution: { label: 'Caution', low: 'takes risks', high: 'avoids danger' },
+  exploration: { label: 'Exploration', low: 'stays nearby', high: 'searches far' },
+  gathering: { label: 'Gathering', low: 'slow logger', high: 'fast logger' },
+  craftsmanship: { label: 'Craftsmanship', low: 'slow crafter', high: 'fast crafter' },
+  efficiency: { label: 'Efficiency', low: 'gets hungry fast', high: 'needs less food' },
+};
 
 export type Animal = {
   id: string;
@@ -446,6 +470,10 @@ export type Animal = {
   tools?: HumanTool[];
   workbenchId?: string;
   crafting?: HumanCraft;
+  craftingReadyTick?: number;
+  traits?: HumanTraits;
+  generation?: number;
+  parentIds?: [string, string];
 };
 
 export type EcosystemState = {
@@ -455,7 +483,7 @@ export type EcosystemState = {
   nextEntityId: number;
 };
 
-type RandomSource = (key: string) => number;
+export type RandomSource = (key: string) => number;
 type Position = Pick<Animal, 'x' | 'z'>;
 
 const columnKey = (x: number, z: number) => `${x},${z}`;
@@ -473,6 +501,51 @@ function hashString(key: string) {
 
 function deterministicRandom(key: string) {
   return hashString(key) / 4294967296;
+}
+
+function clampTrait(value: number) {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+export function createFounderHumanTraits(seed: string): HumanTraits {
+  return Object.fromEntries(HUMAN_TRAIT_KEYS.map((trait) => [
+    trait,
+    35 + hashString(`${seed}:${trait}`) % 31,
+  ])) as HumanTraits;
+}
+
+function traitsFor(human: Pick<Animal, 'id' | 'traits'>) {
+  return human.traits ?? createFounderHumanTraits(human.id);
+}
+
+export function inheritHumanTraits(
+  first: Pick<Animal, 'id' | 'traits'>,
+  second: Pick<Animal, 'id' | 'traits'>,
+  childId: string,
+  tick: number,
+  random: RandomSource = deterministicRandom,
+): HumanTraits {
+  const firstTraits = traitsFor(first);
+  const secondTraits = traitsFor(second);
+  return Object.fromEntries(HUMAN_TRAIT_KEYS.map((trait) => {
+    const inherited = (firstTraits[trait] + secondTraits[trait]) / 2;
+    const mutation = Math.round(
+      (random(`human-mutation:${tick}:${childId}:${trait}`) * 2 - 1) *
+      HUMAN_MUTATION_RANGE,
+    );
+    return [trait, clampTrait(inherited + mutation)];
+  })) as HumanTraits;
+}
+
+const HUMAN_NAMES = [
+  'Ada', 'Ash', 'Briar', 'Cleo', 'Dara', 'Ember', 'Finn', 'Iris',
+  'Jules', 'Kai', 'Lark', 'Mira', 'Nico', 'Orin', 'Pax', 'Quinn',
+  'Rowan', 'Sage', 'Tala', 'Vale', 'Wren', 'Yara',
+] as const;
+
+export function humanDisplayName(human: Pick<Animal, 'id'>) {
+  const hash = hashString(human.id);
+  return `${HUMAN_NAMES[hash % HUMAN_NAMES.length]} ${10 + hash % 90}`;
 }
 
 export function isAquaticAnimal(kind: AnimalKind) {
@@ -530,7 +603,11 @@ function createAnimal(kind: AnimalKind, idNumber: number, position: Position): A
     facingX: 1,
     facingZ: 0,
   };
-  if (kind === 'human') animal.tools = [];
+  if (kind === 'human') {
+    animal.tools = [];
+    animal.traits = createFounderHumanTraits(animal.id);
+    animal.generation = 0;
+  }
   return animal;
 }
 
@@ -587,6 +664,8 @@ export function spawnAnimal(
   const surface = getSurfaceBlock(blocks, x, z);
   if (
     state.animals.length >= MAX_ANIMALS ||
+    (kind === 'human' &&
+      state.animals.filter((animal) => animal.kind === 'human').length >= HUMAN_MAX_POPULATION) ||
     !surface ||
     surface.burning ||
     surface.material === 'lava' ||
@@ -881,6 +960,81 @@ function animalCanEatOnTick(animal: Animal, tick: number) {
   return tick % (ANIMALS[animal.kind].eatEveryTicks ?? 1) === 0;
 }
 
+function humanHungerLossEveryTicks(human: Animal) {
+  return 1 + Math.floor(traitsFor(human).efficiency / 40);
+}
+
+function humanHuntThreshold(human: Animal) {
+  return 35 + Math.round(traitsFor(human).aggression * 0.4);
+}
+
+function humanSearchRadius(human: Animal) {
+  return 6 + Math.floor(traitsFor(human).exploration / 4);
+}
+
+function humanCraftingTicks(human: Animal) {
+  return Math.max(1, 3 - Math.floor(traitsFor(human).craftsmanship / 40));
+}
+
+function humanLoggingInterval(human: Animal) {
+  const skilled = traitsFor(human).gathering >= 55;
+  return (human.tools ?? []).includes('axe')
+    ? (skilled ? 1 : 2)
+    : (skilled ? 2 : 3);
+}
+
+function humanCanWorkOnTick(human: Animal, tick: number) {
+  const interval = humanLoggingInterval(human);
+  return interval === 1 || tick % interval === hashString(human.id) % interval;
+}
+
+function humansAreCloseFamily(first: Animal, second: Animal) {
+  if (first.parentIds?.includes(second.id) || second.parentIds?.includes(first.id)) {
+    return true;
+  }
+  return Boolean(
+    first.parentIds?.some((parentId) => second.parentIds?.includes(parentId)),
+  );
+}
+
+function humanIsReadyToReproduce(human: Animal) {
+  return (
+    human.kind === 'human' &&
+    !human.isBaby &&
+    human.age >= HUMAN_REPRODUCTION_AGE &&
+    human.hunger >= HUMAN_REPRODUCTION_MIN_HUNGER &&
+    human.health >= Math.ceil(ANIMALS.human.maxHealth * 0.6) &&
+    human.breedingCooldown === 0
+  );
+}
+
+function createHumanChild(
+  idNumber: number,
+  position: Position,
+  parents: [Animal, Animal],
+  tick: number,
+  random: RandomSource,
+): Animal {
+  const id = `human-${idNumber}`;
+  return {
+    id,
+    kind: 'human',
+    ...position,
+    eaten: 0,
+    hunger: 70,
+    isBaby: true,
+    breedingCooldown: 0,
+    age: 0,
+    health: ANIMALS.human.maxHealth,
+    facingX: parents[0].facingX,
+    facingZ: parents[0].facingZ,
+    tools: [],
+    traits: inheritHumanTraits(parents[0], parents[1], id, tick, random),
+    generation: Math.max(parents[0].generation ?? 0, parents[1].generation ?? 0) + 1,
+    parentIds: parents.map(({ id: parentId }) => parentId).sort() as [string, string],
+  };
+}
+
 function isReadyToBreed(animal: Animal) {
   return (
     ANIMALS[animal.kind].canBreed !== false &&
@@ -1045,7 +1199,9 @@ export function advanceEcosystem(
   let animals = state.animals.flatMap((animal) => {
     const age = animal.age + 1;
     if (age >= ANIMALS[animal.kind].lifespan) return [];
-    const hungerLossEveryTicks = ANIMALS[animal.kind].hungerLossEveryTicks ?? 1;
+    const hungerLossEveryTicks = animal.kind === 'human'
+      ? humanHungerLossEveryTicks(animal)
+      : ANIMALS[animal.kind].hungerLossEveryTicks ?? 1;
     const hunger = animal.hunger - (tick % hungerLossEveryTicks === 0 ? 1 : 0);
     if (hunger <= 0) return [];
     const surface = surfaces.get(columnKey(animal.x, animal.z));
@@ -1141,16 +1297,23 @@ export function advanceEcosystem(
     }
   }
 
-  animals = animals.map((animal) =>
-    animal.isBaby && animal.eaten >= BABY_GROWTH_MEALS
+  animals = animals.map((animal) => {
+    const finishedGrowing = animal.isBaby && (
+      animal.kind === 'human'
+        ? animal.age >= HUMAN_CHILDHOOD_TICKS
+        : animal.eaten >= BABY_GROWTH_MEALS
+    );
+    return finishedGrowing
       ? {
           ...animal,
           eaten: 0,
           isBaby: false,
-          breedingCooldown: BREEDING_COOLDOWN_TICKS,
+          breedingCooldown: animal.kind === 'human'
+            ? HUMAN_REPRODUCTION_COOLDOWN_TICKS
+            : BREEDING_COOLDOWN_TICKS,
         }
-      : animal,
-  );
+      : animal;
+  });
 
   const animalsById = new Map(animals.map((animal) => [animal.id, animal]));
   const occupied = new Set(animals.map(({ x, z }) => columnKey(x, z)));
@@ -1240,8 +1403,97 @@ export function advanceEcosystem(
     });
   }
 
+  let humanPopulation = [...animalsById.values()]
+    .filter(({ kind }) => kind === 'human').length;
+  const pairedHumans = new Set<string>();
+  if (humanPopulation < HUMAN_MAX_POPULATION) {
+    const eligibleHumans = [...animalsById.values()]
+      .filter(
+        (human) =>
+          human.kind === 'human' &&
+          !actedThisTick.has(human.id) &&
+          humanIsReadyToReproduce(human),
+      )
+      .sort((a, b) => a.id.localeCompare(b.id));
+
+    for (const first of eligibleHumans) {
+      if (pairedHumans.has(first.id) || humanPopulation >= HUMAN_MAX_POPULATION) continue;
+      const currentFirst = animalsById.get(first.id);
+      if (!currentFirst || !humanIsReadyToReproduce(currentFirst)) continue;
+      const partner = eligibleHumans
+        .filter((candidate) => {
+          if (
+            candidate.id === currentFirst.id ||
+            pairedHumans.has(candidate.id) ||
+            humansAreCloseFamily(currentFirst, candidate)
+          ) {
+            return false;
+          }
+          const sharedSearchRadius = Math.min(
+            humanSearchRadius(currentFirst),
+            humanSearchRadius(candidate),
+          );
+          return distance(currentFirst, candidate) <= sharedSearchRadius;
+        })
+        .sort(
+          (a, b) =>
+            distance(currentFirst, a) - distance(currentFirst, b) ||
+            a.id.localeCompare(b.id),
+        )[0];
+      if (!partner) continue;
+      const currentPartner = animalsById.get(partner.id);
+      if (!currentPartner || !humanIsReadyToReproduce(currentPartner)) continue;
+
+      pairedHumans.add(currentFirst.id);
+      pairedHumans.add(currentPartner.id);
+      actedThisTick.add(currentFirst.id);
+      actedThisTick.add(currentPartner.id);
+
+      if (distance(currentFirst, currentPartner) <= 1) {
+        const babyCell = findBabyCell([currentFirst, currentPartner], surfaces, occupied);
+        if (!babyCell) continue;
+        animalsById.set(currentFirst.id, {
+          ...currentFirst,
+          hunger: currentFirst.hunger - HUMAN_REPRODUCTION_HUNGER_COST,
+          breedingCooldown: HUMAN_REPRODUCTION_COOLDOWN_TICKS,
+        });
+        animalsById.set(currentPartner.id, {
+          ...currentPartner,
+          hunger: currentPartner.hunger - HUMAN_REPRODUCTION_HUNGER_COST,
+          breedingCooldown: HUMAN_REPRODUCTION_COOLDOWN_TICKS,
+        });
+        const child = createHumanChild(
+          nextEntityId++,
+          babyCell,
+          [currentFirst, currentPartner],
+          tick,
+          random,
+        );
+        animalsById.set(child.id, child);
+        occupied.add(columnKey(child.x, child.z));
+        humanPopulation += 1;
+        continue;
+      }
+
+      occupied.delete(columnKey(currentFirst.x, currentFirst.z));
+      const movedFirst = moveToward(currentFirst, currentPartner, surfaces, occupied, 1);
+      animalsById.set(currentFirst.id, movedFirst);
+      occupied.add(columnKey(movedFirst.x, movedFirst.z));
+
+      occupied.delete(columnKey(currentPartner.x, currentPartner.z));
+      const movedPartner = moveToward(currentPartner, movedFirst, surfaces, occupied, 1);
+      animalsById.set(currentPartner.id, movedPartner);
+      occupied.add(columnKey(movedPartner.x, movedPartner.z));
+    }
+  }
+
   const humans = [...animalsById.values()]
-    .filter((animal) => animal.kind === 'human' && !rushing.has(animal.id))
+    .filter(
+      (animal) =>
+        animal.kind === 'human' &&
+        !animal.isBaby &&
+        !actedThisTick.has(animal.id),
+    )
     .sort((a, b) => a.id.localeCompare(b.id));
   for (const originalHuman of humans) {
     let human = animalsById.get(originalHuman.id);
@@ -1265,17 +1517,31 @@ export function advanceEcosystem(
       const resetHuman = { ...human };
       delete resetHuman.workbenchId;
       delete resetHuman.crafting;
+      delete resetHuman.craftingReadyTick;
       human = resetHuman;
       workbench = undefined;
       animalsById.set(human.id, human);
     }
 
-    if (human.hunger <= HUMAN_HUNT_THRESHOLD) {
+    const humanTraits = traitsFor(human);
+    const huntHealthFloor = Math.ceil(
+      ANIMALS.human.maxHealth * (0.25 + humanTraits.caution * 0.004),
+    );
+    if (human.hunger <= humanHuntThreshold(human) && human.health >= huntHealthFloor) {
       const prey = [...animalsById.values()]
         .filter(
-          (candidate) =>
+          (candidate) => {
+            const dangerous = ANIMALS[candidate.kind].predator;
+            const acceptsDanger =
+              (human!.tools ?? []).includes('spear') &&
+              humanTraits.aggression >= humanTraits.caution;
+            return (
             candidate.id !== human!.id &&
-            ANIMALS.human.prey.includes(candidate.kind),
+            ANIMALS.human.prey.includes(candidate.kind) &&
+            distance(human!, candidate) <= humanSearchRadius(human!) &&
+            (!dangerous || acceptsDanger)
+            );
+          },
         )
         .sort(
           (a, b) =>
@@ -1288,21 +1554,39 @@ export function advanceEcosystem(
           continue;
         }
         const huntingHuman = faceToward(human, prey);
+        human = huntingHuman;
         const defendingPrey = faceToward(prey, huntingHuman);
-        const damage = (huntingHuman.tools ?? []).includes('spear') ? 4 : 2;
+        const fightBackChance = (ANIMALS[prey.kind].predator ? 0.55 : 0.14) *
+          (1 - humanTraits.caution * 0.006);
+        if (
+          random(`human-defend:${tick}:${huntingHuman.id}:${prey.id}`) <
+          fightBackChance
+        ) {
+          const injuredHuman = {
+            ...huntingHuman,
+            health: huntingHuman.health - ANIMALS[prey.kind].attackDamage,
+          };
+          if (injuredHuman.health <= 0) {
+            animalsById.delete(huntingHuman.id);
+            continue;
+          }
+          human = injuredHuman;
+        }
+        const damage = ((huntingHuman.tools ?? []).includes('spear') ? 4 : 2) +
+          Math.floor(humanTraits.aggression / 50);
         const attackedPrey = { ...defendingPrey, health: defendingPrey.health - damage };
         actedThisTick.add(prey.id);
         if (attackedPrey.health > 0) {
           animalsById.set(prey.id, attackedPrey);
-          saveHuman(huntingHuman);
+          saveHuman(human);
           continue;
         }
         animalsById.delete(prey.id);
         occupied.delete(columnKey(prey.x, prey.z));
         saveHuman({
-          ...huntingHuman,
-          eaten: huntingHuman.eaten + 1,
-          hunger: Math.min(MAX_ANIMAL_HUNGER, huntingHuman.hunger + HUNGER_PER_MEAL),
+          ...human,
+          eaten: human.eaten + 1,
+          hunger: Math.min(MAX_ANIMAL_HUNGER, human.hunger + HUNGER_PER_MEAL),
         });
         continue;
       }
@@ -1313,10 +1597,15 @@ export function advanceEcosystem(
         saveHuman(moveToward(human, workbench, surfaces, occupied, 1));
         continue;
       }
+      if (tick < (human.craftingReadyTick ?? tick)) {
+        saveHuman(human);
+        continue;
+      }
       const finishedHuman = { ...human };
       if (human.crafting === 'planks') finishedHuman.heldItem = 'planks';
       else finishedHuman.tools = [...new Set([...(human.tools ?? []), human.crafting])];
       delete finishedHuman.crafting;
+      delete finishedHuman.craftingReadyTick;
       saveHuman(finishedHuman);
       continue;
     }
@@ -1348,6 +1637,7 @@ export function advanceEcosystem(
       const crafter = {
         ...human,
         crafting: nextHumanCraft(human.tools ?? []),
+        craftingReadyTick: tick + humanCraftingTicks(human),
       };
       delete crafter.heldItem;
       saveHuman(crafter);
@@ -1384,7 +1674,10 @@ export function advanceEcosystem(
 
     const wood = workingBlocks
       .filter(
-        (block) => block.material === 'wood' && !consumedBlockIds.has(block.id),
+        (block) =>
+          block.material === 'wood' &&
+          !consumedBlockIds.has(block.id) &&
+          distance(human!, block) <= humanSearchRadius(human!),
       )
       .sort(
         (a, b) =>
@@ -1400,7 +1693,7 @@ export function advanceEcosystem(
       saveHuman(moveToward(human, wood, surfaces, occupied, 1));
       continue;
     }
-    if (!(human.tools ?? []).includes('axe') && tick % 3 !== 0) {
+    if (!humanCanWorkOnTick(human, tick)) {
       saveHuman(human);
       continue;
     }
@@ -1602,6 +1895,23 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
     const animal = item as Partial<Animal>;
     const definition = ANIMALS[animal.kind as AnimalKind];
     const tools = animal.tools;
+    const traits = animal.traits;
+    const traitsValid = Boolean(
+      traits &&
+      typeof traits === 'object' &&
+      HUMAN_TRAIT_KEYS.every(
+        (trait) =>
+          Number.isInteger(traits[trait]) &&
+          traits[trait] >= 0 &&
+          traits[trait] <= 100,
+      ),
+    );
+    const parentsValid = animal.parentIds === undefined || (
+      Array.isArray(animal.parentIds) &&
+      animal.parentIds.length === 2 &&
+      animal.parentIds.every((parentId) => typeof parentId === 'string') &&
+      animal.parentIds[0] !== animal.parentIds[1]
+    );
     const humanStateValid = animal.kind === 'human'
       ? (
           (animal.heldItem === undefined || ['wood', 'planks'].includes(animal.heldItem)) &&
@@ -1613,12 +1923,26 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
           )) &&
           (animal.workbenchId === undefined || typeof animal.workbenchId === 'string') &&
           (animal.crafting === undefined || [...HUMAN_TOOL_KEYS, 'planks'].includes(animal.crafting)) &&
-          !(animal.heldItem && animal.crafting)
+          ((animal.crafting === undefined && animal.craftingReadyTick === undefined) || (
+            animal.crafting !== undefined &&
+            Number.isInteger(animal.craftingReadyTick) &&
+            (animal.craftingReadyTick ?? -1) >= 0
+          )) &&
+          !(animal.heldItem && animal.crafting) &&
+          traitsValid &&
+          Number.isInteger(animal.generation) &&
+          (animal.generation ?? -1) >= 0 &&
+          parentsValid &&
+          ((animal.generation ?? 0) === 0 || animal.parentIds !== undefined)
         )
       : animal.heldItem === undefined &&
         animal.tools === undefined &&
         animal.workbenchId === undefined &&
-        animal.crafting === undefined;
+        animal.crafting === undefined &&
+        animal.craftingReadyTick === undefined &&
+        animal.traits === undefined &&
+        animal.generation === undefined &&
+        animal.parentIds === undefined;
     if (
       typeof animal.id !== 'string' ||
       !definition ||
@@ -1663,6 +1987,7 @@ export function migrateEcosystem(value: unknown): EcosystemState | undefined {
     if (!item || typeof item !== 'object') return item;
     const animal = item as Partial<Animal>;
     const definition = ANIMALS[animal.kind as AnimalKind];
+    const isHuman = animal.kind === 'human';
     return {
       ...animal,
       age: Number.isInteger(animal.age) ? animal.age : 0,
@@ -1671,7 +1996,14 @@ export function migrateEcosystem(value: unknown): EcosystemState | undefined {
         : definition?.maxHealth ?? 1,
       facingX: Number.isInteger(animal.facingX) ? animal.facingX : 1,
       facingZ: Number.isInteger(animal.facingZ) ? animal.facingZ : 0,
-      ...(animal.kind === 'human' && animal.tools === undefined ? { tools: [] } : {}),
+      ...(isHuman && animal.tools === undefined ? { tools: [] } : {}),
+      ...(isHuman && animal.traits === undefined
+        ? { traits: createFounderHumanTraits(animal.id ?? 'human-legacy') }
+        : {}),
+      ...(isHuman && animal.generation === undefined ? { generation: 0 } : {}),
+      ...(isHuman && animal.crafting !== undefined && animal.craftingReadyTick === undefined
+        ? { craftingReadyTick: Number.isInteger(state.tick) ? state.tick : 0 }
+        : {}),
     };
   });
   const migrated = { ...state, animals };

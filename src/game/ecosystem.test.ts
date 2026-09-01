@@ -5,6 +5,9 @@ import {
   ANIMAL_FEED_THRESHOLD,
   ANIMAL_KEYS,
   BABY_GROWTH_MEALS,
+  HUMAN_CHILDHOOD_TICKS,
+  HUMAN_MAX_POPULATION,
+  HUMAN_REPRODUCTION_MIN_HUNGER,
   HERBIVORE_FIGHT_BACK_CHANCE,
   HERBIVORE_KEYS,
   MAX_ANIMAL_HUNGER,
@@ -14,7 +17,9 @@ import {
   advanceEcosystem,
   animalMovesOnTick,
   convertCoveredGrassToSoil,
+  createFounderHumanTraits,
   createInitialEcosystem,
+  inheritHumanTraits,
   isValidEcosystem,
   migrateEcosystem,
   spawnAnimal,
@@ -57,6 +62,11 @@ const animal = (
   health: ANIMALS[kind].maxHealth,
   facingX: 1,
   facingZ: 0,
+  ...(kind === 'human' ? {
+    tools: [],
+    traits: createFounderHumanTraits(id),
+    generation: 0,
+  } : {}),
   ...overrides,
 });
 
@@ -612,6 +622,7 @@ describe('human crafting and building', () => {
       animals: [animal('human', 'human-0', 0, 0, {
         heldItem: 'wood',
         tools: ['axe', 'hammer', 'spear'],
+        traits: { ...createFounderHumanTraits('human-0'), craftsmanship: 100 },
         workbenchId: bench.id,
       })],
       nextEntityId: 1,
@@ -634,6 +645,7 @@ describe('human crafting and building', () => {
       animals: [animal('human', 'human-0', 0, 0, {
         heldItem: 'wood',
         tools: [],
+        traits: { ...createFounderHumanTraits('human-0'), craftsmanship: 100 },
         workbenchId: bench.id,
       })],
       nextEntityId: 1,
@@ -683,6 +695,156 @@ describe('human crafting and building', () => {
 
     expect(result.animals).toHaveLength(1);
     expect(result.animals[0]).toMatchObject({ kind: 'human', eaten: 1, hunger: 63 });
+  });
+});
+
+describe('human inheritance and selection', () => {
+  const traits = (value: number) => ({
+    aggression: value,
+    caution: value,
+    exploration: value,
+    gathering: value,
+    craftsmanship: value,
+    efficiency: value,
+  });
+
+  it('gives founders distinct bounded traits and combines both parents with mutation', () => {
+    const first = animal('human', 'human-0', 0, 0, { traits: traits(20) });
+    const second = animal('human', 'human-1', 1, 0, { traits: traits(80) });
+
+    expect(createFounderHumanTraits('human-0')).not.toEqual(createFounderHumanTraits('human-1'));
+    expect(Object.values(createFounderHumanTraits('human-0')).every(
+      (value) => Number.isInteger(value) && value >= 0 && value <= 100,
+    )).toBe(true);
+    expect(inheritHumanTraits(first, second, 'human-2', 1, () => 0.5)).toEqual(traits(50));
+    expect(inheritHumanTraits(first, second, 'human-2', 1, () => 1)).toEqual(traits(58));
+  });
+
+  it('lets healthy mature unrelated humans create an inherited child', () => {
+    const world = [
+      block('left', 0, 0, 'stone'),
+      block('middle', 1, 0, 'stone'),
+      block('right', 2, 0, 'stone'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('human', 'human-0', 0, 0, { age: 24, traits: traits(20) }),
+        animal('human', 'human-1', 1, 0, { age: 24, traits: traits(80) }),
+      ],
+      nextEntityId: 2,
+    };
+    const result = advanceEcosystem(world, ecosystem, () => 0.5).ecosystem;
+    const child = result.animals.find(({ isBaby }) => isBaby);
+
+    expect(result.animals).toHaveLength(3);
+    expect(child).toMatchObject({
+      id: 'human-2',
+      kind: 'human',
+      generation: 1,
+      parentIds: ['human-0', 'human-1'],
+      traits: traits(50),
+    });
+    expect(result.animals.filter(({ isBaby }) => !isBaby).every(
+      ({ hunger }) => hunger < HUMAN_REPRODUCTION_MIN_HUNGER,
+    )).toBe(true);
+  });
+
+  it('prevents siblings and parent-child pairs from reproducing', () => {
+    const world = [
+      block('left', 0, 0, 'stone'),
+      block('middle', 1, 0, 'stone'),
+      block('right', 2, 0, 'stone'),
+    ];
+    const siblings: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('human', 'human-2', 0, 0, {
+          age: 60,
+          generation: 1,
+          parentIds: ['human-0', 'human-1'],
+        }),
+        animal('human', 'human-3', 1, 0, {
+          age: 60,
+          generation: 1,
+          parentIds: ['human-0', 'human-1'],
+        }),
+      ],
+      nextEntityId: 4,
+    };
+    const parentAndChild: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('human', 'human-0', 0, 0, { age: 60 }),
+        animal('human', 'human-2', 1, 0, {
+          age: 60,
+          generation: 1,
+          parentIds: ['human-0', 'human-1'],
+        }),
+      ],
+      nextEntityId: 3,
+    };
+
+    expect(advanceEcosystem(world, siblings, () => 0.5).ecosystem.animals).toHaveLength(2);
+    expect(advanceEcosystem(world, parentAndChild, () => 0.5).ecosystem.animals).toHaveLength(2);
+  });
+
+  it('uses inherited efficiency to slow hunger loss', () => {
+    const world = [block('left', 0, 0, 'stone'), block('right', 2, 0, 'stone')];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('human', 'human-0', 0, 0, { traits: { ...traits(50), efficiency: 0 } }),
+        animal('human', 'human-1', 2, 0, { traits: { ...traits(50), efficiency: 100 } }),
+      ],
+      nextEntityId: 2,
+    };
+    const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+
+    expect(result.animals.find(({ id }) => id === 'human-0')?.hunger).toBe(99);
+    expect(result.animals.find(({ id }) => id === 'human-1')?.hunger).toBe(100);
+  });
+
+  it('lets aggression change when a human starts hunting', () => {
+    const world = [block('human-ground', 0, 0, 'stone'), block('prey-ground', 1, 0, 'stone')];
+    const makeState = (aggression: number): EcosystemState => ({
+      ...emptyEcosystem(),
+      animals: [
+        animal('human', 'human-0', 0, 0, {
+          hunger: 60,
+          traits: { ...traits(50), aggression, caution: 0, exploration: 100 },
+        }),
+        animal('rabbit', 'rabbit-1', 1, 0),
+      ],
+      nextEntityId: 2,
+    });
+
+    expect(advanceEcosystem(world, makeState(0), () => 1).ecosystem.animals).toHaveLength(2);
+    expect(advanceEcosystem(world, makeState(100), () => 1).ecosystem.animals).toHaveLength(1);
+  });
+
+  it('grows a human child by age and enforces the population cap on spawning', () => {
+    const world = [block('ground', 0, 0, 'stone')];
+    const childState: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('human', 'human-2', 0, 0, {
+        age: HUMAN_CHILDHOOD_TICKS - 1,
+        isBaby: true,
+        generation: 1,
+        parentIds: ['human-0', 'human-1'],
+      })],
+      nextEntityId: 3,
+    };
+    const grown = advanceEcosystem(world, childState, () => 1).ecosystem.animals[0];
+    expect(grown).toMatchObject({ isBaby: false, age: HUMAN_CHILDHOOD_TICKS });
+
+    const capped: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: Array.from({ length: HUMAN_MAX_POPULATION }, (_, index) =>
+        animal('human', `human-${index}`, index, 0)),
+      nextEntityId: HUMAN_MAX_POPULATION,
+    };
+    expect(spawnAnimal(world, capped, 'human', 0, 0)).toBe(capped);
   });
 });
 
@@ -903,7 +1065,7 @@ describe('animal life cycle', () => {
     },
   );
 
-  it('keeps humans out of animal breeding until inherited behavior is designed', () => {
+  it('does not let newly spawned humans reproduce before maturity', () => {
     const world = [
       block('left', 0, 0, 'stone'),
       block('middle', 1, 0, 'stone'),
@@ -1307,6 +1469,31 @@ describe('ecosystem persistence validation', () => {
       health: 4,
       facingX: 1,
       facingZ: 0,
+    });
+  });
+
+  it('upgrades first-generation human saves with deterministic genetics', () => {
+    const legacyHuman = animal('human', 'human-7', 0, 0, {
+      crafting: 'axe',
+    });
+    delete legacyHuman.traits;
+    delete legacyHuman.generation;
+    delete legacyHuman.craftingReadyTick;
+    const legacy: EcosystemState = {
+      ...emptyEcosystem(),
+      tick: 12,
+      animals: [legacyHuman],
+      nextEntityId: 8,
+    };
+
+    expect(isValidEcosystem(legacy)).toBe(false);
+    const migrated = migrateEcosystem(legacy);
+    expect(isValidEcosystem(migrated)).toBe(true);
+    expect(migrated?.animals[0]).toMatchObject({
+      traits: createFounderHumanTraits('human-7'),
+      generation: 0,
+      crafting: 'axe',
+      craftingReadyTick: 12,
     });
   });
 });

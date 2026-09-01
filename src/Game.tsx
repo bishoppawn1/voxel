@@ -19,6 +19,7 @@ import {
   Sun,
   Trash2,
   Undo2,
+  X,
 } from 'lucide-react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type Group, MOUSE, Vector3 } from 'three';
@@ -26,14 +27,19 @@ import {
   ANIMALS,
   ANIMAL_KEYS,
   ECOSYSTEM_TICK_MS,
+  HUMAN_CHILDHOOD_TICKS,
+  HUMAN_TRAITS,
+  HUMAN_TRAIT_KEYS,
   advanceEcosystem,
   convertCoveredGrassToSoil,
   createInitialEcosystem,
   createSurfaceIndex,
   isAquaticAnimal,
+  humanDisplayName,
   migrateEcosystem,
   spawnAnimal,
   type AnimalKind,
+  type Animal,
   type EcosystemState,
   type Vegetation,
 } from './game/ecosystem';
@@ -335,6 +341,7 @@ function WorldScene({
   onRemove,
   onSpawnAnimal,
   onApplyAbility,
+  onInspectHuman,
 }: {
   blocks: VoxelBlock[];
   ecosystem: EcosystemState;
@@ -345,6 +352,7 @@ function WorldScene({
   onRemove: (id: string) => void;
   onSpawnAnimal: (x: number, z: number) => void;
   onApplyAbility: (x: number, z: number) => void;
+  onInspectHuman: (animal: Animal) => void;
 }) {
   const [hover, setHover] = useState<HoverTarget | null>(null);
   const painting = useRef(false);
@@ -645,6 +653,7 @@ function WorldScene({
                 animal={animal}
                 surfaceY={surface.y}
                 inWater={surface.material === 'water'}
+                onInspect={onInspectHuman}
               />
             )
           : null;
@@ -864,6 +873,55 @@ function PowerPanel({
   );
 }
 
+function HumanInspector({ human, onClose }: { human: Animal; onClose: () => void }) {
+  if (human.kind !== 'human' || !human.traits) return null;
+  const activity = human.isBaby
+    ? `Growing up — ${Math.max(0, HUMAN_CHILDHOOD_TICKS - human.age)} ticks left`
+    : human.crafting
+      ? `Crafting ${human.crafting}`
+      : human.heldItem
+        ? `Carrying ${human.heldItem}`
+        : 'Choosing the next task';
+  const parents = human.parentIds?.map((id) => humanDisplayName({ id })).join(' + ');
+
+  return (
+    <aside className="human-inspector" aria-label={`${humanDisplayName(human)} traits`}>
+      <div className="human-inspector-heading">
+        <span className="human-portrait" aria-hidden="true">🧑</span>
+        <span>
+          <small>HUMAN · GENERATION {human.generation ?? 0}</small>
+          <strong>{humanDisplayName(human)}</strong>
+        </span>
+        <button type="button" onClick={onClose} aria-label="Close human details">
+          <X size={14} />
+        </button>
+      </div>
+      <p className="human-activity">{activity}</p>
+      <div className="human-vitals">
+        <span>Hunger <strong>{human.hunger}</strong></span>
+        <span>Health <strong>{human.health}</strong></span>
+        <span>Tools <strong>{human.tools?.length ?? 0}/3</strong></span>
+      </div>
+      <div className="human-traits">
+        {HUMAN_TRAIT_KEYS.map((trait) => {
+          const value = human.traits![trait];
+          const definition = HUMAN_TRAITS[trait];
+          return (
+            <div className="human-trait" key={trait} title={`${definition.low} ↔ ${definition.high}`}>
+              <span>{definition.label}</span>
+              <i><b style={{ width: `${value}%` }} /></i>
+              <em>{value}</em>
+            </div>
+          );
+        })}
+      </div>
+      <p className="human-lineage">
+        {parents ? `Parents: ${parents}` : 'Founder — no recorded parents'}
+      </p>
+    </aside>
+  );
+}
+
 export default function Game() {
   const [blocks, setBlocks] = useState<VoxelBlock[]>(loadWorld);
   const [ecosystem, setEcosystem] = useState<EcosystemState>(() => loadEcosystem(blocks));
@@ -877,6 +935,7 @@ export default function Game() {
   const [settling, setSettling] = useState(false);
   const [welcomeVisible, setWelcomeVisible] = useState(true);
   const [powerMessage, setPowerMessage] = useState('');
+  const [inspectedHumanId, setInspectedHumanId] = useState<string | null>(null);
   const idCounter = useRef(0);
   const worldTickCounter = useRef(0);
   const blocksRef = useRef(blocks);
@@ -891,6 +950,13 @@ export default function Game() {
     }, {} as Record<AbilityKey, AbilityResult>),
     [blocks],
   );
+  const inspectedHuman = inspectedHumanId
+    ? ecosystem.animals.find((animal) => animal.id === inspectedHumanId && animal.kind === 'human')
+    : undefined;
+
+  useEffect(() => {
+    if (inspectedHumanId && !inspectedHuman) setInspectedHumanId(null);
+  }, [inspectedHuman, inspectedHumanId]);
 
   useEffect(() => {
     blocksRef.current = blocks;
@@ -1084,6 +1150,7 @@ export default function Game() {
             onRemove={removeBlock}
             onSpawnAnimal={spawnSelectedAnimal}
             onApplyAbility={applyActiveAbilityAt}
+            onInspectHuman={(human) => setInspectedHumanId(human.id)}
           />
         </Canvas>
       </div>
@@ -1201,6 +1268,10 @@ export default function Game() {
         <span>{ecosystem.animals.length} {ecosystem.animals.length === 1 ? 'animal' : 'animals'}</span>
       </div>
 
+      {inspectedHuman && (
+        <HumanInspector human={inspectedHuman} onClose={() => setInspectedHumanId(null)} />
+      )}
+
       <div className="controls-hint">
         <span><i className="mouse-icon right" /> Right-drag to orbit</span>
         <span>
@@ -1255,7 +1326,10 @@ function AnimalPalette({
         <span className="animal-selection-emoji" aria-hidden="true">{selected.emoji}</span>
         <span>
           <strong>{selected.label}{tool === 'animal' ? ' selected' : ''}</strong>
-          <small>Eats {selected.dietLabel}</small>
+          <small>
+            Eats {selected.dietLabel}
+            {animalKind === 'human' ? ' · Click a human to inspect inherited traits' : ''}
+          </small>
         </span>
       </div>
       <div className="animal-buttons" aria-label="Animals to spawn">
