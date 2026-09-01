@@ -89,6 +89,7 @@ kbd { min-width: 21px; padding: 3px 6px; border: 1px solid rgba(42, 66, 55, .12)
 .selection-chip { width: 11px; height: 11px; display: grid; flex: 0 0 auto; place-items: center; border: 2px solid rgba(255,255,255,.75); border-radius: 3px; background-position: center; background-size: cover; image-rendering: pixelated; box-shadow: 0 0 0 1px rgba(27,55,44,.15); }
 .selection-chip.delete-chip { border: 0; color: #f8eee9; background: #b95c49; box-shadow: none; }
 .selection-chip.animal-chip { border: 0; color: #f6f8ec; background: var(--sage); box-shadow: none; }
+.selection-chip.verdant-chip { border: 0; color: #315f3d; background: #dceaa9; box-shadow: none; }
 .swatches { display: grid; grid-template-columns: repeat(6, 22px); gap: 6px 5px; justify-content: space-between; }
 .swatch { width: 22px; height: 22px; display: grid; flex: 0 0 auto; place-items: center; padding: 0; border: 2px solid rgba(255,255,255,.8); border-radius: 6px; color: #fff8f2; background-position: center; background-size: cover; image-rendering: pixelated; cursor: pointer; box-shadow: 0 0 0 1px rgba(27,55,44,.13), inset 0 -6px 10px rgba(0,0,0,.09); transition: transform .14s ease, outline-color .14s ease; }
 .swatch:hover { transform: translateY(-1px); }
@@ -119,7 +120,8 @@ kbd { min-width: 21px; padding: 3px 6px; border: 1px solid rgba(42, 66, 55, .12)
   position: absolute;
   z-index: 10;
   top: 92px;
-  right: 18px;
+  left: 236px;
+  right: auto;
   width: 190px;
   padding: 14px;
   border: 1px solid rgba(255, 255, 255, 0.72);
@@ -134,6 +136,7 @@ kbd { min-width: 21px; padding: 3px 6px; border: 1px solid rgba(42, 66, 55, .12)
 .power-list { display: grid; gap: 5px; }
 .power-button { min-height: 43px; display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 7px; padding: 5px 7px; border: 1px solid rgba(42,66,55,.09); border-radius: 10px; color: var(--ink); text-align: left; background: rgba(255,255,255,.48); cursor: pointer; transition: transform .14s ease, background .14s ease, opacity .14s ease; }
 .power-button:not(:disabled):hover { transform: translateY(-1px); background: rgba(255,255,255,.9); }
+.power-button.active { border-color: rgba(63, 117, 76, .32); outline: 2px solid var(--sage-dark); outline-offset: 1px; background: #e5edc8; }
 .power-button:disabled { opacity: .38; cursor: not-allowed; }
 .power-icon { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; color: var(--sage-dark); background: #e5edc8; }
 .power-button strong, .power-button small { display: block; }

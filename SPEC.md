@@ -15,7 +15,9 @@ The first release is a focused creative sandbox. It should feel immediately play
 
 ## First-release player experience
 
-On load, the player sees a 24 by 24 build plane, an angled 3D camera, and a few small starter structures made from grass, dirt, stone, and sand blocks. The world—not marketing copy—is the main screen.
+On the first load, the player sees a newly generated compact island map on the
+24 by 24 build plane, with an angled 3D camera and varied grass, dirt, stone,
+sand, water, and low hills. The world—not marketing copy—is the main screen.
 
 The player can:
 
@@ -28,9 +30,10 @@ The player can:
    never changes the camera angle; it is reserved for world editing.
 6. Scroll to zoom in and out.
 7. Pause or resume gravity.
-8. Undo, redo, clear, or use the visible Reset button to restore the starter
-   terrain, vegetation state, and animals.
-9. Invoke five world-scale powers: Verdant Touch grassifies exposed Dirt;
+8. Undo, redo, clear, or use the visible Reset button to generate another
+   random map with a fresh vegetation state and animals.
+9. Select Verdant Touch and left-drag its small circular brush over terrain to
+   grassify nearby exposed Dirt. Invoke four other world-scale powers:
    Wildfire ignites flammable blocks; Rain extinguishes fires; Deep Freeze
    turns Water into Ice and Lava into Obsidian; and Thaw melts Ice and Snow
    into Water.
@@ -61,8 +64,8 @@ same device the next time the game opens.
 - A cell contains at most one block.
 - Every block has a stable ID, cell position, and material.
 - Saved data must be validated before it is loaded. Compatible older ecosystem
-  saves are upgraded with lifecycle defaults; invalid data falls back to the
-  starter world.
+  saves are upgraded with lifecycle defaults; invalid data falls back to a new
+  procedurally generated map.
 
 ## Structural gravity
 
@@ -154,11 +157,17 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 
 ## God powers
 
-- Powers are immediate world-scale actions, separate from Place and Erase, so
-  they never take over the left-click editing control or right-drag orbit.
+- Powers live in their own panel beside the creation tools on the left side of
+  the screen, leaving the right side clear.
+- Verdant Touch is a selected pointer tool with a three-cell-radius circular
+  preview. A left-click applies one patch, and a calm left-drag cadence paints
+  adjacent patches without rotating the camera.
+- Wildfire, Rain, Deep Freeze, and Thaw are immediate world-scale actions,
+  separate from Place, Erase, Animals, and the Verdant Touch brush.
 - A power is disabled when the current world contains no eligible block. Its
-  button shows the number of blocks it will affect before activation and a
-  plain-language result afterward.
+  button shows the number of eligible blocks before activation, except Verdant
+  Touch, which is labeled as a drag tool. Each action reports a plain-language
+  result afterward.
 - Every power preserves stable block IDs and cell positions. Powers that create
   fluid or unsupported materials allow gravity to resume settling normally.
 - Power changes participate in the same undo and redo history as direct edits.
@@ -167,6 +176,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 
 - Full-screen isometric world with soft sage sky, warm neutral plane, visible grid, subtle fog, and directional shadows.
 - Compact translucent tool surfaces use cream, forest green, lime, soil brown, stone gray, and sand gold.
+- Creation tools and the separate Powers section are grouped on the left side;
+  the right side remains open for viewing the world.
 - Every material uses a distinct pixel texture rather than a flat color. Grass is a dirt block with a separate grassy cap, a green top, and an irregular grass fringe over its dirt sides; wood uses bark and growth rings, masonry uses joints, and ore blocks show mineral deposits embedded in stone.
 - Rendered cubes fill quarter-unit grid cells and touch neighboring cubes.
   Their geometry, spacing, placement grid, and gravity steps are all 25% of the
@@ -188,7 +199,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 
 ## Acceptance criteria
 
-- The default view contains the plane and at least three recognizable starter block clusters.
+- A fresh game and every Reset produce a valid, varied procedural island with
+  supported hills, grassy terrain, a pond, and two starter sheep.
 - Place and Erase work on valid grid cells without duplicates.
 - Right-drag orbits; left-click never rotates the camera.
 - Left-drag never rotates the camera, including while painting blocks.
@@ -205,8 +217,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   overhead bars.
 - Removing the last connection beneath or beside a structure makes the detached group settle.
 - Gravity pause and resume work as specified.
-- Verdant Touch, Wildfire, Rain, Deep Freeze, and Thaw affect only eligible
-  blocks, preserve IDs and positions, and can be undone or redone.
+- Verdant Touch affects only exposed Dirt inside its small drag brush. Wildfire,
+  Rain, Deep Freeze, and Thaw remain world-scale; all five powers preserve IDs
+  and positions and can be undone or redone.
 - Undo, redo, clear, reset, material selection, block count, and local persistence work.
 - `npm test` and `npm run build` succeed.
 - The GitHub Pages deployment succeeds from `main` and loads assets from the repository subpath.
@@ -214,6 +227,6 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 ## Future direction (not part of this release)
 
 The architecture should leave room for more god powers, additional creatures, biomes,
-weather, erosion, procedural terrain, larger worlds, time controls, and
+weather, erosion, richer terrain generation, larger worlds, time controls, and
 shareable world files. These ideas must not be added until their behavior and
 performance budgets are specified.

@@ -9,6 +9,7 @@ import {
   advanceFire,
   advanceWorldStep,
   cellToWorld,
+  createRandomWorld,
   createStarterWorld,
   getLiquidLevel,
   isValidWorld,
@@ -410,6 +411,29 @@ describe('fire', () => {
 });
 
 describe('world persistence validation', () => {
+  const seededRandom = (seed: number) => () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+
+  it('generates a supported, repeatable random map from a seed', () => {
+    const first = createRandomWorld(seededRandom(42));
+    const repeated = createRandomWorld(seededRandom(42));
+    const different = createRandomWorld(seededRandom(43));
+    const occupied = new Set(first.map(({ x, y, z }) => `${x},${y},${z}`));
+
+    expect(first).toEqual(repeated);
+    expect(first).not.toEqual(different);
+    expect(first.length).toBeGreaterThan(700);
+    expect(first.length).toBeLessThanOrEqual(2000);
+    expect(first.filter(({ material }) => material === 'grass').length).toBeGreaterThan(2);
+    expect(first.some(({ material }) => material === 'soil')).toBe(true);
+    expect(first.some(({ material }) => material === 'water')).toBe(true);
+    expect(first.every(({ x, y, z }) => y === 0 || occupied.has(`${x},${y - 1},${z}`)))
+      .toBe(true);
+    expect(isValidWorld(first)).toBe(true);
+  });
+
   it('accepts the starter world', () => {
     expect(isValidWorld(createStarterWorld())).toBe(true);
   });

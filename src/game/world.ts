@@ -799,35 +799,64 @@ export function advanceFire(input: VoxelBlock[]): {
   return { blocks: changed ? blocks : input, changed, ignited, burned };
 }
 
-export function createStarterWorld(): VoxelBlock[] {
-  const cells: Array<[number, number, number, BlockMaterial]> = [
-    [-12, 0, 0, 'grass'],
-    [-11, 0, 0, 'grass'],
-    [-10, 0, 0, 'grass'],
-    [-12, 0, 1, 'grass'],
-    [-11, 0, 1, 'grass'],
-    [-10, 0, 1, 'grass'],
-    [-11, 1, 0, 'soil'],
-    [-11, 1, 1, 'grass'],
-    [-11, 2, 0, 'stone'],
-    [4, 0, -8, 'stone'],
-    [5, 0, -8, 'stone'],
-    [5, 0, -7, 'stone'],
-    [5, 1, -8, 'stone'],
-    [16, 0, 8, 'sand'],
-    [16, 0, 9, 'sand'],
-    [17, 0, 8, 'sand'],
-    [17, 0, 9, 'sand'],
-    [16, 1, 8, 'sand'],
-  ];
+const GENERATED_MAP_RADIUS = 16;
 
-  return cells.map(([x, y, z, material], index) => ({
-    id: `starter-${index}`,
-    x,
-    y,
-    z,
-    material,
-  }));
+export function createRandomWorld(random: () => number = Math.random): VoxelBlock[] {
+  const generationId = Math.floor(random() * 0xffffff).toString(36);
+  const pond = {
+    x: Math.round((random() - 0.5) * 8),
+    z: Math.round((random() - 0.5) * 8),
+    radius: 2 + Math.floor(random() * 2),
+  };
+  const blocks: VoxelBlock[] = [];
+
+  for (let x = -GENERATED_MAP_RADIUS; x <= GENERATED_MAP_RADIUS; x += 1) {
+    for (let z = -GENERATED_MAP_RADIUS; z <= GENERATED_MAP_RADIUS; z += 1) {
+      const distanceFromCenter = Math.hypot(x, z);
+      const coastWobble = 0.88 + random() * 0.12;
+      if (distanceFromCenter > GENERATED_MAP_RADIUS * coastWobble) continue;
+
+      const terrainRoll = random();
+      const materialRoll = random();
+      const pondDistance = Math.hypot(x - pond.x, z - pond.z);
+      const isPond = pondDistance <= pond.radius;
+      let topY = distanceFromCenter < 5 ? 2 : distanceFromCenter < 10 ? 1 : 0;
+      if (distanceFromCenter < 12 && terrainRoll > 0.82) topY += 1;
+      if (isPond) topY = 0;
+
+      for (let y = 0; y <= topY; y += 1) {
+        const isSurface = y === topY;
+        let material: BlockMaterial;
+        if (!isSurface) {
+          material = y === 0 && topY > 1 ? 'stone' : 'soil';
+        } else if (isPond) {
+          material = 'water';
+        } else if (distanceFromCenter > GENERATED_MAP_RADIUS * 0.72) {
+          material = 'sand';
+        } else if (materialRoll < 0.12) {
+          material = 'soil';
+        } else if (topY >= 2 && materialRoll < 0.24) {
+          material = 'stone';
+        } else {
+          material = 'grass';
+        }
+
+        blocks.push({
+          id: `map-${generationId}-${x}-${y}-${z}`,
+          x,
+          y,
+          z,
+          material,
+        });
+      }
+    }
+  }
+
+  return blocks;
+}
+
+export function createStarterWorld(random: () => number = Math.random) {
+  return createRandomWorld(random);
 }
 
 export function isValidWorld(value: unknown): value is VoxelBlock[] {

@@ -9,6 +9,8 @@ export const ABILITY_KEYS = [
 ] as const;
 
 export type AbilityKey = (typeof ABILITY_KEYS)[number];
+export type AbilityTarget = Pick<VoxelBlock, 'x' | 'z'>;
+export const VERDANT_TOUCH_RADIUS = 3;
 
 export const ABILITIES: Record<
   AbilityKey,
@@ -16,7 +18,7 @@ export const ABILITIES: Record<
 > = {
   'verdant-touch': {
     label: 'Verdant Touch',
-    description: 'Grassify exposed dirt',
+    description: 'Brush grass onto nearby dirt',
     triggersGravity: false,
   },
   wildfire: {
@@ -47,50 +49,82 @@ export type AbilityResult = {
   affected: number;
 };
 
-export function applyAbility(input: VoxelBlock[], ability: AbilityKey): AbilityResult {
+function getSurfaceY(input: VoxelBlock[]) {
   const surfaceY = new Map<string, number>();
-  if (ability === 'verdant-touch') {
-    for (const block of input) {
-      const key = `${block.x},${block.z}`;
-      surfaceY.set(key, Math.max(surfaceY.get(key) ?? -1, block.y));
-    }
+  for (const block of input) {
+    const key = `${block.x},${block.z}`;
+    surfaceY.set(key, Math.max(surfaceY.get(key) ?? -1, block.y));
   }
+  return surfaceY;
+}
+
+function isEligible(
+  block: VoxelBlock,
+  ability: AbilityKey,
+  surfaceY: Map<string, number>,
+  target?: AbilityTarget,
+) {
+  if (ability === 'verdant-touch') {
+    if (!target) return false;
+    const distanceSquared = (block.x - target.x) ** 2 + (block.z - target.z) ** 2;
+    return (
+      block.material === 'soil' &&
+      surfaceY.get(`${block.x},${block.z}`) === block.y &&
+      distanceSquared <= VERDANT_TOUCH_RADIUS ** 2
+    );
+  }
+  if (ability === 'wildfire') return Boolean(MATERIALS[block.material].burnDuration && !block.burning);
+  if (ability === 'rain') return Boolean(block.burning);
+  if (ability === 'deep-freeze') return block.material === 'water' || block.material === 'lava';
+  return block.material === 'ice' || block.material === 'snow';
+}
+
+export function countEligibleBlocks(input: VoxelBlock[], ability: AbilityKey) {
+  const surfaceY = getSurfaceY(input);
+  if (ability === 'verdant-touch') {
+    return input.filter(
+      (block) =>
+        block.material === 'soil' &&
+        surfaceY.get(`${block.x},${block.z}`) === block.y,
+    ).length;
+  }
+  return input.filter((block) => isEligible(block, ability, surfaceY)).length;
+}
+
+export function applyAbility(
+  input: VoxelBlock[],
+  ability: AbilityKey,
+  target?: AbilityTarget,
+): AbilityResult {
+  const surfaceY = getSurfaceY(input);
   let affected = 0;
 
   const blocks = input.map((block): VoxelBlock => {
-    if (
-      ability === 'verdant-touch' &&
-      block.material === 'soil' &&
-      surfaceY.get(`${block.x},${block.z}`) === block.y
-    ) {
+    if (!isEligible(block, ability, surfaceY, target)) return block;
+
+    if (ability === 'verdant-touch') {
       affected += 1;
       return { ...block, material: 'grass' };
     }
 
-    if (ability === 'wildfire' && MATERIALS[block.material].burnDuration && !block.burning) {
+    if (ability === 'wildfire') {
       affected += 1;
       return { ...block, burning: 1 };
     }
 
-    if (ability === 'rain' && block.burning) {
+    if (ability === 'rain') {
       const { burning: _burning, ...extinguished } = block;
       affected += 1;
       return extinguished;
     }
 
-    if (ability === 'deep-freeze' && block.material === 'water') {
+    if (ability === 'deep-freeze') {
       const { liquidLevel: _liquidLevel, ...solid } = block;
       affected += 1;
-      return { ...solid, material: 'ice' };
+      return { ...solid, material: block.material === 'water' ? 'ice' : 'obsidian' };
     }
 
-    if (ability === 'deep-freeze' && block.material === 'lava') {
-      const { liquidLevel: _liquidLevel, ...solid } = block;
-      affected += 1;
-      return { ...solid, material: 'obsidian' };
-    }
-
-    if (ability === 'thaw' && (block.material === 'ice' || block.material === 'snow')) {
+    if (ability === 'thaw') {
       affected += 1;
       return { ...block, material: 'water' };
     }

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { ABILITY_KEYS, applyAbility } from './abilities';
+import {
+  ABILITY_KEYS,
+  VERDANT_TOUCH_RADIUS,
+  applyAbility,
+  countEligibleBlocks,
+} from './abilities';
 import { isValidWorld, type BlockMaterial, type VoxelBlock } from './world';
 
 const block = (
@@ -22,13 +27,14 @@ describe('god powers', () => {
     ]);
   });
 
-  it('turns only exposed dirt into grass and preserves stable IDs', () => {
+  it('brushes only nearby exposed dirt and preserves stable IDs', () => {
     const world = [
       block('exposed', 0, 0, 0, 'soil'),
       block('covered', 1, 0, 0, 'soil'),
       block('cover', 1, 2, 0, 'stone'),
+      block('far-away', VERDANT_TOUCH_RADIUS + 1, 0, 0, 'soil'),
     ];
-    const result = applyAbility(world, 'verdant-touch');
+    const result = applyAbility(world, 'verdant-touch', { x: 0, z: 0 });
 
     expect(result.affected).toBe(1);
     expect(result.blocks.find(({ id }) => id === 'exposed')).toMatchObject({
@@ -36,6 +42,16 @@ describe('god powers', () => {
       material: 'grass',
     });
     expect(result.blocks.find(({ id }) => id === 'covered')?.material).toBe('soil');
+    expect(result.blocks.find(({ id }) => id === 'far-away')?.material).toBe('soil');
+    expect(countEligibleBlocks(world, 'verdant-touch')).toBe(2);
+  });
+
+  it('does not apply Verdant Touch without a brush target', () => {
+    const world = [block('soil', 0, 0, 0, 'soil')];
+    const result = applyAbility(world, 'verdant-touch');
+
+    expect(result).toEqual({ blocks: world, changed: false, affected: 0 });
+    expect(result.blocks).toBe(world);
   });
 
   it('ignites every unlit flammable block without touching stone', () => {

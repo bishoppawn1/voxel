@@ -46,7 +46,7 @@ import {
   advanceFire,
   advanceWorldStep,
   cellToWorld,
-  createStarterWorld,
+  createRandomWorld,
   getLiquidLevel,
   hasBlock,
   isInWorld,
@@ -60,18 +60,21 @@ import {
 import {
   ABILITIES,
   ABILITY_KEYS,
+  VERDANT_TOUCH_RADIUS,
   applyAbility,
+  countEligibleBlocks,
   type AbilityKey,
   type AbilityResult,
 } from './game/abilities';
 import { getBlockTextures } from './visuals/blockTextures';
 
-type Tool = 'place' | 'erase' | 'animal';
+type Tool = 'place' | 'erase' | 'animal' | 'verdant-touch';
 type HoverTarget = Cell & { blockId?: string; valid: boolean };
 
-const STORAGE_KEY = 'voxel-world-v1';
-const ECOSYSTEM_STORAGE_KEY = 'voxel-ecosystem-v1';
+const STORAGE_KEY = 'voxel-world-v2';
+const ECOSYSTEM_STORAGE_KEY = 'voxel-ecosystem-v2';
 const PAINT_INTERVAL_MS = 160;
+const VERDANT_PAINT_INTERVAL_MS = 180;
 const FIRE_TICK_MS = 650;
 const WORLD_TICK_MS = 140;
 const LIQUID_TICK_DIVISOR = 3;
@@ -80,9 +83,9 @@ function loadWorld() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     const parsed: unknown = saved ? JSON.parse(saved) : null;
-    return isValidWorld(parsed) ? convertCoveredGrassToSoil(parsed) : createStarterWorld();
+    return isValidWorld(parsed) ? convertCoveredGrassToSoil(parsed) : createRandomWorld();
   } catch {
-    return createStarterWorld();
+    return createRandomWorld();
   }
 }
 
@@ -406,6 +409,7 @@ function WorldScene({
   onAdd,
   onRemove,
   onSpawnAnimal,
+  onVerdantTouch,
 }: {
   blocks: VoxelBlock[];
   ecosystem: EcosystemState;
@@ -413,6 +417,7 @@ function WorldScene({
   onAdd: (cell: Cell) => void;
   onRemove: (id: string) => void;
   onSpawnAnimal: (x: number, z: number) => void;
+  onVerdantTouch: (x: number, z: number) => void;
 }) {
   const [hover, setHover] = useState<HoverTarget | null>(null);
   const painting = useRef(false);
@@ -458,12 +463,43 @@ function WorldScene({
     if (isInWorld(cell) && !hasBlock(blocks, cell)) onAdd(cell);
   };
 
+  const paintVerdantTouch = (
+    event: ThreeEvent<PointerEvent>,
+    target: Pick<Cell, 'x' | 'z'>,
+    immediate = false,
+  ) => {
+    if (
+      tool !== 'verdant-touch' ||
+      (!immediate && (!painting.current || (event.buttons & 1) === 0))
+    ) {
+      if ((event.buttons & 1) === 0) painting.current = false;
+      return;
+    }
+
+    const now = performance.now();
+    if (!immediate && now - lastPaintAt.current < VERDANT_PAINT_INTERVAL_MS) return;
+    lastPaintAt.current = now;
+    onVerdantTouch(target.x, target.z);
+  };
+
   const hoverBlock = (event: ThreeEvent<PointerEvent>, block: VoxelBlock) => {
     if ((event.buttons & 2) !== 0) {
       setHover(null);
       return;
     }
     event.stopPropagation();
+    if (tool === 'verdant-touch') {
+      const surface = getSurfaceBlock(blocks, block.x, block.z) ?? block;
+      const target = { x: block.x, z: block.z };
+      setHover({
+        ...target,
+        y: surface.y,
+        blockId: surface.id,
+        valid: applyAbility(blocks, 'verdant-touch', target).changed,
+      });
+      paintVerdantTouch(event, target);
+      return;
+    }
     if (tool === 'erase') {
       setHover({ x: block.x, y: block.y, z: block.z, blockId: block.id, valid: true });
       return;
@@ -488,6 +524,12 @@ function WorldScene({
   };
 
   const startPaintingOnBlock = (event: ThreeEvent<PointerEvent>, block: VoxelBlock) => {
+    if (tool === 'verdant-touch' && event.button === 0) {
+      event.stopPropagation();
+      painting.current = true;
+      paintVerdantTouch(event, { x: block.x, z: block.z }, true);
+      return;
+    }
     if (tool !== 'place' || event.button !== 0 || !event.shiftKey) return;
     event.stopPropagation();
     painting.current = true;
@@ -497,6 +539,7 @@ function WorldScene({
   const selectBlock = (event: ThreeEvent<MouseEvent>, block: VoxelBlock) => {
     event.stopPropagation();
     if (event.delta > 3 || event.shiftKey) return;
+    if (tool === 'verdant-touch') return;
     if (tool === 'erase') {
       onRemove(block.id);
       setHover(null);
@@ -544,24 +587,45 @@ function WorldScene({
         receiveShadow
         rotation={[-Math.PI / 2, 0, 0]}
         onPointerMove={(event) => {
-          if (tool !== 'place') return;
+          if (tool !== 'place' && tool !== 'verdant-touch') return;
           if ((event.buttons & 2) !== 0) {
             setHover(null);
             return;
           }
           event.stopPropagation();
           const cell = planeCell(event);
-          setHover({ ...cell, valid: isInWorld(cell) && !hasBlock(blocks, cell) });
-          paintCell(event, cell);
+          if (tool === 'verdant-touch') {
+            const target = { x: cell.x, z: cell.z };
+            setHover({
+              ...cell,
+              valid: applyAbility(blocks, 'verdant-touch', target).changed,
+            });
+            paintVerdantTouch(event, target);
+          } else {
+            setHover({ ...cell, valid: isInWorld(cell) && !hasBlock(blocks, cell) });
+            paintCell(event, cell);
+          }
         }}
         onPointerDown={(event) => {
-          if (tool !== 'place' || event.button !== 0 || !event.shiftKey) return;
+          if (event.button !== 0) return;
+          if (tool === 'verdant-touch') {
+            event.stopPropagation();
+            painting.current = true;
+            const cell = planeCell(event);
+            paintVerdantTouch(event, { x: cell.x, z: cell.z }, true);
+            return;
+          }
+          if (tool !== 'place' || !event.shiftKey) return;
           event.stopPropagation();
           painting.current = true;
           paintCell(event, planeCell(event), true);
         }}
         onPointerOut={() => setHover(null)}
         onClick={(event) => {
+          if (tool === 'verdant-touch') {
+            event.stopPropagation();
+            return;
+          }
           if (tool !== 'place' || event.delta > 3 || event.shiftKey) return;
           event.stopPropagation();
           const cell = planeCell(event);
@@ -609,7 +673,43 @@ function WorldScene({
         return surface ? <AnimalModel key={animal.id} animal={animal} surfaceY={surface.y} /> : null;
       })}
 
-      {hover && (
+      {hover && tool === 'verdant-touch' && (
+        <group
+          position={[
+            cellToWorld(hover.x),
+            hover.blockId ? cellToWorld(hover.y) + BLOCK_SIZE + 0.012 : 0.012,
+            cellToWorld(hover.z),
+          ]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <mesh>
+            <circleGeometry args={[(VERDANT_TOUCH_RADIUS + 0.5) * BLOCK_SIZE, 32]} />
+            <meshBasicMaterial
+              color={hover.valid ? '#8dcc70' : '#b96a57'}
+              transparent
+              opacity={0.2}
+              depthWrite={false}
+            />
+          </mesh>
+          <mesh position={[0, 0, 0.003]}>
+            <ringGeometry
+              args={[
+                (VERDANT_TOUCH_RADIUS + 0.34) * BLOCK_SIZE,
+                (VERDANT_TOUCH_RADIUS + 0.5) * BLOCK_SIZE,
+                32,
+              ]}
+            />
+            <meshBasicMaterial
+              color={hover.valid ? '#3f754c' : '#914c3d'}
+              transparent
+              opacity={0.78}
+              depthWrite={false}
+            />
+          </mesh>
+        </group>
+      )}
+
+      {hover && tool !== 'verdant-touch' && (
         <mesh
           position={[
             cellToWorld(hover.x),
@@ -674,6 +774,8 @@ function BlockPalette({
       <div className="selection-readout" role="status" aria-live="polite" aria-atomic="true">
         {tool === 'animal' ? (
           <span className="selection-chip animal-chip"><PawPrint size={10} /></span>
+        ) : tool === 'verdant-touch' ? (
+          <span className="selection-chip verdant-chip"><Sprout size={10} /></span>
         ) : tool === 'erase' ? (
           <span className="selection-chip delete-chip"><Trash2 size={12} /></span>
         ) : (
@@ -688,6 +790,8 @@ function BlockPalette({
         <span>
           {tool === 'animal'
             ? <><strong>Animal</strong> tool active</>
+            : tool === 'verdant-touch'
+              ? <><strong>Verdant Touch</strong> brush active</>
             : <><strong>{selectedLabel}</strong> selected</>}
         </span>
       </div>
@@ -733,10 +837,12 @@ const ABILITY_ICONS = {
 function PowerPanel({
   results,
   message,
+  activeAbility,
   onActivate,
 }: {
   results: Record<AbilityKey, AbilityResult>;
   message: string;
+  activeAbility: AbilityKey | null;
   onActivate: (ability: AbilityKey) => void;
 }) {
   return (
@@ -750,12 +856,14 @@ function PowerPanel({
           const ability = ABILITIES[key];
           const result = results[key];
           const Icon = ABILITY_ICONS[key];
+          const isActive = activeAbility === key;
           return (
             <button
               key={key}
-              className={`power-button power-${key}`}
+              className={`power-button power-${key} ${isActive ? 'active' : ''}`}
               type="button"
               disabled={!result.changed}
+              aria-pressed={key === 'verdant-touch' ? isActive : undefined}
               aria-label={`${ability.label}: ${ability.description}`}
               title={`${ability.label} — ${ability.description}`}
               onClick={() => onActivate(key)}
@@ -765,13 +873,15 @@ function PowerPanel({
                 <strong>{ability.label}</strong>
                 <small>{ability.description}</small>
               </span>
-              <b className="power-count">{result.affected || '—'}</b>
+              <b className="power-count">
+                {key === 'verdant-touch' ? 'drag' : result.affected || '—'}
+              </b>
             </button>
           );
         })}
       </div>
       <p className="power-status" role="status" aria-live="polite" aria-atomic="true">
-        {message || 'Powers affect the whole world.'}
+        {message || 'Verdant Touch is a brush. Other powers affect the whole world.'}
       </p>
     </aside>
   );
@@ -797,7 +907,12 @@ export default function Game() {
   const fireActive = useMemo(() => advanceFire(blocks).changed, [blocks]);
   const abilityResults = useMemo(
     () => ABILITY_KEYS.reduce((results, key) => {
-      results[key] = applyAbility(blocks, key);
+      if (key === 'verdant-touch') {
+        const affected = countEligibleBlocks(blocks, key);
+        results[key] = { blocks, changed: affected > 0, affected };
+      } else {
+        results[key] = applyAbility(blocks, key);
+      }
       return results;
     }, {} as Record<AbilityKey, AbilityResult>),
     [blocks],
@@ -945,7 +1060,7 @@ export default function Game() {
   };
 
   const resetWorld = () => {
-    const starter = createStarterWorld();
+    const starter = createRandomWorld();
     const freshEcosystem = createInitialEcosystem(starter);
     commit(starter);
     ecosystemRef.current = freshEcosystem;
@@ -962,11 +1077,25 @@ export default function Game() {
     setTool('place');
   };
   const activateAbility = (ability: AbilityKey) => {
+    if (ability === 'verdant-touch') {
+      if (!abilityResults[ability].changed) return;
+      setTool('verdant-touch');
+      setPowerMessage('Verdant Touch selected. Left-drag over terrain to grow a small patch.');
+      return;
+    }
     const result = abilityResults[ability];
     if (!result.changed) return;
     commit(result.blocks, gravityOn && ABILITIES[ability].triggersGravity);
     setPowerMessage(
       `${ABILITIES[ability].label} affected ${result.affected} ${result.affected === 1 ? 'block' : 'blocks'}.`,
+    );
+  };
+  const applyVerdantAt = (x: number, z: number) => {
+    const result = applyAbility(blocks, 'verdant-touch', { x, z });
+    if (!result.changed) return;
+    commit(result.blocks);
+    setPowerMessage(
+      `Verdant Touch grew ${result.affected} ${result.affected === 1 ? 'block' : 'blocks'}. Keep dragging to paint.`,
     );
   };
 
@@ -986,6 +1115,7 @@ export default function Game() {
             onAdd={addBlock}
             onRemove={removeBlock}
             onSpawnAnimal={spawnSelectedAnimal}
+            onVerdantTouch={applyVerdantAt}
           />
         </Canvas>
       </div>
@@ -996,7 +1126,7 @@ export default function Game() {
           <span className="brand-word">VOXEL</span>
         </div>
         <div className="world-title" aria-live="polite">
-          <span>New world</span>
+          <span>Procedural world</span>
           <small>{blocks.length} {blocks.length === 1 ? 'block' : 'blocks'}</small>
         </div>
         <div className="top-actions">
@@ -1006,7 +1136,7 @@ export default function Game() {
           <button className="icon-button" type="button" aria-label="Redo" disabled={!future.length} onClick={redo}>
             <Redo2 size={17} />
           </button>
-          <button className="icon-button reset-button" type="button" aria-label="Reset world and ecosystem" onClick={resetWorld}>
+          <button className="icon-button reset-button" type="button" aria-label="Generate a new random map and ecosystem" onClick={resetWorld}>
             <RotateCcw size={17} />
             <span>Reset</span>
           </button>
@@ -1071,13 +1201,14 @@ export default function Game() {
       <PowerPanel
         results={abilityResults}
         message={powerMessage}
+        activeAbility={tool === 'verdant-touch' ? 'verdant-touch' : null}
         onActivate={activateAbility}
       />
 
       <section className={`welcome-card ${welcomeVisible ? '' : 'dismissed'}`} aria-live="polite">
         <span className="welcome-icon"><Sparkles size={18} /></span>
         <div>
-          <p>YOUR WORLD IS READY</p>
+          <p>A NEW MAP IS READY</p>
           <strong>Shape it—and watch it grow.</strong>
         </div>
       </section>
@@ -1106,9 +1237,12 @@ export default function Game() {
         <span>
           <i className="mouse-icon left" /> Left-click to {tool === 'animal'
             ? `spawn ${ANIMALS[animalKind].label.toLowerCase()}`
+            : tool === 'verdant-touch'
+              ? 'grow grass'
             : tool}
         </span>
         {tool === 'place' && <span><kbd>Shift</kbd> + drag to pour</span>}
+        {tool === 'verdant-touch' && <span>Drag to brush a small area</span>}
         <span><b>⌁</b> Scroll to zoom</span>
       </div>
 
