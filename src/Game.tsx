@@ -85,6 +85,29 @@ const ABILITY_PREVIEW_COLORS: Record<AbilityKey, { fill: string; edge: string }>
   'deep-freeze': { fill: '#8ed8e4', edge: '#487f9b' },
   thaw: { fill: '#edc45c', edge: '#9b6a22' },
 };
+const FLOWER_COLORS = ['#f2a6ba', '#f1ca54', '#9fb5ef', '#d99ee9', '#ef9366', '#f2eee1'] as const;
+const SHORT_GRASS_BLADES = [
+  [-0.18, -0.08, 0.08, 0.86],
+  [-0.06, 0.13, -0.06, 0.74],
+  [0.07, -0.03, 0.05, 1],
+  [0.19, 0.11, -0.08, 0.82],
+] as const;
+const TALL_GRASS_BLADES = [
+  [-0.22, -0.1, 0.07, 0.88],
+  [-0.1, 0.15, -0.08, 0.76],
+  [0, -0.02, 0.04, 1],
+  [0.11, 0.14, 0.08, 0.82],
+  [0.22, -0.1, -0.07, 0.9],
+] as const;
+
+function flowerColorFor(id: string) {
+  let hash = 2166136261;
+  for (const character of id) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return FLOWER_COLORS[(hash >>> 0) % FLOWER_COLORS.length];
+}
 
 function loadWorld() {
   try {
@@ -225,8 +248,12 @@ const VegetationSprout = memo(function VegetationSprout({
   growth: Vegetation;
   block: VoxelBlock;
 }) {
-  const height = growth.kind === 'tall-grass' ? BLOCK_SIZE * 0.62 : BLOCK_SIZE * 0.38;
+  const tallGrass = growth.kind === 'tall-grass';
+  const height = tallGrass ? BLOCK_SIZE * 0.88 : BLOCK_SIZE * 0.46;
+  const bladeWidth = tallGrass ? BLOCK_SIZE * 0.085 : BLOCK_SIZE * 0.075;
   const bladeColor = growth.kind === 'tall-grass' ? '#4f873e' : '#6da24b';
+  const flowerColor = flowerColorFor(growth.id);
+  const bladeOffsets = tallGrass ? TALL_GRASS_BLADES : SHORT_GRASS_BLADES;
 
   return (
     <group
@@ -259,7 +286,7 @@ const VegetationSprout = memo(function VegetationSprout({
           </mesh>
           <mesh position={[0, BLOCK_SIZE * 0.42, 0]} castShadow>
             <sphereGeometry args={[BLOCK_SIZE * 0.11, 7, 5]} />
-            <meshStandardMaterial color="#f2a6ba" roughness={0.8} />
+            <meshStandardMaterial color={flowerColor} roughness={0.8} />
           </mesh>
           <mesh position={[0, BLOCK_SIZE * 0.42, BLOCK_SIZE * 0.085]}>
             <sphereGeometry args={[BLOCK_SIZE * 0.045, 6, 4]} />
@@ -267,14 +294,14 @@ const VegetationSprout = memo(function VegetationSprout({
           </mesh>
         </>
       ) : (
-        [-0.16, 0, 0.16].map((offset, index) => (
+        bladeOffsets.map(([x, z, tilt, heightScale], index) => (
           <mesh
-            key={offset}
-            position={[BLOCK_SIZE * offset, height / 2, BLOCK_SIZE * (index === 1 ? 0.12 : -0.08)]}
-            rotation={[index === 1 ? 0.08 : -0.06, index * 0.9, index === 2 ? -0.14 : 0.12]}
+            key={`${x}:${z}`}
+            position={[BLOCK_SIZE * x, height * heightScale / 2, BLOCK_SIZE * z]}
+            rotation={[index % 2 ? 0.08 : -0.06, index * 0.72, tilt]}
             castShadow
           >
-            <boxGeometry args={[BLOCK_SIZE * 0.045, height, BLOCK_SIZE * 0.035]} />
+            <boxGeometry args={[bladeWidth, height * heightScale, BLOCK_SIZE * 0.055]} />
             <meshStandardMaterial color={bladeColor} roughness={0.96} />
           </mesh>
         ))
