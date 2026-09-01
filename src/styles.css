@@ -89,7 +89,7 @@ kbd { min-width: 21px; padding: 3px 6px; border: 1px solid rgba(42, 66, 55, .12)
 .selection-chip { width: 11px; height: 11px; display: grid; flex: 0 0 auto; place-items: center; border: 2px solid rgba(255,255,255,.75); border-radius: 3px; background-position: center; background-size: cover; image-rendering: pixelated; box-shadow: 0 0 0 1px rgba(27,55,44,.15); }
 .selection-chip.delete-chip { border: 0; color: #f8eee9; background: #b95c49; box-shadow: none; }
 .selection-chip.animal-chip { border: 0; color: #f6f8ec; background: var(--sage); box-shadow: none; }
-.selection-chip.verdant-chip { border: 0; color: #315f3d; background: #dceaa9; box-shadow: none; }
+.selection-chip.ability-chip { border: 0; color: #315f3d; background: #dceaa9; box-shadow: none; }
 .swatches { display: grid; grid-template-columns: repeat(6, 22px); gap: 6px 5px; justify-content: space-between; }
 .swatch { width: 22px; height: 22px; display: grid; flex: 0 0 auto; place-items: center; padding: 0; border: 2px solid rgba(255,255,255,.8); border-radius: 6px; color: #fff8f2; background-position: center; background-size: cover; image-rendering: pixelated; cursor: pointer; box-shadow: 0 0 0 1px rgba(27,55,44,.13), inset 0 -6px 10px rgba(0,0,0,.09); transition: transform .14s ease, outline-color .14s ease; }
 .swatch:hover { transform: translateY(-1px); }

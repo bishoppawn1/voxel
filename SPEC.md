@@ -22,7 +22,7 @@ sand, water, and low hills. The world—not marketing copy—is the main screen.
 The player can:
 
 1. Choose Place, Erase, or Animals.
-2. Select one of 34 block materials from a compact block palette.
+2. Select one of 40 block materials from a compact block palette.
 3. Left-click the plane or an exposed block face to place a block. Hold Shift
    while left-dragging to pour blocks at a calm, controlled rate.
 4. Left-click a block with Erase selected to remove it.
@@ -32,19 +32,19 @@ The player can:
 7. Pause or resume gravity.
 8. Undo, redo, clear, or use the visible Reset button to generate another
    random map with a fresh vegetation state and animals.
-9. Select Verdant Touch and left-drag its small circular brush over terrain to
-   grassify nearby exposed Dirt. Invoke four other world-scale powers:
-   Wildfire ignites flammable blocks; Rain extinguishes fires; Deep Freeze
-   turns Water into Ice and Lava into Obsidian; and Thaw melts Ice and Snow
-   into Water.
-10. Select Sheep, Cow, Pig, Rabbit, Goat, or Fox from an animal palette, then
-    left-click the top of an unoccupied block column to spawn it.
+9. Select any power and left-click or left-drag its small circular area brush:
+   Verdant Touch grassifies exposed Dirt, Wildfire ignites flammable blocks,
+   Rain extinguishes fires, Deep Freeze turns Water into Ice and Lava into
+   Obsidian, and Thaw melts Ice and Snow into Water.
+10. Select one of 15 herbivorous or predatory animals from the animal palette,
+    then left-click the top of an unoccupied block column to spawn it.
 
 The palette contains Grass, Dirt, Stone, Sand, Wood, Leaves, Brick, Clay, Snow,
 Ice, Water, Lava, Obsidian, Coal, Iron, Gold, Copper, Glass, Moss, Mud, Gravel,
 Marble, Basalt, Crystal, Cobblestone, Limestone, Granite, Slate, Sandstone,
-Planks, Terracotta, Concrete, Steel, and Glowstone. A Delete block sits in the
-same palette and switches directly to Erase. Selecting any palette block
+Planks, Terracotta, Concrete, Steel, Glowstone, Diamond Ore, Emerald Ore,
+Quartz, Bamboo, Peat, and Coral. A Delete block sits in the same palette and
+switches directly to Erase. Selecting any palette block
 displays a plain-language confirmation such as “Grass selected” or “Delete
 selected.”
 
@@ -173,15 +173,13 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 
 - Powers live in their own panel beside the creation tools on the left side of
   the screen, leaving the right side clear.
-- Verdant Touch is a selected pointer tool with a three-cell-radius circular
-  preview. A left-click applies one patch, and a calm left-drag cadence paints
-  adjacent patches without rotating the camera.
-- Wildfire, Rain, Deep Freeze, and Thaw are immediate world-scale actions,
-  separate from Place, Erase, Animals, and the Verdant Touch brush.
-- A power is disabled when the current world contains no eligible block. Its
-  button shows the number of eligible blocks before activation, except Verdant
-  Touch, which is labeled as a drag tool. Each action reports a plain-language
-  result afterward.
+- All five powers are selected area tools with the same three-cell-radius
+  circular preview. A left-click applies one patch, and a calm left-drag
+  cadence paints adjacent patches without rotating the camera. No power affects
+  the whole world at once.
+- A power is disabled when the current world contains no eligible block. Every
+  power button is labeled as an area action, exposes its selected state, and
+  reports a plain-language result after each successful patch.
 - Every power preserves stable block IDs and cell positions. Powers that create
   fluid or unsupported materials allow gravity to resume settling normally.
 - Power changes participate in the same undo and redo history as direct edits.
@@ -233,9 +231,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   into adults without displaying overhead bars.
 - Removing the last connection beneath or beside a structure makes the detached group settle.
 - Gravity pause and resume work as specified.
-- Verdant Touch affects only exposed Dirt inside its small drag brush. Wildfire,
-  Rain, Deep Freeze, and Thaw remain world-scale; all five powers preserve IDs
-  and positions and can be undone or redone.
+- Verdant Touch, Wildfire, Rain, Deep Freeze, and Thaw affect only eligible
+  blocks inside their small drag brush; all five preserve IDs and positions and
+  can be undone or redone.
 - Undo, redo, clear, reset, material selection, block count, and local persistence work.
 - `npm test` and `npm run build` succeed.
 - The GitHub Pages deployment succeeds from `main` and loads assets from the repository subpath.

@@ -10,7 +10,7 @@ export const ABILITY_KEYS = [
 
 export type AbilityKey = (typeof ABILITY_KEYS)[number];
 export type AbilityTarget = Pick<VoxelBlock, 'x' | 'z'>;
-export const VERDANT_TOUCH_RADIUS = 3;
+export const ABILITY_RADIUS = 3;
 
 export const ABILITIES: Record<
   AbilityKey,
@@ -23,22 +23,22 @@ export const ABILITIES: Record<
   },
   wildfire: {
     label: 'Wildfire',
-    description: 'Ignite flammable blocks',
+    description: 'Ignite a nearby patch',
     triggersGravity: false,
   },
   rain: {
     label: 'Rain',
-    description: 'Extinguish every fire',
+    description: 'Extinguish a nearby patch',
     triggersGravity: false,
   },
   'deep-freeze': {
     label: 'Deep Freeze',
-    description: 'Solidify water and lava',
+    description: 'Freeze nearby water and lava',
     triggersGravity: true,
   },
   thaw: {
     label: 'Thaw',
-    description: 'Melt ice and snow',
+    description: 'Melt nearby ice and snow',
     triggersGravity: true,
   },
 };
@@ -64,13 +64,13 @@ function isEligible(
   surfaceY: Map<string, number>,
   target?: AbilityTarget,
 ) {
+  if (!target) return false;
+  const distanceSquared = (block.x - target.x) ** 2 + (block.z - target.z) ** 2;
+  if (distanceSquared > ABILITY_RADIUS ** 2) return false;
   if (ability === 'verdant-touch') {
-    if (!target) return false;
-    const distanceSquared = (block.x - target.x) ** 2 + (block.z - target.z) ** 2;
     return (
       block.material === 'soil' &&
-      surfaceY.get(`${block.x},${block.z}`) === block.y &&
-      distanceSquared <= VERDANT_TOUCH_RADIUS ** 2
+      surfaceY.get(`${block.x},${block.z}`) === block.y
     );
   }
   if (ability === 'wildfire') return Boolean(MATERIALS[block.material].burnDuration && !block.burning);
@@ -81,14 +81,22 @@ function isEligible(
 
 export function countEligibleBlocks(input: VoxelBlock[], ability: AbilityKey) {
   const surfaceY = getSurfaceY(input);
-  if (ability === 'verdant-touch') {
-    return input.filter(
-      (block) =>
+  return input.filter((block) => {
+    if (ability === 'verdant-touch') {
+      return (
         block.material === 'soil' &&
-        surfaceY.get(`${block.x},${block.z}`) === block.y,
-    ).length;
-  }
-  return input.filter((block) => isEligible(block, ability, surfaceY)).length;
+        surfaceY.get(`${block.x},${block.z}`) === block.y
+      );
+    }
+    if (ability === 'wildfire') {
+      return Boolean(MATERIALS[block.material].burnDuration && !block.burning);
+    }
+    if (ability === 'rain') return Boolean(block.burning);
+    if (ability === 'deep-freeze') {
+      return block.material === 'water' || block.material === 'lava';
+    }
+    return block.material === 'ice' || block.material === 'snow';
+  }).length;
 }
 
 export function applyAbility(

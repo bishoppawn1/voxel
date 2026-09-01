@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ABILITY_RADIUS,
   ABILITY_KEYS,
-  VERDANT_TOUCH_RADIUS,
   applyAbility,
   countEligibleBlocks,
 } from './abilities';
@@ -32,7 +32,7 @@ describe('god powers', () => {
       block('exposed', 0, 0, 0, 'soil'),
       block('covered', 1, 0, 0, 'soil'),
       block('cover', 1, 2, 0, 'stone'),
-      block('far-away', VERDANT_TOUCH_RADIUS + 1, 0, 0, 'soil'),
+      block('far-away', ABILITY_RADIUS + 1, 0, 0, 'soil'),
     ];
     const result = applyAbility(world, 'verdant-touch', { x: 0, z: 0 });
 
@@ -46,76 +46,94 @@ describe('god powers', () => {
     expect(countEligibleBlocks(world, 'verdant-touch')).toBe(2);
   });
 
-  it('does not apply Verdant Touch without a brush target', () => {
-    const world = [block('soil', 0, 0, 0, 'soil')];
-    const result = applyAbility(world, 'verdant-touch');
+  it('does not apply any ability without an area target', () => {
+    const worlds = {
+      'verdant-touch': [block('soil', 0, 0, 0, 'soil')],
+      wildfire: [block('wood', 0, 0, 0, 'wood')],
+      rain: [block('burning', 0, 0, 0, 'wood', 2)],
+      'deep-freeze': [block('water', 0, 0, 0, 'water')],
+      thaw: [block('ice', 0, 0, 0, 'ice')],
+    } satisfies Record<(typeof ABILITY_KEYS)[number], VoxelBlock[]>;
 
-    expect(result).toEqual({ blocks: world, changed: false, affected: 0 });
-    expect(result.blocks).toBe(world);
+    for (const ability of ABILITY_KEYS) {
+      const world = worlds[ability];
+      const result = applyAbility(world, ability);
+      expect(result).toEqual({ blocks: world, changed: false, affected: 0 });
+      expect(result.blocks).toBe(world);
+    }
   });
 
-  it('ignites every unlit flammable block without touching stone', () => {
+  it('ignites only unlit flammable blocks in the targeted area', () => {
     const world = [
       block('grass', 0, 0, 0, 'grass'),
       block('planks', 1, 0, 0, 'planks'),
       block('already-burning', 2, 0, 0, 'wood', 3),
       block('stone', 3, 0, 0, 'stone'),
+      block('far-wood', ABILITY_RADIUS + 1, 0, 0, 'wood'),
     ];
-    const result = applyAbility(world, 'wildfire');
+    const result = applyAbility(world, 'wildfire', { x: 0, z: 0 });
 
     expect(result.affected).toBe(2);
     expect(result.blocks.find(({ id }) => id === 'grass')?.burning).toBe(1);
     expect(result.blocks.find(({ id }) => id === 'planks')?.burning).toBe(1);
     expect(result.blocks.find(({ id }) => id === 'already-burning')?.burning).toBe(3);
     expect(result.blocks.find(({ id }) => id === 'stone')?.burning).toBeUndefined();
+    expect(result.blocks.find(({ id }) => id === 'far-wood')?.burning).toBeUndefined();
   });
 
-  it('extinguishes every fire without changing block material or position', () => {
+  it('extinguishes fire in the targeted area without changing block material or position', () => {
     const burningWood = block('wood', 4, 2, -3, 'wood', 2);
-    const result = applyAbility([burningWood], 'rain');
+    const farFire = block('far-fire', 4 + ABILITY_RADIUS + 1, 2, -3, 'wood', 2);
+    const result = applyAbility([burningWood, farFire], 'rain', { x: 4, z: -3 });
 
     expect(result).toEqual({
-      blocks: [block('wood', 4, 2, -3, 'wood')],
+      blocks: [block('wood', 4, 2, -3, 'wood'), farFire],
       changed: true,
       affected: 1,
     });
   });
 
-  it('freezes water into ice and lava into obsidian', () => {
+  it('freezes water and lava only in the targeted area', () => {
     const result = applyAbility([
       { ...block('water', 0, 0, 0, 'water'), liquidLevel: 2 },
       { ...block('lava', 1, 0, 0, 'lava'), liquidLevel: 1 },
       block('snow', 2, 0, 0, 'snow'),
-    ], 'deep-freeze');
+      { ...block('far-water', ABILITY_RADIUS + 1, 0, 0, 'water'), liquidLevel: 1 },
+    ], 'deep-freeze', { x: 0, z: 0 });
 
     expect(result.affected).toBe(2);
     expect(result.blocks.map(({ id, material }) => [id, material])).toEqual([
       ['water', 'ice'],
       ['lava', 'obsidian'],
       ['snow', 'snow'],
+      ['far-water', 'water'],
     ]);
-    expect(result.blocks.every(({ liquidLevel }) => liquidLevel === undefined)).toBe(true);
+    expect(result.blocks.find(({ id }) => id === 'water')?.liquidLevel).toBeUndefined();
+    expect(result.blocks.find(({ id }) => id === 'lava')?.liquidLevel).toBeUndefined();
+    expect(result.blocks.find(({ id }) => id === 'far-water')?.liquidLevel).toBe(1);
   });
 
-  it('thaws ice and snow into flowing water', () => {
+  it('thaws ice and snow only in the targeted area', () => {
     const result = applyAbility([
       block('ice', 0, 1, 0, 'ice'),
       block('snow', 1, 1, 0, 'snow'),
       block('obsidian', 2, 1, 0, 'obsidian'),
-    ], 'thaw');
+      block('far-ice', ABILITY_RADIUS + 1, 1, 0, 'ice'),
+    ], 'thaw', { x: 0, z: 0 });
 
     expect(result.affected).toBe(2);
     expect(result.blocks.map(({ material }) => material)).toEqual([
       'water',
       'water',
       'obsidian',
+      'ice',
     ]);
     expect(isValidWorld(result.blocks)).toBe(true);
   });
 
   it('returns the original world when a power has no eligible target', () => {
     const world = [block('stone', 0, 0, 0, 'stone')];
-    const result = applyAbility(world, 'rain');
+    const result = applyAbility(world, 'rain', { x: 0, z: 0 });
 
     expect(result).toEqual({ blocks: world, changed: false, affected: 0 });
     expect(result.blocks).toBe(world);
