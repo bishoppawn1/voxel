@@ -121,42 +121,50 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   attachments keyed to stable block IDs; they do not occupy world cells and
   move with their supporting block.
 - A starter or newly reset world contains two adult sheep on grassy terrain.
-  The player can spawn Sheep, Cows, Pigs, Rabbits, Goats, and Foxes on any
+  The player can spawn Sheep, Cows, Pigs, Rabbits, Goats, Deer, Horses,
+  Chickens, Ducks, Turtles, Foxes, Wolves, Bears, Eagles, and Crocodiles on any
   unoccupied, non-burning surface. Only one animal may occupy a surface column
   at spawn time.
 - Each herbivore follows a shortest reachable path toward food in its diet.
-  Sheep prefer short and tall grass; Cows prefer tall grass; Pigs prefer
-  flowers; Rabbits prefer short grass and flowers; and Goats prefer tall grass
-  and flowers. All five herbivores can also eat grassy dirt, Leaves, and Moss
-  as shared plant-food categories. Eating grassy dirt or Moss exposes Dirt,
-  while eating Leaves removes that leaf block, so a block cannot provide
-  unlimited meals. Animals remove what they eat and track their meal count.
-- Animals move only one horizontal cell per ecosystem tick and can step up or
-  down by at most one block level at a time. When no food is reachable, they
-  wait rather than pacing back and forth. Eating bare grassy dirt changes it
-  back to Dirt, allowing the grass cycle to begin again. Animals avoid eating
-  burning grass. Every animal visibly turns to face the direction it moves.
+  Species prefer different combinations of short grass, tall grass, and
+  flowers. All ten herbivores can also eat grassy dirt, Leaves, and Moss as
+  shared plant-food categories. Eating grassy dirt or Moss exposes Dirt, while
+  eating Leaves removes that leaf block, so a block cannot provide unlimited
+  meals. Animals remove what they eat and track their meal count.
+- Every movement step crosses only one horizontal cell and can go up or down by
+  at most one block level. Species take those steps at different cadences:
+  Rabbits, Deer, Horses, Foxes, Wolves, and Eagles move every ecosystem tick;
+  Sheep, Goats, Chickens, Ducks, Bears, and Crocodiles move every two; Cows and
+  Pigs move every three; and Turtles move every four. Slow animals are
+  deterministically staggered by individual ID so a herd does not all move on
+  the same tick. Predators are therefore faster on average, while the fastest
+  herbivores can still match them. When no food is reachable, animals wait
+  rather than pacing back and forth. Eating bare grassy dirt changes it back to
+  Dirt, allowing the grass cycle to begin again. Animals avoid eating burning
+  grass. Every animal visibly turns to face the direction it moves.
 - Every animal has individual hunger, but no overhead health or hunger bar.
   Hunger falls on each ecosystem tick, eating restores it up to its maximum,
   and an animal dies and is removed from the world when its hunger reaches
   zero. Animals also die of old age after a species-specific long lifespan of
-  300 to 540 ecosystem ticks. The same individual hunger and aging rules apply
+  300 to 600 ecosystem ticks. The same individual hunger and aging rules apply
   to future animal species.
 - Once two nearby adults of the same species have each eaten three meals, they
   approach one another. When adjacent and a neighboring surface is open, they
   reset their meal counts and create a visibly smaller baby of their species.
   Babies eat but do not breed; after three meals, a baby visibly grows into an
   adult and begins a short breeding cooldown.
-- The Fox is the single predatory species. Its prey category contains Sheep,
-  Cows, Pigs, Rabbits, and Goats, so it can choose among multiple animal species
-  but never treats plants or another predator as food. It seeks the nearest
-  listed prey. Foxes have twelve health compared with four for herbivores, so
-  they can withstand many weak counterattacks. When a Fox reaches prey, that
-  animal has a 15% deterministic chance to fight back and otherwise flees. A
-  herbivore counterattack deals one damage before the Fox attacks, while a Fox
-  attack deals four damage. A fleeing animal moves to an open reachable surface
-  farther from the Fox, or is caught if no escape exists. A successful hunt
-  feeds the Fox.
+- Foxes, Wolves, Bears, Eagles, and Crocodiles are predators. Each has a listed
+  prey category with multiple species and never treats plants or another
+  predator as food. A predator seeks the nearest listed prey and has higher
+  health and attack damage than herbivores. When it reaches prey, that animal
+  has a 15% deterministic chance to fight back and otherwise flees if its own
+  movement cadence is ready. A fleeing animal moves to an open reachable
+  surface farther from the predator, or is caught if no escape exists. A
+  successful hunt feeds the predator.
+- The ecosystem builds one surface index per tick and shares food-target indexes
+  among animals of the same species. Rendering reuses the same surface and block
+  indexes and skips unchanged block, vegetation, and animal models so larger
+  populations do not trigger repeated whole-world scans or redraws.
 - Vegetation, animal species, positions, facing, hunger, age, health, meal
   counts, and breeding cooldowns persist with the local world. Reset restores a
   fresh ecosystem; Clear removes it.
@@ -215,12 +223,14 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   flammables, fire spreads, and weak vertical columns cannot exceed their
   material tolerance.
 - Dirt can become grassy dirt, grassy dirt can sprout non-block vegetation, and
-  covered grassy dirt returns to Dirt. All six animals can be spawned and face
+  covered grassy dirt returns to Dirt. All fifteen animals can be spawned and face
   their movement direction. Herbivores seek their species-specific growths plus
   shared grassy dirt, Leaves, and Moss without crossing steps taller than one
-  block, while Foxes hunt only their listed prey species and prey randomly
-  fight or flee. Animals starve at zero, die of old age, produce smaller babies,
-  and grow those babies into adults without displaying overhead bars.
+  block, while predators hunt only their listed prey species and prey randomly
+  fight or flee. Species use distinct, staggered movement cadences, with
+  predators faster on average but fast herbivores able to keep pace. Animals
+  starve at zero, die of old age, produce smaller babies, and grow those babies
+  into adults without displaying overhead bars.
 - Removing the last connection beneath or beside a structure makes the detached group settle.
 - Gravity pause and resume work as specified.
 - Verdant Touch affects only exposed Dirt inside its small drag brush. Wildfire,

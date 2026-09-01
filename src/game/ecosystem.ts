@@ -56,6 +56,7 @@ export const ANIMALS: Record<AnimalKind, {
   materials: readonly BlockMaterial[];
   prey: readonly AnimalKind[];
   predator: boolean;
+  moveEveryTicks: number;
   lifespan: number;
   maxHealth: number;
   attackDamage: number;
@@ -68,6 +69,7 @@ export const ANIMALS: Record<AnimalKind, {
     materials: HERBIVORE_MATERIALS,
     prey: [],
     predator: false,
+    moveEveryTicks: 2,
     lifespan: 480,
     maxHealth: 4,
     attackDamage: 1,
@@ -80,6 +82,7 @@ export const ANIMALS: Record<AnimalKind, {
     materials: HERBIVORE_MATERIALS,
     prey: [],
     predator: false,
+    moveEveryTicks: 3,
     lifespan: 540,
     maxHealth: 4,
     attackDamage: 1,
@@ -92,6 +95,7 @@ export const ANIMALS: Record<AnimalKind, {
     materials: HERBIVORE_MATERIALS,
     prey: [],
     predator: false,
+    moveEveryTicks: 3,
     lifespan: 420,
     maxHealth: 4,
     attackDamage: 1,
@@ -104,6 +108,7 @@ export const ANIMALS: Record<AnimalKind, {
     materials: HERBIVORE_MATERIALS,
     prey: [],
     predator: false,
+    moveEveryTicks: 1,
     lifespan: 300,
     maxHealth: 4,
     attackDamage: 1,
@@ -116,6 +121,7 @@ export const ANIMALS: Record<AnimalKind, {
     materials: HERBIVORE_MATERIALS,
     prey: [],
     predator: false,
+    moveEveryTicks: 2,
     lifespan: 480,
     maxHealth: 4,
     attackDamage: 1,
@@ -128,6 +134,7 @@ export const ANIMALS: Record<AnimalKind, {
     materials: HERBIVORE_MATERIALS,
     prey: [],
     predator: false,
+    moveEveryTicks: 1,
     lifespan: 480,
     maxHealth: 4,
     attackDamage: 1,
@@ -140,6 +147,7 @@ export const ANIMALS: Record<AnimalKind, {
     materials: HERBIVORE_MATERIALS,
     prey: [],
     predator: false,
+    moveEveryTicks: 1,
     lifespan: 540,
     maxHealth: 4,
     attackDamage: 1,
@@ -152,6 +160,7 @@ export const ANIMALS: Record<AnimalKind, {
     materials: HERBIVORE_MATERIALS,
     prey: [],
     predator: false,
+    moveEveryTicks: 2,
     lifespan: 300,
     maxHealth: 4,
     attackDamage: 1,
@@ -164,6 +173,7 @@ export const ANIMALS: Record<AnimalKind, {
     materials: HERBIVORE_MATERIALS,
     prey: [],
     predator: false,
+    moveEveryTicks: 2,
     lifespan: 330,
     maxHealth: 4,
     attackDamage: 1,
@@ -176,6 +186,7 @@ export const ANIMALS: Record<AnimalKind, {
     materials: HERBIVORE_MATERIALS,
     prey: [],
     predator: false,
+    moveEveryTicks: 4,
     lifespan: 600,
     maxHealth: 6,
     attackDamage: 1,
@@ -188,6 +199,7 @@ export const ANIMALS: Record<AnimalKind, {
     materials: [],
     prey: HERBIVORE_KEYS,
     predator: true,
+    moveEveryTicks: 1,
     lifespan: 360,
     maxHealth: 12,
     attackDamage: 4,
@@ -200,6 +212,7 @@ export const ANIMALS: Record<AnimalKind, {
     materials: [],
     prey: HERBIVORE_KEYS,
     predator: true,
+    moveEveryTicks: 1,
     lifespan: 420,
     maxHealth: 14,
     attackDamage: 5,
@@ -212,6 +225,7 @@ export const ANIMALS: Record<AnimalKind, {
     materials: [],
     prey: HERBIVORE_KEYS,
     predator: true,
+    moveEveryTicks: 2,
     lifespan: 540,
     maxHealth: 20,
     attackDamage: 6,
@@ -224,6 +238,7 @@ export const ANIMALS: Record<AnimalKind, {
     materials: [],
     prey: ['rabbit', 'chicken', 'duck'],
     predator: true,
+    moveEveryTicks: 1,
     lifespan: 360,
     maxHealth: 10,
     attackDamage: 4,
@@ -236,6 +251,7 @@ export const ANIMALS: Record<AnimalKind, {
     materials: [],
     prey: HERBIVORE_KEYS,
     predator: true,
+    moveEveryTicks: 2,
     lifespan: 600,
     maxHealth: 20,
     attackDamage: 6,
@@ -271,16 +287,25 @@ const columnKey = (x: number, z: number) => `${x},${z}`;
 const distance = (a: Position, b: Position) =>
   Math.abs(a.x - b.x) + Math.abs(a.z - b.z);
 
-function deterministicRandom(key: string) {
+function hashString(key: string) {
   let hash = 2166136261;
   for (let index = 0; index < key.length; index += 1) {
     hash ^= key.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
   }
-  return (hash >>> 0) / 4294967296;
+  return hash >>> 0;
 }
 
-function surfaceMap(blocks: VoxelBlock[]) {
+function deterministicRandom(key: string) {
+  return hashString(key) / 4294967296;
+}
+
+export function animalMovesOnTick(animal: Pick<Animal, 'id' | 'kind'>, tick: number) {
+  const interval = ANIMALS[animal.kind].moveEveryTicks;
+  return interval === 1 || tick % interval === hashString(animal.id) % interval;
+}
+
+export function createSurfaceIndex(blocks: VoxelBlock[]) {
   const surfaces = new Map<string, VoxelBlock>();
   for (const block of blocks) {
     const key = columnKey(block.x, block.z);
@@ -291,7 +316,7 @@ function surfaceMap(blocks: VoxelBlock[]) {
 }
 
 export function getSurfaceBlock(blocks: VoxelBlock[], x: number, z: number) {
-  return surfaceMap(blocks).get(columnKey(x, z));
+  return createSurfaceIndex(blocks).get(columnKey(x, z));
 }
 
 export function convertCoveredGrassToSoil(blocks: VoxelBlock[]) {
@@ -329,7 +354,7 @@ function createAnimal(kind: AnimalKind, idNumber: number, position: Position): A
 }
 
 export function createInitialEcosystem(blocks: VoxelBlock[]): EcosystemState {
-  const grassSurfaces = [...surfaceMap(blocks).values()]
+  const grassSurfaces = [...createSurfaceIndex(blocks).values()]
     .filter(({ material }) => material === 'grass')
     .sort((a, b) => a.x - b.x || a.z - b.z || a.id.localeCompare(b.id));
   const startingSurfaces = grassSurfaces.length > 1
@@ -352,10 +377,11 @@ export function spawnAnimal(
   x: number,
   z: number,
 ) {
+  const surface = getSurfaceBlock(blocks, x, z);
   if (
     state.animals.length >= MAX_ANIMALS ||
-    !getSurfaceBlock(blocks, x, z) ||
-    getSurfaceBlock(blocks, x, z)?.burning ||
+    !surface ||
+    surface.burning ||
     state.animals.some((animal) => animal.x === x && animal.z === z)
   ) {
     return state;
@@ -451,12 +477,11 @@ function moveToward(
 
 function moveTowardNearestFood(
   animal: Animal,
-  targets: Position[],
+  targetKeys: ReadonlySet<string>,
   surfaces: Map<string, VoxelBlock>,
   occupied: Set<string>,
 ) {
-  if (!targets.length) return animal;
-  const targetKeys = new Set(targets.map(({ x, z }) => columnKey(x, z)));
+  if (!targetKeys.size) return animal;
   return moveTowardGoal(
     animal,
     ({ x, z }) => targetKeys.has(columnKey(x, z)),
@@ -525,7 +550,7 @@ export function advanceEcosystem(
 ) {
   const tick = state.tick + 1;
   let nextEntityId = state.nextEntityId;
-  const surfaces = surfaceMap(blocks);
+  const surfaces = createSurfaceIndex(blocks);
   const surfaceIds = new Set([...surfaces.values()].map(({ id }) => id));
   const blocksById = new Map(blocks.map((block) => [block.id, block]));
   const materialChanges = new Map<string, BlockMaterial>();
@@ -659,6 +684,7 @@ export function advanceEcosystem(
 
     actedThisTick.add(predator.id);
     if (distance(predator, prey) > 1) {
+      if (!animalMovesOnTick(predator, tick)) continue;
       occupied.delete(columnKey(predator.x, predator.z));
       const moved = moveToward(predator, prey, surfaces, occupied, 1);
       animalsById.set(predator.id, moved);
@@ -677,7 +703,9 @@ export function advanceEcosystem(
       HERBIVORE_FIGHT_BACK_CHANCE;
     if (!fightsBack) {
       occupied.delete(columnKey(defendingPrey.x, defendingPrey.z));
-      const escaped = fleeFrom(defendingPrey, predator, surfaces, occupied);
+      const escaped = animalMovesOnTick(defendingPrey, tick)
+        ? fleeFrom(defendingPrey, predator, surfaces, occupied)
+        : defendingPrey;
       animalsById.set(escaped.id, escaped);
       occupied.add(columnKey(escaped.x, escaped.z));
       if (escaped.x !== defendingPrey.x || escaped.z !== defendingPrey.z) continue;
@@ -779,40 +807,53 @@ export function advanceEcosystem(
     }
 
     occupied.delete(columnKey(currentFirst.x, currentFirst.z));
-    const movedFirst = moveToward(currentFirst, currentPartner, surfaces, occupied, 1);
+    const movedFirst = animalMovesOnTick(currentFirst, tick)
+      ? moveToward(currentFirst, currentPartner, surfaces, occupied, 1)
+      : currentFirst;
     animalsById.set(first.id, movedFirst);
     occupied.add(columnKey(movedFirst.x, movedFirst.z));
 
     currentPartner = animalsById.get(partner.id)!;
     occupied.delete(columnKey(currentPartner.x, currentPartner.z));
-    const movedPartner = moveToward(currentPartner, movedFirst, surfaces, occupied, 1);
+    const movedPartner = animalMovesOnTick(currentPartner, tick)
+      ? moveToward(currentPartner, movedFirst, surfaces, occupied, 1)
+      : currentPartner;
     animalsById.set(partner.id, movedPartner);
     occupied.add(columnKey(movedPartner.x, movedPartner.z));
   }
 
   const growthByBlockId = new Map(vegetation.map((growth) => [growth.blockId, growth]));
+  const foodTargetsByKind = new Map<AnimalKind, ReadonlySet<string>>();
+  const foodTargetsFor = (animal: Animal) => {
+    const cached = foodTargetsByKind.get(animal.kind);
+    if (cached) return cached;
+    const targetKeys = new Set<string>();
+    for (const block of surfaces.values()) {
+      if (block.burning || consumedBlockIds.has(block.id)) continue;
+      const growth = growthByBlockId.get(block.id);
+      const material = materialChanges.get(block.id) ?? block.material;
+      if (
+        (growth && vegetationIsEdible(animal, growth.kind)) ||
+        materialIsEdible(animal, material)
+      ) {
+        targetKeys.add(columnKey(block.x, block.z));
+      }
+    }
+    foodTargetsByKind.set(animal.kind, targetKeys);
+    return targetKeys;
+  };
   for (const animal of animalsById.values()) {
     if (
       ANIMALS[animal.kind].predator ||
       paired.has(animal.id) ||
       ateThisTick.has(animal.id) ||
-      actedThisTick.has(animal.id)
+      actedThisTick.has(animal.id) ||
+      !animalMovesOnTick(animal, tick)
     ) {
       continue;
     }
-    const foodTargets = [...surfaces.values()]
-      .filter((block) => {
-        if (block.burning || consumedBlockIds.has(block.id)) return false;
-        const growth = growthByBlockId.get(block.id);
-        const material = materialChanges.get(block.id) ?? block.material;
-        return (
-          (growth && vegetationIsEdible(animal, growth.kind)) ||
-          materialIsEdible(animal, material)
-        );
-      })
-      .map(({ x, z }) => ({ x, z }));
     occupied.delete(columnKey(animal.x, animal.z));
-    const moved = moveTowardNearestFood(animal, foodTargets, surfaces, occupied);
+    const moved = moveTowardNearestFood(animal, foodTargetsFor(animal), surfaces, occupied);
     animalsById.set(animal.id, moved);
     occupied.add(columnKey(moved.x, moved.z));
   }

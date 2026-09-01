@@ -20,7 +20,7 @@ import {
   Trash2,
   Undo2,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type Group, MOUSE, Vector3 } from 'three';
 import {
   ANIMALS,
@@ -29,7 +29,7 @@ import {
   advanceEcosystem,
   convertCoveredGrassToSoil,
   createInitialEcosystem,
-  getSurfaceBlock,
+  createSurfaceIndex,
   migrateEcosystem,
   spawnAnimal,
   type Animal,
@@ -124,7 +124,7 @@ function BurningEffect() {
   );
 }
 
-function AnimatedBlock({
+const AnimatedBlock = memo(function AnimatedBlock({
   block,
   onHover,
   onLeave,
@@ -209,9 +209,9 @@ function AnimatedBlock({
       {block.burning && <BurningEffect />}
     </group>
   );
-}
+});
 
-function VegetationSprout({
+const VegetationSprout = memo(function VegetationSprout({
   growth,
   block,
 }: {
@@ -259,7 +259,7 @@ function VegetationSprout({
       )}
     </group>
   );
-}
+});
 
 const ANIMAL_COLORS: Record<AnimalKind, {
   body: string;
@@ -285,7 +285,7 @@ const ANIMAL_COLORS: Record<AnimalKind, {
   crocodile: { body: '#536b3d', head: '#5c7541', legs: '#3e5232', accent: '#9fa268', scale: 1.02 },
 };
 
-function AnimalModel({ animal, surfaceY }: { animal: Animal; surfaceY: number }) {
+const AnimalModel = memo(function AnimalModel({ animal, surfaceY }: { animal: Animal; surfaceY: number }) {
   const group = useRef<Group>(null);
   const target = useMemo(
     () =>
@@ -409,7 +409,15 @@ function AnimalModel({ animal, surfaceY }: { animal: Animal; surfaceY: number })
       </mesh>
     </group>
   );
-}
+}, (previous, next) =>
+  previous.surfaceY === next.surfaceY &&
+  previous.animal.kind === next.animal.kind &&
+  previous.animal.x === next.animal.x &&
+  previous.animal.z === next.animal.z &&
+  previous.animal.facingX === next.animal.facingX &&
+  previous.animal.facingZ === next.animal.facingZ &&
+  previous.animal.isBaby === next.animal.isBaby,
+);
 
 function WorldScene({
   blocks,
@@ -431,6 +439,15 @@ function WorldScene({
   const [hover, setHover] = useState<HoverTarget | null>(null);
   const painting = useRef(false);
   const lastPaintAt = useRef(-Infinity);
+  const surfaceByColumn = useMemo(() => createSurfaceIndex(blocks), [blocks]);
+  const blocksById = useMemo(
+    () => new Map(blocks.map((block) => [block.id, block])),
+    [blocks],
+  );
+  const surfaceAt = useCallback(
+    (x: number, z: number) => surfaceByColumn.get(`${x},${z}`),
+    [surfaceByColumn],
+  );
 
   useEffect(() => {
     const stopPainting = () => {
@@ -498,7 +515,7 @@ function WorldScene({
     }
     event.stopPropagation();
     if (tool === 'verdant-touch') {
-      const surface = getSurfaceBlock(blocks, block.x, block.z) ?? block;
+      const surface = surfaceAt(block.x, block.z) ?? block;
       const target = { x: block.x, z: block.z };
       setHover({
         ...target,
@@ -514,7 +531,7 @@ function WorldScene({
       return;
     }
     if (tool === 'animal') {
-      const surface = getSurfaceBlock(blocks, block.x, block.z);
+      const surface = surfaceAt(block.x, block.z);
       const occupied = ecosystem.animals.some(
         (animal) => animal.x === block.x && animal.z === block.z,
       );
@@ -555,7 +572,7 @@ function WorldScene({
       return;
     }
     if (tool === 'animal') {
-      const surface = getSurfaceBlock(blocks, block.x, block.z);
+      const surface = surfaceAt(block.x, block.z);
       const occupied = ecosystem.animals.some(
         (animal) => animal.x === block.x && animal.z === block.z,
       );
@@ -574,6 +591,24 @@ function WorldScene({
     y: 0,
     z: worldToCell(event.point.z),
   });
+  const blockInteractions = useRef({ hoverBlock, startPaintingOnBlock, selectBlock });
+  blockInteractions.current = { hoverBlock, startPaintingOnBlock, selectBlock };
+  const handleBlockHover = useCallback(
+    (event: ThreeEvent<PointerEvent>, block: VoxelBlock) =>
+      blockInteractions.current.hoverBlock(event, block),
+    [],
+  );
+  const handleBlockPaintStart = useCallback(
+    (event: ThreeEvent<PointerEvent>, block: VoxelBlock) =>
+      blockInteractions.current.startPaintingOnBlock(event, block),
+    [],
+  );
+  const handleBlockSelect = useCallback(
+    (event: ThreeEvent<MouseEvent>, block: VoxelBlock) =>
+      blockInteractions.current.selectBlock(event, block),
+    [],
+  );
+  const handlePointerLeave = useCallback(() => setHover(null), []);
 
   return (
     <>
@@ -662,23 +697,23 @@ function WorldScene({
         <AnimatedBlock
           key={block.id}
           block={block}
-          onHover={hoverBlock}
-          onLeave={() => setHover(null)}
-          onSelect={selectBlock}
-          onPaintStart={startPaintingOnBlock}
+          onHover={handleBlockHover}
+          onLeave={handlePointerLeave}
+          onSelect={handleBlockSelect}
+          onPaintStart={handleBlockPaintStart}
         />
       ))}
 
       {ecosystem.vegetation.map((growth) => {
-        const block = blocks.find(({ id }) => id === growth.blockId);
-        const surface = block && getSurfaceBlock(blocks, block.x, block.z);
+        const block = blocksById.get(growth.blockId);
+        const surface = block && surfaceAt(block.x, block.z);
         return block?.material === 'grass' && !block.burning && surface?.id === block.id
           ? <VegetationSprout key={growth.id} growth={growth} block={block} />
           : null;
       })}
 
       {ecosystem.animals.map((animal) => {
-        const surface = getSurfaceBlock(blocks, animal.x, animal.z);
+        const surface = surfaceAt(animal.x, animal.z);
         return surface ? <AnimalModel key={animal.id} animal={animal} surfaceY={surface.y} /> : null;
       })}
 

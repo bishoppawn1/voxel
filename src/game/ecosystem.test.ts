@@ -9,6 +9,7 @@ import {
   MAX_ANIMAL_HUNGER,
   PREDATOR_KEYS,
   advanceEcosystem,
+  animalMovesOnTick,
   convertCoveredGrassToSoil,
   createInitialEcosystem,
   isValidEcosystem,
@@ -125,6 +126,30 @@ describe('animal spawning and diets', () => {
       });
     }
     for (const kind of PREDATOR_KEYS) expect(ANIMALS[kind].predator).toBe(true);
+  });
+
+  it('gives species distinct speeds while keeping predators faster on average', () => {
+    expect(ANIMALS.rabbit.moveEveryTicks).toBe(1);
+    expect(ANIMALS.horse.moveEveryTicks).toBe(1);
+    expect(ANIMALS.sheep.moveEveryTicks).toBe(2);
+    expect(ANIMALS.cow.moveEveryTicks).toBe(3);
+    expect(ANIMALS.turtle.moveEveryTicks).toBe(4);
+    expect(ANIMALS.fox.moveEveryTicks).toBe(1);
+    expect(ANIMALS.bear.moveEveryTicks).toBe(2);
+
+    const averageCadence = (kinds: readonly AnimalKind[]) =>
+      kinds.reduce((total, kind) => total + ANIMALS[kind].moveEveryTicks, 0) / kinds.length;
+    expect(averageCadence(PREDATOR_KEYS)).toBeLessThan(averageCadence(HERBIVORE_KEYS));
+  });
+
+  it('stagger slow animals so a herd does not move all at once', () => {
+    const first = animal('sheep', 'sheep-0');
+    const second = animal('sheep', 'sheep-1');
+
+    expect(animalMovesOnTick(first, 1)).toBe(true);
+    expect(animalMovesOnTick(second, 1)).toBe(false);
+    expect(animalMovesOnTick(first, 2)).toBe(false);
+    expect(animalMovesOnTick(second, 2)).toBe(true);
   });
 
   it('spawns the selected animal at full hunger on an open surface', () => {
@@ -272,6 +297,27 @@ describe('animal life cycle', () => {
     });
   });
 
+  it('waits between movement steps according to its species cadence', () => {
+    const world = [
+      block('stone', 0, 0, 'stone'),
+      block('grass', 1, 0, 'grass'),
+    ];
+    const cow = animal('cow', 'cow-0');
+    const waiting = advanceEcosystem(world, {
+      ...emptyEcosystem(),
+      tick: 1,
+      animals: [cow],
+      nextEntityId: 1,
+    }, () => 1).ecosystem;
+    const moving = advanceEcosystem(world, {
+      ...waiting,
+      tick: 3,
+    }, () => 1).ecosystem;
+
+    expect(waiting.animals[0]).toMatchObject({ x: 0, z: 0 });
+    expect(moving.animals[0]).toMatchObject({ x: 1, z: 0 });
+  });
+
   it('keeps following a reachable food path instead of pacing back to a dead end', () => {
     const world = [
       block('start', 0, 0, 'stone'),
@@ -290,6 +336,9 @@ describe('animal life cycle', () => {
       animals: [animal('sheep', 'sheep-0')],
       nextEntityId: 1,
     };
+
+    ecosystem = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+    expect(ecosystem.animals[0]).toMatchObject({ x: -1, z: 0 });
 
     ecosystem = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
     expect(ecosystem.animals[0]).toMatchObject({ x: -1, z: 0 });
@@ -537,6 +586,7 @@ describe('predator hunting', () => {
     ];
     const ecosystem: EcosystemState = {
       ...emptyEcosystem(),
+      tick: 1,
       animals: [
         animal('fox', 'fox-0', 0, 0),
         animal('sheep', 'sheep-1', 1, 0),
@@ -568,6 +618,7 @@ describe('predator hunting', () => {
     ];
     const ecosystem: EcosystemState = {
       ...emptyEcosystem(),
+      tick: 1,
       animals: [
         animal('fox', 'fox-0', 0, 0),
         animal('sheep', 'sheep-1', 1, 0),
