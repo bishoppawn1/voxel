@@ -922,6 +922,58 @@ describe('animal life cycle', () => {
     expect(ate.vegetation).toEqual([]);
   });
 
+  it('plans through fish traffic, waits at the occupied next cell, then resumes', () => {
+    const world = Array.from({ length: 6 }, (_, x) => [
+      block(`water-${x}-0`, x, 0, 'water'),
+      block(`water-${x}-1`, x, 1, 'water'),
+    ]).flat();
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('big-fish', 'big-fish-hunter', 0, 0, { hunger: 40 }),
+        animal('big-fish', 'big-fish-traffic-0', 2, 0, { breedingCooldown: 99 }),
+        animal('big-fish', 'big-fish-traffic-1', 2, 1, { breedingCooldown: 99 }),
+        animal('small-fish', 'small-fish-prey', 5, 0),
+      ],
+      nextEntityId: 4,
+    };
+
+    const approaching = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+    expect(approaching.animals.find(({ id }) => id === 'big-fish-hunter'))
+      .toMatchObject({ x: 1, z: 0 });
+
+    const waiting = advanceEcosystem(world, approaching, () => 1).ecosystem;
+    expect(waiting.animals.find(({ id }) => id === 'big-fish-hunter'))
+      .toMatchObject({ x: 1, z: 0 });
+
+    const clearedTraffic = {
+      ...waiting,
+      animals: waiting.animals.filter(({ id }) => !id.startsWith('big-fish-traffic')),
+    };
+    const resumed = advanceEcosystem(world, clearedTraffic, () => 1).ecosystem;
+    expect(resumed.animals.find(({ id }) => id === 'big-fish-hunter'))
+      .toMatchObject({ x: 2, z: 0 });
+  });
+
+  it('still treats non-water terrain as a permanent fish barrier', () => {
+    const world = Array.from({ length: 6 }, (_, x) => [
+      block(`channel-${x}-0`, x, 0, x === 2 ? 'soil' : 'water'),
+      block(`channel-${x}-1`, x, 1, x === 2 ? 'soil' : 'water'),
+    ]).flat();
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('big-fish', 'big-fish-hunter', 0, 0, { hunger: 40 }),
+        animal('small-fish', 'small-fish-prey', 5, 0),
+      ],
+      nextEntityId: 2,
+    };
+
+    const blocked = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+    expect(blocked.animals.find(({ id }) => id === 'big-fish-hunter'))
+      .toMatchObject({ x: 0, z: 0 });
+  });
+
   it('moves an animal onto adjacent preferred food before eating on the next tick', () => {
     const world = [
       block('stone', 0, 0, 'stone'),

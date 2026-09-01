@@ -216,8 +216,11 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 - Kelp grows as a lightweight attachment on exposed Water in the same
   deterministic cycle used for land vegetation. Small Fish remain in connected
   water and eat kelp; Big Fish remain in connected water and hunt Small Fish.
-  Both fish species can also be spawned from the animal palette, but only on an
-  unoccupied Water surface.
+  Fish plan routes through occupied water as though other animals are temporary
+  traffic: they wait when their next water cell is occupied and retry on later
+  ticks instead of abandoning reachable prey or food. Dirt and other non-Water
+  terrain remain permanent barriers. Both fish species can also be spawned from
+  the animal palette, but only on an unoccupied Water surface.
 - The ecosystem builds one surface index per tick and shares food-target indexes
   among animals of the same species. Rendering reuses the same surface and block
   indexes and skips unchanged block, vegetation, and animal models so larger
@@ -302,7 +305,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   without displaying overhead bars. Burning animals rush into
   reachable water and extinguish; land animals swim across water. Kelp regrows
   on Water, Small Fish eat kelp, and Big Fish hunt Small Fish without leaving
-  connected water.
+  connected water. Fish keep planning through temporary animal traffic, wait
+  before entering an occupied cell, and never plan through solid terrain.
 - Humans carry one resource, hunt land animals, chop Wood, build and use a Basic
   Crafting Bench, craft an Axe, Hammer, and Spear, turn later logs into Planks,
   and place those planks into a small house one trip at a time. Healthy mature
