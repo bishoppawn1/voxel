@@ -124,11 +124,13 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   The player can spawn Sheep, Cows, Pigs, Rabbits, Goats, and Foxes on any
   unoccupied, non-burning surface. Only one animal may occupy a surface column
   at spawn time.
-- Each species follows a shortest reachable path toward food in its own diet:
-  Sheep eat short grass, tall grass, and grassy dirt; Cows eat tall grass and
-  grassy dirt; Pigs eat flowers and grassy dirt; Rabbits eat short grass and
-  flowers; and Goats eat tall grass, flowers, and grassy dirt. Animals remove
-  what they eat and track their meal count.
+- Each herbivore follows a shortest reachable path toward food in its diet.
+  Sheep prefer short and tall grass; Cows prefer tall grass; Pigs prefer
+  flowers; Rabbits prefer short grass and flowers; and Goats prefer tall grass
+  and flowers. All five herbivores can also eat grassy dirt, Leaves, and Moss
+  as shared plant-food categories. Eating grassy dirt or Moss exposes Dirt,
+  while eating Leaves removes that leaf block, so a block cannot provide
+  unlimited meals. Animals remove what they eat and track their meal count.
 - Animals move only one horizontal cell per ecosystem tick and can step up or
   down by at most one block level at a time. When no food is reachable, they
   wait rather than pacing back and forth. Eating bare grassy dirt changes it
@@ -145,12 +147,14 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   reset their meal counts and create a visibly smaller baby of their species.
   Babies eat but do not breed; after three meals, a baby visibly grows into an
   adult and begins a short breeding cooldown.
-- The Fox is the single predatory species. It seeks the nearest non-predatory
-  animal instead of vegetation and can withstand three hits. When it reaches a
-  Sheep or another prey animal, that animal makes a deterministic random choice
-  to fight back or flee. A fighter deals one hit before the Fox attacks; a
-  fleeing animal moves to an open reachable neighboring surface farther from
-  the Fox, or is caught if no escape exists. A successful hunt feeds the Fox.
+- The Fox is the single predatory species. Its prey category contains Sheep,
+  Cows, Pigs, Rabbits, and Goats, so it can choose among multiple animal species
+  but never treats plants or another predator as food. It seeks the nearest
+  listed prey and can withstand three hits. When it reaches a prey animal, that
+  animal makes a deterministic random choice to fight back or flee. A fighter
+  deals one hit before the Fox attacks; a fleeing animal moves to an open
+  reachable neighboring surface farther from the Fox, or is caught if no
+  escape exists. A successful hunt feeds the Fox.
 - Vegetation, animal species, positions, facing, hunger, age, health, meal
   counts, and breeding cooldowns persist with the local world. Reset restores a
   fresh ecosystem; Clear removes it.
@@ -210,11 +214,11 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   material tolerance.
 - Dirt can become grassy dirt, grassy dirt can sprout non-block vegetation, and
   covered grassy dirt returns to Dirt. All six animals can be spawned and face
-  their movement direction. Herbivores seek only food in their listed diets
-  without crossing steps taller than one block, while Foxes hunt other animals
-  and prey randomly fight or flee. Animals starve at zero, die of old age,
-  produce smaller babies, and grow those babies into adults without displaying
-  overhead bars.
+  their movement direction. Herbivores seek their species-specific growths plus
+  shared grassy dirt, Leaves, and Moss without crossing steps taller than one
+  block, while Foxes hunt only their listed prey species and prey randomly
+  fight or flee. Animals starve at zero, die of old age, produce smaller babies,
+  and grow those babies into adults without displaying overhead bars.
 - Removing the last connection beneath or beside a structure makes the detached group settle.
 - Gravity pause and resume work as specified.
 - Verdant Touch affects only exposed Dirt inside its small drag brush. Wildfire,
