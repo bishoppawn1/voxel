@@ -1,4 +1,4 @@
-import type { BlockMaterial, VoxelBlock } from './world';
+import { isInWorld, type BlockMaterial, type VoxelBlock } from './world';
 
 export const ECOSYSTEM_TICK_MS = 900;
 export const ANIMAL_BREEDING_MIN_HUNGER = 70;
@@ -10,6 +10,7 @@ export const SHORT_GRASS_MATURATION_TICKS = 18;
 const SOIL_TO_GRASS_CHANCE = 0.012;
 const VEGETATION_GROWTH_CHANCE = 0.028;
 const KELP_GROWTH_CHANCE = 0.036;
+const TREE_GROWTH_CHANCE = 0.018;
 const MATE_SEARCH_RADIUS = 20;
 const BREEDING_COOLDOWN_TICKS = 16;
 const BREEDING_HUNGER_COST = 30;
@@ -17,12 +18,33 @@ const HUNGER_PER_MEAL = 34;
 const MAX_ANIMALS = 500;
 export const ANIMAL_FEED_THRESHOLD = MAX_ANIMAL_HUNGER - HUNGER_PER_MEAL;
 const ANIMAL_FIRE_DAMAGE = 1;
+const HUMAN_HUNT_THRESHOLD = 55;
+const HUMAN_TOOL_CRAFT_ORDER = ['axe', 'hammer', 'spear'] as const;
 
 const DIRECTIONS = [
   { x: 1, z: 0 },
   { x: -1, z: 0 },
   { x: 0, z: 1 },
   { x: 0, z: -1 },
+] as const;
+
+const HUMAN_HOUSE_BLUEPRINT = [
+  { x: -1, y: 0, z: -1 },
+  { x: -1, y: 0, z: 0 },
+  { x: -1, y: 0, z: 1 },
+  { x: 0, y: 0, z: -1 },
+  { x: 1, y: 0, z: -1 },
+  { x: 1, y: 0, z: 0 },
+  { x: 1, y: 0, z: 1 },
+  { x: -1, y: 1, z: -1 },
+  { x: -1, y: 1, z: 1 },
+  { x: 1, y: 1, z: -1 },
+  { x: 1, y: 1, z: 1 },
+  { x: 0, y: 2, z: 0 },
+  { x: -1, y: 2, z: 0 },
+  { x: 1, y: 2, z: 0 },
+  { x: 0, y: 2, z: -1 },
+  { x: 0, y: 2, z: 1 },
 ] as const;
 
 export type VegetationKind = 'grass' | 'flower' | 'tall-grass' | 'sapling' | 'kelp';
@@ -50,7 +72,13 @@ export const HERBIVORE_KEYS = [
 const LAND_PREDATOR_KEYS = ['fox', 'wolf', 'bear', 'eagle', 'crocodile'] as const;
 export const AQUATIC_KEYS = ['small-fish', 'big-fish'] as const;
 export const PREDATOR_KEYS = [...LAND_PREDATOR_KEYS, 'big-fish'] as const;
-export const ANIMAL_KEYS = [...HERBIVORE_KEYS, ...LAND_PREDATOR_KEYS, ...AQUATIC_KEYS] as const;
+export const HUMAN_KEYS = ['human'] as const;
+export const ANIMAL_KEYS = [
+  ...HERBIVORE_KEYS,
+  ...LAND_PREDATOR_KEYS,
+  ...AQUATIC_KEYS,
+  ...HUMAN_KEYS,
+] as const;
 export type AnimalKind = (typeof ANIMAL_KEYS)[number];
 
 const HERBIVORE_MATERIALS = ['grass', 'leaves', 'moss'] as const satisfies
@@ -70,6 +98,7 @@ export const ANIMALS: Record<AnimalKind, {
   attackDamage: number;
   hungerLossEveryTicks?: number;
   eatEveryTicks?: number;
+  canBreed?: boolean;
 }> = {
   sheep: {
     label: 'Sheep',
@@ -307,7 +336,26 @@ export const ANIMALS: Record<AnimalKind, {
     maxHealth: 8,
     attackDamage: 3,
   },
+  human: {
+    label: 'Human',
+    emoji: '🧑',
+    dietLabel: 'animals hunted with a crafted spear',
+    vegetation: [],
+    materials: [],
+    prey: [...HERBIVORE_KEYS, ...LAND_PREDATOR_KEYS],
+    predator: false,
+    moveEveryTicks: 1,
+    lifespan: 720,
+    maxHealth: 10,
+    attackDamage: 2,
+    canBreed: false,
+  },
 };
+
+export const HUMAN_TOOL_KEYS = ['axe', 'hammer', 'spear'] as const;
+export type HumanTool = (typeof HUMAN_TOOL_KEYS)[number];
+export type HumanHeldItem = 'wood' | 'planks';
+export type HumanCraft = HumanTool | 'planks';
 
 export type Animal = {
   id: string;
@@ -323,6 +371,10 @@ export type Animal = {
   facingX: number;
   facingZ: number;
   burning?: number;
+  heldItem?: HumanHeldItem;
+  tools?: HumanTool[];
+  workbenchId?: string;
+  crafting?: HumanCraft;
 };
 
 export type EcosystemState = {
@@ -394,7 +446,7 @@ export function convertCoveredGrassToSoil(blocks: VoxelBlock[]) {
 }
 
 function createAnimal(kind: AnimalKind, idNumber: number, position: Position): Animal {
-  return {
+  const animal: Animal = {
     id: `${kind}-${idNumber}`,
     kind,
     ...position,
@@ -407,6 +459,8 @@ function createAnimal(kind: AnimalKind, idNumber: number, position: Position): A
     facingX: 1,
     facingZ: 0,
   };
+  if (kind === 'human') animal.tools = [];
+  return animal;
 }
 
 export function createInitialEcosystem(blocks: VoxelBlock[]): EcosystemState {
@@ -672,6 +726,7 @@ function animalCanEatOnTick(animal: Animal, tick: number) {
 
 function isReadyToBreed(animal: Animal) {
   return (
+    ANIMALS[animal.kind].canBreed !== false &&
     !animal.isBaby &&
     animal.hunger >= ANIMAL_BREEDING_MIN_HUNGER &&
     animal.breedingCooldown === 0
@@ -692,6 +747,128 @@ function hasBreedingPartner(
   );
 }
 
+export function growSaplingsIntoTrees(
+  blocks: VoxelBlock[],
+  vegetation: Vegetation[],
+  tick: number,
+  random: RandomSource,
+) {
+  const surfaces = createSurfaceIndex(blocks);
+  const blocksById = new Map(blocks.map((block) => [block.id, block]));
+  const occupied = new Set(blocks.map((block) => `${block.x},${block.y},${block.z}`));
+  const blockIds = new Set(blocks.map(({ id }) => id));
+  const matured = new Set<string>();
+  const treeBlocks: VoxelBlock[] = [];
+
+  for (const growth of vegetation) {
+    if (growth.kind !== 'sapling') continue;
+    const ground = blocksById.get(growth.blockId);
+    if (
+      !ground ||
+      ground.material !== 'grass' ||
+      ground.burning ||
+      surfaces.get(columnKey(ground.x, ground.z))?.id !== ground.id ||
+      random(`tree:${tick}:${growth.id}`) >= TREE_GROWTH_CHANCE
+    ) {
+      continue;
+    }
+
+    const parts: Array<Pick<VoxelBlock, 'x' | 'y' | 'z' | 'material'>> = [
+      { x: ground.x, y: ground.y + 1, z: ground.z, material: 'wood' },
+      { x: ground.x, y: ground.y + 2, z: ground.z, material: 'wood' },
+      { x: ground.x, y: ground.y + 3, z: ground.z, material: 'leaves' },
+      ...DIRECTIONS.map(({ x, z }) => ({
+        x: ground.x + x,
+        y: ground.y + 2,
+        z: ground.z + z,
+        material: 'leaves' as const,
+      })),
+    ];
+    const ids = parts.map((_, index) => `tree-${growth.id}-${index}`);
+    if (
+      parts.some((part) => !isInWorld(part) || occupied.has(`${part.x},${part.y},${part.z}`)) ||
+      ids.some((id) => blockIds.has(id))
+    ) {
+      continue;
+    }
+
+    parts.forEach((part, index) => {
+      const block = { id: ids[index], ...part } satisfies VoxelBlock;
+      treeBlocks.push(block);
+      occupied.add(`${part.x},${part.y},${part.z}`);
+      blockIds.add(block.id);
+    });
+    matured.add(growth.id);
+  }
+
+  return {
+    blocks: treeBlocks.length ? [...blocks, ...treeBlocks] : blocks,
+    vegetation: matured.size
+      ? vegetation.filter((growth) => !matured.has(growth.id))
+      : vegetation,
+  };
+}
+
+function nextHumanCraft(tools: readonly HumanTool[]): HumanCraft {
+  return HUMAN_TOOL_CRAFT_ORDER.find((tool) => !tools.includes(tool)) ?? 'planks';
+}
+
+function findWorkbenchCell(
+  human: Animal,
+  surfaces: Map<string, VoxelBlock>,
+  occupiedAnimals: ReadonlySet<string>,
+  occupiedBlocks: ReadonlySet<string>,
+) {
+  const currentSurface = surfaces.get(columnKey(human.x, human.z));
+  if (!currentSurface) return undefined;
+  for (const direction of DIRECTIONS) {
+    const x = human.x + direction.x;
+    const z = human.z + direction.z;
+    const ground = surfaces.get(columnKey(x, z));
+    if (
+      !ground ||
+      ground.burning ||
+      ground.material === 'water' ||
+      ground.material === 'lava' ||
+      Math.abs(ground.y - currentSurface.y) > 1 ||
+      occupiedAnimals.has(columnKey(x, z))
+    ) {
+      continue;
+    }
+    const cell = { x, y: ground.y + 1, z };
+    if (isInWorld(cell) && !occupiedBlocks.has(`${cell.x},${cell.y},${cell.z}`)) {
+      return cell;
+    }
+  }
+  return undefined;
+}
+
+function findHouseTarget(
+  human: Animal,
+  workbench: VoxelBlock,
+  occupiedBlocks: ReadonlySet<string>,
+) {
+  for (let index = 0; index < HUMAN_HOUSE_BLUEPRINT.length; index += 1) {
+    const offset = HUMAN_HOUSE_BLUEPRINT[index];
+    const cell = {
+      x: workbench.x + offset.x,
+      y: workbench.y + offset.y,
+      z: workbench.z + offset.z,
+    };
+    if (
+      isInWorld(cell) &&
+      !occupiedBlocks.has(`${cell.x},${cell.y},${cell.z}`)
+    ) {
+      return {
+        ...cell,
+        id: `human-${human.id}-house-${index}`,
+        material: 'planks' as const,
+      };
+    }
+  }
+  return undefined;
+}
+
 export function advanceEcosystem(
   blocks: VoxelBlock[],
   state: EcosystemState,
@@ -699,14 +876,20 @@ export function advanceEcosystem(
 ) {
   const tick = state.tick + 1;
   let nextEntityId = state.nextEntityId;
-  const surfaces = createSurfaceIndex(blocks);
+  const treeGrowth = growSaplingsIntoTrees(blocks, state.vegetation, tick, random);
+  const workingBlocks = treeGrowth.blocks;
+  const surfaces = createSurfaceIndex(workingBlocks);
   const surfaceIds = new Set([...surfaces.values()].map(({ id }) => id));
-  const blocksById = new Map(blocks.map((block) => [block.id, block]));
+  const blocksById = new Map(workingBlocks.map((block) => [block.id, block]));
   const materialChanges = new Map<string, BlockMaterial>();
   const consumedBlockIds = new Set<string>();
   const convertedToGrass = new Set<string>();
+  const createdBlocks: VoxelBlock[] = [];
+  const occupiedBlockCells = new Set(
+    workingBlocks.map((block) => `${block.x},${block.y},${block.z}`),
+  );
 
-  let vegetation = state.vegetation
+  let vegetation = treeGrowth.vegetation
     .filter((growth) => {
       const block = blocksById.get(growth.blockId);
       return Boolean(
@@ -854,6 +1037,7 @@ export function advanceEcosystem(
         materialChanges.set(surface.id, 'soil');
       } else {
         consumedBlockIds.add(surface.id);
+        occupiedBlockCells.delete(`${surface.x},${surface.y},${surface.z}`);
       }
       animal.eaten += 1;
       animal.hunger = Math.min(MAX_ANIMAL_HUNGER, animal.hunger + HUNGER_PER_MEAL);
@@ -958,6 +1142,175 @@ export function advanceEcosystem(
       eaten: predator.eaten + 1,
       hunger: Math.min(MAX_ANIMAL_HUNGER, predator.hunger + HUNGER_PER_MEAL),
     });
+  }
+
+  const humans = [...animalsById.values()]
+    .filter((animal) => animal.kind === 'human' && !rushing.has(animal.id))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  for (const originalHuman of humans) {
+    let human = animalsById.get(originalHuman.id);
+    if (!human) continue;
+    actedThisTick.add(human.id);
+    occupied.delete(columnKey(human.x, human.z));
+    const saveHuman = (nextHuman: Animal) => {
+      human = nextHuman;
+      animalsById.set(nextHuman.id, nextHuman);
+      occupied.add(columnKey(nextHuman.x, nextHuman.z));
+    };
+
+    let workbench = human.workbenchId
+      ? blocksById.get(human.workbenchId)
+      : undefined;
+    if (
+      !workbench ||
+      workbench.material !== 'crafting-bench' ||
+      consumedBlockIds.has(workbench.id)
+    ) {
+      const resetHuman = { ...human };
+      delete resetHuman.workbenchId;
+      delete resetHuman.crafting;
+      human = resetHuman;
+      workbench = undefined;
+      animalsById.set(human.id, human);
+    }
+
+    if (human.hunger <= HUMAN_HUNT_THRESHOLD) {
+      const prey = [...animalsById.values()]
+        .filter(
+          (candidate) =>
+            candidate.id !== human!.id &&
+            ANIMALS.human.prey.includes(candidate.kind),
+        )
+        .sort(
+          (a, b) =>
+            distance(human!, a) - distance(human!, b) ||
+            a.id.localeCompare(b.id),
+        )[0];
+      if (prey) {
+        if (distance(human, prey) > 1) {
+          saveHuman(moveToward(human, prey, surfaces, occupied, 1));
+          continue;
+        }
+        const huntingHuman = faceToward(human, prey);
+        const defendingPrey = faceToward(prey, huntingHuman);
+        const damage = (huntingHuman.tools ?? []).includes('spear') ? 4 : 2;
+        const attackedPrey = { ...defendingPrey, health: defendingPrey.health - damage };
+        actedThisTick.add(prey.id);
+        if (attackedPrey.health > 0) {
+          animalsById.set(prey.id, attackedPrey);
+          saveHuman(huntingHuman);
+          continue;
+        }
+        animalsById.delete(prey.id);
+        occupied.delete(columnKey(prey.x, prey.z));
+        saveHuman({
+          ...huntingHuman,
+          eaten: huntingHuman.eaten + 1,
+          hunger: Math.min(MAX_ANIMAL_HUNGER, huntingHuman.hunger + HUNGER_PER_MEAL),
+        });
+        continue;
+      }
+    }
+
+    if (human.crafting && workbench) {
+      if (distance(human, workbench) > 1) {
+        saveHuman(moveToward(human, workbench, surfaces, occupied, 1));
+        continue;
+      }
+      const finishedHuman = { ...human };
+      if (human.crafting === 'planks') finishedHuman.heldItem = 'planks';
+      else finishedHuman.tools = [...new Set([...(human.tools ?? []), human.crafting])];
+      delete finishedHuman.crafting;
+      saveHuman(finishedHuman);
+      continue;
+    }
+
+    if (human.heldItem === 'wood') {
+      if (!workbench) {
+        const cell = findWorkbenchCell(human, surfaces, occupied, occupiedBlockCells);
+        if (!cell) {
+          saveHuman(human);
+          continue;
+        }
+        const block: VoxelBlock = {
+          id: `human-${human.id}-workbench`,
+          ...cell,
+          material: 'crafting-bench',
+        };
+        createdBlocks.push(block);
+        blocksById.set(block.id, block);
+        occupiedBlockCells.add(`${block.x},${block.y},${block.z}`);
+        const builder = { ...human, workbenchId: block.id };
+        delete builder.heldItem;
+        saveHuman(builder);
+        continue;
+      }
+      if (distance(human, workbench) > 1) {
+        saveHuman(moveToward(human, workbench, surfaces, occupied, 1));
+        continue;
+      }
+      const crafter = {
+        ...human,
+        crafting: nextHumanCraft(human.tools ?? []),
+      };
+      delete crafter.heldItem;
+      saveHuman(crafter);
+      continue;
+    }
+
+    if (
+      human.heldItem === 'planks' &&
+      workbench &&
+      (human.tools ?? []).includes('hammer')
+    ) {
+      const target = findHouseTarget(human, workbench, occupiedBlockCells);
+      if (!target) {
+        saveHuman(human);
+        continue;
+      }
+      if (distance(human, target) > 1) {
+        saveHuman(moveToward(human, target, surfaces, occupied, 1));
+        continue;
+      }
+      createdBlocks.push(target);
+      blocksById.set(target.id, target);
+      occupiedBlockCells.add(`${target.x},${target.y},${target.z}`);
+      const builder = { ...human };
+      delete builder.heldItem;
+      saveHuman(builder);
+      continue;
+    }
+
+    if (human.heldItem) {
+      saveHuman(human);
+      continue;
+    }
+
+    const wood = workingBlocks
+      .filter(
+        (block) => block.material === 'wood' && !consumedBlockIds.has(block.id),
+      )
+      .sort(
+        (a, b) =>
+          distance(human!, a) - distance(human!, b) ||
+          a.y - b.y ||
+          a.id.localeCompare(b.id),
+      )[0];
+    if (!wood) {
+      saveHuman(human);
+      continue;
+    }
+    if (distance(human, wood) > 1) {
+      saveHuman(moveToward(human, wood, surfaces, occupied, 1));
+      continue;
+    }
+    if (!(human.tools ?? []).includes('axe') && tick % 3 !== 0) {
+      saveHuman(human);
+      continue;
+    }
+    consumedBlockIds.add(wood.id);
+    occupiedBlockCells.delete(`${wood.x},${wood.y},${wood.z}`);
+    saveHuman({ ...human, heldItem: 'wood' });
   }
 
   const paired = new Set<string>();
@@ -1081,14 +1434,17 @@ export function advanceEcosystem(
 
   animals = [...animalsById.values()].sort((a, b) => a.id.localeCompare(b.id));
   const survivingBlocks = consumedBlockIds.size
-    ? blocks.filter((block) => !consumedBlockIds.has(block.id))
-    : blocks;
-  const nextBlocks = materialChanges.size
+    ? workingBlocks.filter((block) => !consumedBlockIds.has(block.id))
+    : workingBlocks;
+  const changedBlocks = materialChanges.size
     ? survivingBlocks.map((block) => {
         const material = materialChanges.get(block.id);
         return material ? { ...block, material } : block;
       })
     : survivingBlocks;
+  const nextBlocks = createdBlocks.length
+    ? [...changedBlocks, ...createdBlocks]
+    : changedBlocks;
 
   return {
     blocks: nextBlocks,
@@ -1141,6 +1497,24 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
     if (!item || typeof item !== 'object') return false;
     const animal = item as Partial<Animal>;
     const definition = ANIMALS[animal.kind as AnimalKind];
+    const tools = animal.tools;
+    const humanStateValid = animal.kind === 'human'
+      ? (
+          (animal.heldItem === undefined || ['wood', 'planks'].includes(animal.heldItem)) &&
+          (tools === undefined || (
+            Array.isArray(tools) &&
+            tools.length <= HUMAN_TOOL_KEYS.length &&
+            new Set(tools).size === tools.length &&
+            tools.every((tool) => HUMAN_TOOL_KEYS.includes(tool))
+          )) &&
+          (animal.workbenchId === undefined || typeof animal.workbenchId === 'string') &&
+          (animal.crafting === undefined || [...HUMAN_TOOL_KEYS, 'planks'].includes(animal.crafting)) &&
+          !(animal.heldItem && animal.crafting)
+        )
+      : animal.heldItem === undefined &&
+        animal.tools === undefined &&
+        animal.workbenchId === undefined &&
+        animal.crafting === undefined;
     if (
       typeof animal.id !== 'string' ||
       !definition ||
@@ -1165,6 +1539,7 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
       Math.abs(animal.facingX ?? 0) + Math.abs(animal.facingZ ?? 0) !== 1 ||
       (animal.burning !== undefined &&
         (!Number.isInteger(animal.burning) || animal.burning < 1)) ||
+      !humanStateValid ||
       entityIds.has(animal.id)
     ) {
       return false;
@@ -1192,6 +1567,7 @@ export function migrateEcosystem(value: unknown): EcosystemState | undefined {
         : definition?.maxHealth ?? 1,
       facingX: Number.isInteger(animal.facingX) ? animal.facingX : 1,
       facingZ: Number.isInteger(animal.facingZ) ? animal.facingZ : 0,
+      ...(animal.kind === 'human' && animal.tools === undefined ? { tools: [] } : {}),
     };
   });
   const migrated = { ...state, animals };

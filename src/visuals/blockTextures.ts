@@ -355,6 +355,31 @@ function paintMaterial(
       }
       scatter(context, random, ['#87542f', '#dc9e5a'], 20, 1);
       return;
+    case 'crafting-bench':
+      fill(context, '#8c562e');
+      if (face === 'top') {
+        context.fillStyle = '#d39a58';
+        context.fillRect(1, 1, 14, 14);
+        context.strokeStyle = '#5a341f';
+        context.lineWidth = 1;
+        context.strokeRect(1.5, 1.5, 13, 13);
+        context.fillStyle = '#6b4025';
+        for (let line = 4; line < 14; line += 4) {
+          context.fillRect(line, 2, 1, 12);
+          context.fillRect(2, line, 12, 1);
+        }
+      } else {
+        context.fillStyle = '#c18448';
+        context.fillRect(2, 2, 12, 4);
+        context.fillStyle = '#4e2b1b';
+        context.fillRect(2, 6, 3, 10);
+        context.fillRect(11, 6, 3, 10);
+        for (let step = 0; step < 7; step += 1) {
+          context.fillRect(5 + step, 7 + step, 1, 1);
+          context.fillRect(10 - step, 7 + step, 1, 1);
+        }
+      }
+      return;
     case 'terracotta':
       fill(context, '#b75f43');
       scatter(context, random, ['#cf7756', '#944731', '#dc8964'], 30, 1);

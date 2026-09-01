@@ -62,6 +62,7 @@ const P = {
   bear: { body: '#65452f', head: '#74513a', legs: '#3e3026', accent: '#b68a61', scale: 1.08 },
   eagle: { body: '#594432', head: '#eee8d7', legs: '#c69231', accent: '#d7aa42', scale: 0.74 },
   crocodile: { body: '#536b3d', head: '#5c7541', legs: '#3e5232', accent: '#9fa268', scale: 0.94 },
+  human: { body: '#4776a8', head: '#c99167', legs: '#38475e', accent: '#6d432c', scale: 0.88 },
 } satisfies Record<string, Palette>;
 
 const show = (palette: Palette, parts: PartData[]): Appearance => ({ scale: palette.scale, parts });
@@ -199,6 +200,16 @@ const APPEARANCES: Record<string, Appearance> = {
     box([0.27, 0.1, -0.42], [0.34, 0.12, 0.16], P.crocodile.legs), box([0.27, 0.1, 0.42], [0.34, 0.12, 0.16], P.crocodile.legs),
     ...[-0.55, -0.15, 0.25, 0.58].map((x) => cone([x, 0.57, 0], 0.07, 0.18, P.crocodile.accent)), ...eyes(0.91, 0.54, 0.2),
   ]),
+  human: show(P.human, [
+    box([0, 0.83, 0], [0.42, 0.68, 0.38], P.human.body),
+    round([0, 1.34, 0], [0.28, 0.3, 0.27], P.human.head),
+    box([0, 0.33, -0.13], [0.17, 0.62, 0.17], P.human.legs),
+    box([0, 0.33, 0.13], [0.17, 0.62, 0.17], P.human.legs),
+    box([0.02, 0.85, -0.31], [0.15, 0.62, 0.15], P.human.head, [0, 0, -0.12]),
+    box([0.02, 0.85, 0.31], [0.15, 0.62, 0.15], P.human.head, [0, 0, 0.12]),
+    box([-0.08, 1.55, 0], [0.38, 0.13, 0.45], P.human.accent),
+    ...eyes(0.22, 1.39, 0.12),
+  ]),
 };
 
 function Part({ part }: { part: PartData }) {
@@ -231,6 +242,24 @@ function AnimalFire() {
       </mesh>
     ))}
   </group>;
+}
+
+function HumanEquipment({ animal }: { animal: Animal }) {
+  if (animal.kind !== 'human') return null;
+  const tool = animal.tools?.at(-1);
+  return <>
+    {animal.heldItem && <Part part={box(
+      [0.28, 0.7, -0.42],
+      [0.3, 0.3, 0.3],
+      animal.heldItem === 'wood' ? '#85512c' : '#c0874b',
+    )} />}
+    {tool && <group>
+      <Part part={box([0.04, 0.72, 0.42], [0.07, 0.72, 0.07], '#6f4628', [0, 0, -0.28])} />
+      {tool === 'spear'
+        ? <Part part={cone([0.14, 1.08, 0.42], 0.09, 0.25, '#b9bdba', [0, 0, -0.28])} />
+        : <Part part={box([0.14, 1.02, 0.42], tool === 'axe' ? [0.28, 0.16, 0.08] : [0.22, 0.19, 0.12], tool === 'axe' ? '#8c9699' : '#6a5440')} />}
+    </group>}
+  </>;
 }
 
 export const AnimalModel = memo(function AnimalModel({
@@ -266,6 +295,7 @@ export const AnimalModel = memo(function AnimalModel({
   const scale = appearance.scale * (animal.isBaby ? 0.62 : 1);
   return <group ref={group} position={initialPosition} scale={scale}>
     {appearance.parts.map((part, index) => <Part key={index} part={part} />)}
+    <HumanEquipment animal={animal} />
     {animal.burning && !inWater && <AnimalFire />}
   </group>;
 }, (previous, next) =>
@@ -277,5 +307,7 @@ export const AnimalModel = memo(function AnimalModel({
   previous.animal.facingX === next.animal.facingX &&
   previous.animal.facingZ === next.animal.facingZ &&
   previous.animal.isBaby === next.animal.isBaby &&
-  previous.animal.burning === next.animal.burning,
+  previous.animal.burning === next.animal.burning &&
+  previous.animal.heldItem === next.animal.heldItem &&
+  previous.animal.tools?.join(',') === next.animal.tools?.join(','),
 );

@@ -14,6 +14,7 @@ import {
   animalMovesOnTick,
   convertCoveredGrassToSoil,
   createInitialEcosystem,
+  growSaplingsIntoTrees,
   isValidEcosystem,
   migrateEcosystem,
   spawnAnimal,
@@ -151,17 +152,34 @@ describe('vegetation growth', () => {
       { id: 'growth-0', blockId: 'water', kind: 'kelp' },
     ]);
   });
+
+  it('occasionally matures a sapling into a connected wood-and-leaf tree', () => {
+    const ground = block('grass', 0, 0, 'grass');
+    const result = growSaplingsIntoTrees(
+      [ground],
+      [{ id: 'sapling-0', blockId: ground.id, kind: 'sapling' }],
+      1,
+      () => 0,
+    );
+
+    expect(result.vegetation).toEqual([]);
+    expect(result.blocks.filter(({ material }) => material === 'wood')).toHaveLength(2);
+    expect(result.blocks.filter(({ material }) => material === 'leaves')).toHaveLength(5);
+    expect(new Set(result.blocks.map(({ x, y, z }) => `${x},${y},${z}`)).size)
+      .toBe(result.blocks.length);
+  });
 });
 
 describe('animal spawning and diets', () => {
-  it('offers the beaver plus two tiers of fish', () => {
+  it('offers the beaver, two tiers of fish, and a human', () => {
     expect(ANIMAL_KEYS).toEqual([
       'sheep', 'cow', 'pig', 'rabbit', 'goat',
       'deer', 'horse', 'chicken', 'duck', 'turtle', 'beaver',
       'fox', 'wolf', 'bear', 'eagle', 'crocodile',
       'small-fish', 'big-fish',
+      'human',
     ]);
-    expect(ANIMAL_KEYS).toHaveLength(18);
+    expect(ANIMAL_KEYS).toHaveLength(19);
     expect(ANIMALS.beaver).toMatchObject({
       vegetation: ['sapling'],
       materials: ['wood'],
@@ -184,6 +202,7 @@ describe('animal spawning and diets', () => {
     for (const kind of PREDATOR_KEYS) expect(ANIMALS[kind].predator).toBe(true);
     expect(ANIMALS['small-fish'].vegetation).toEqual(['kelp']);
     expect(ANIMALS['big-fish'].prey).toEqual(['small-fish']);
+    expect(ANIMALS.human).toMatchObject({ canBreed: false, predator: false });
   });
 
   it('gives species distinct speeds while keeping predators faster on average', () => {
@@ -410,6 +429,142 @@ describe('animal spawning and diets', () => {
   });
 });
 
+describe('human crafting and building', () => {
+  it('spawns a human with an empty one-item hand and no tools', () => {
+    const world = [block('ground', 0, 0, 'stone')];
+    const result = spawnAnimal(world, emptyEcosystem(), 'human', 0, 0);
+
+    expect(result.animals).toEqual([
+      animal('human', 'human-0', 0, 0, { tools: [] }),
+    ]);
+  });
+
+  it('chops one adjacent log into its single hand slot', () => {
+    const world = [
+      block('ground', 0, 0, 'stone'),
+      block('tree-ground', 1, 0, 'stone'),
+      block('log', 1, 0, 'wood', 1),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('human', 'human-0', 0, 0, { tools: ['axe'] })],
+      nextEntityId: 1,
+    };
+    const result = advanceEcosystem(world, ecosystem, () => 1);
+
+    expect(result.blocks.some(({ id }) => id === 'log')).toBe(false);
+    expect(result.ecosystem.animals[0]).toMatchObject({ heldItem: 'wood' });
+  });
+
+  it('uses its first log to build a basic crafting bench', () => {
+    const world = [
+      block('ground', 0, 0, 'stone'),
+      block('bench-ground', 1, 0, 'stone'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('human', 'human-0', 0, 0, {
+        heldItem: 'wood',
+        tools: [],
+      })],
+      nextEntityId: 1,
+    };
+    const result = advanceEcosystem(world, ecosystem, () => 1);
+    const human = result.ecosystem.animals[0];
+
+    expect(result.blocks).toContainEqual({
+      id: 'human-human-0-workbench',
+      x: 1,
+      y: 1,
+      z: 0,
+      material: 'crafting-bench',
+    });
+    expect(human).toMatchObject({ workbenchId: 'human-human-0-workbench' });
+    expect(human.heldItem).toBeUndefined();
+  });
+
+  it('puts one log into the bench, waits, and takes one plank out', () => {
+    const bench = block('bench', 1, 0, 'crafting-bench', 1);
+    const world = [block('ground', 0, 0, 'stone'), block('bench-ground', 1, 0, 'stone'), bench];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('human', 'human-0', 0, 0, {
+        heldItem: 'wood',
+        tools: ['axe', 'hammer', 'spear'],
+        workbenchId: bench.id,
+      })],
+      nextEntityId: 1,
+    };
+
+    const inserted = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+    expect(inserted.animals[0]).toMatchObject({ crafting: 'planks' });
+    expect(inserted.animals[0].heldItem).toBeUndefined();
+
+    const finished = advanceEcosystem(world, inserted, () => 1).ecosystem;
+    expect(finished.animals[0]).toMatchObject({ heldItem: 'planks' });
+    expect(finished.animals[0].crafting).toBeUndefined();
+  });
+
+  it('crafts the axe, hammer, and spear before producing house planks', () => {
+    const bench = block('bench', 1, 0, 'crafting-bench', 1);
+    const world = [block('ground', 0, 0, 'stone'), block('bench-ground', 1, 0, 'stone'), bench];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('human', 'human-0', 0, 0, {
+        heldItem: 'wood',
+        tools: [],
+        workbenchId: bench.id,
+      })],
+      nextEntityId: 1,
+    };
+
+    const inserted = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+    expect(inserted.animals[0]).toMatchObject({ crafting: 'axe', tools: [] });
+    const finished = advanceEcosystem(world, inserted, () => 1).ecosystem;
+    expect(finished.animals[0].tools).toEqual(['axe']);
+  });
+
+  it('places one carried plank into the next part of a small house', () => {
+    const bench = block('bench', 1, 0, 'crafting-bench', 1);
+    const world = [block('ground', 0, 0, 'stone'), block('bench-ground', 1, 0, 'stone'), bench];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('human', 'human-0', 0, 0, {
+        heldItem: 'planks',
+        tools: ['axe', 'hammer', 'spear'],
+        workbenchId: bench.id,
+      })],
+      nextEntityId: 1,
+    };
+    const result = advanceEcosystem(world, ecosystem, () => 1);
+
+    expect(result.blocks).toContainEqual({
+      id: 'human-human-0-house-0',
+      x: 0,
+      y: 1,
+      z: -1,
+      material: 'planks',
+    });
+    expect(result.ecosystem.animals[0].heldItem).toBeUndefined();
+  });
+
+  it('hunts a neighboring animal and uses a spear for a clean kill', () => {
+    const world = [block('human-ground', 0, 0, 'stone'), block('prey-ground', 1, 0, 'stone')];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('human', 'human-0', 0, 0, { hunger: 30, tools: ['spear'] }),
+        animal('rabbit', 'rabbit-1', 1, 0),
+      ],
+      nextEntityId: 2,
+    };
+    const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+
+    expect(result.animals).toHaveLength(1);
+    expect(result.animals[0]).toMatchObject({ kind: 'human', eaten: 1, hunger: 63 });
+  });
+});
+
 describe('animal life cycle', () => {
   it('starts the starter world with sheep, kelp, and both sizes of fish', () => {
     const ecosystem = createInitialEcosystem(createStarterWorld());
@@ -590,7 +745,9 @@ describe('animal life cycle', () => {
       .toMatchObject({ x: 0, z: 0 });
   });
 
-  it.each(ANIMAL_KEYS)('lets a well-fed pair of %s create a baby', (kind) => {
+  it.each(ANIMAL_KEYS.filter((kind) => kind !== 'human'))(
+    'lets a well-fed pair of %s create a baby',
+    (kind) => {
     const habitat: BlockMaterial = kind === 'small-fish' || kind === 'big-fish'
       ? 'water'
       : 'stone';
@@ -622,6 +779,25 @@ describe('animal life cycle', () => {
         .filter(({ isBaby }) => !isBaby)
         .every(({ hunger }) => hunger <= ANIMAL_BREEDING_MIN_HUNGER),
     ).toBe(true);
+    },
+  );
+
+  it('keeps humans out of animal breeding until inherited behavior is designed', () => {
+    const world = [
+      block('left', 0, 0, 'stone'),
+      block('middle', 1, 0, 'stone'),
+      block('right', 2, 0, 'stone'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('human', 'human-0', 0, 0, { tools: [] }),
+        animal('human', 'human-1', 1, 0, { tools: [] }),
+      ],
+      nextEntityId: 2,
+    };
+
+    expect(advanceEcosystem(world, ecosystem, () => 1).ecosystem.animals).toHaveLength(2);
   });
 
   it('does not breed a same-species pair without enough hunger', () => {
@@ -968,6 +1144,27 @@ describe('ecosystem persistence validation', () => {
       animals: ANIMAL_KEYS.map((kind, index) => animal(kind, `${kind}-${index}`, index, 0)),
       nextEntityId: ANIMAL_KEYS.length,
     })).toBe(true);
+  });
+
+  it('validates the human one-item hand, equipment, and in-bench crafting state', () => {
+    const human = animal('human', 'human-0', 0, 0, {
+      heldItem: 'wood',
+      tools: ['axe', 'hammer'],
+      workbenchId: 'bench-0',
+    });
+    expect(isValidEcosystem({ ...emptyEcosystem(), animals: [human] })).toBe(true);
+    expect(isValidEcosystem({
+      ...emptyEcosystem(),
+      animals: [{ ...human, heldItem: 'stone' }],
+    })).toBe(false);
+    expect(isValidEcosystem({
+      ...emptyEcosystem(),
+      animals: [{ ...human, crafting: 'planks' }],
+    })).toBe(false);
+    expect(isValidEcosystem({
+      ...emptyEcosystem(),
+      animals: [{ ...animal('sheep', 'sheep-0'), tools: ['axe'] }],
+    })).toBe(false);
   });
 
   it('upgrades saved animals from before age, health, and facing were added', () => {

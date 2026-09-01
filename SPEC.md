@@ -22,7 +22,7 @@ sand, water, and low hills. The world—not marketing copy—is the main screen.
 The player can:
 
 1. Choose Place, Erase, or Animals.
-2. Select one of 40 block materials from a compact block palette.
+2. Select one of 41 block materials from a compact block palette.
 3. Left-click the plane or an exposed block face to place a block. Hold Shift
    while left-dragging to pour blocks at a calm, controlled rate.
 4. Left-click a block with Erase selected to remove it.
@@ -36,13 +36,13 @@ The player can:
    Verdant Touch grassifies exposed Dirt, Wildfire ignites flammable blocks,
    Rain extinguishes fires, Deep Freeze turns Water into Ice and Lava into
    Obsidian, and Thaw melts Ice and Snow into Water.
-10. Select one of 18 land or aquatic animals from the animal palette,
+10. Select one of 19 land or aquatic creatures from the animal palette,
     then left-click the top of an unoccupied block column to spawn it.
 
 The palette contains Grass, Dirt, Stone, Sand, Wood, Leaves, Brick, Clay, Snow,
 Ice, Water, Lava, Obsidian, Coal, Iron, Gold, Copper, Glass, Moss, Mud, Gravel,
 Marble, Basalt, Crystal, Cobblestone, Limestone, Granite, Slate, Sandstone,
-Planks, Terracotta, Concrete, Steel, Glowstone, Diamond Ore, Emerald Ore,
+Planks, Basic Crafting Bench, Terracotta, Concrete, Steel, Glowstone, Diamond Ore, Emerald Ore,
 Quartz, Bamboo, Peat, and Coral. A Delete block sits in the same palette and
 switches directly to Erase. Selecting any palette block
 displays a plain-language confirmation such as “Grass selected” or “Delete
@@ -121,14 +121,17 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 - If another block occupies the cell directly above grassy dirt, its covered
   grass layer disappears immediately and the supporting block becomes Dirt.
 - Exposed grassy dirt without an existing growth has a small chance to sprout
-  short grass, a flower, tall grass, or—rarely—a tree sapling. These growths are lightweight surface
+  short grass, a flower, tall grass, or—rarely—a tree sapling. A sapling has a
+  small deterministic chance to mature into a two-block Wood trunk with a
+  connected Leaves canopy. These growths are lightweight surface
   attachments keyed to stable block IDs; they do not occupy world cells and
   move with their supporting block. Short grass matures into tall grass after
   a short, deterministic growth period.
 - A starter or newly reset world contains two adult sheep on grassy terrain,
   naturally seeded kelp, two small fish, and one big fish in its pond.
   The player can spawn Sheep, Cows, Pigs, Rabbits, Goats, Deer, Horses,
-  Chickens, Ducks, Turtles, Beavers, Foxes, Wolves, Bears, Eagles, and Crocodiles on any
+  Chickens, Ducks, Turtles, Beavers, Foxes, Wolves, Bears, Eagles, Crocodiles,
+  and Humans on any
   unoccupied, non-burning surface, and Small Fish or Big Fish on Water. Only one
   animal may occupy a surface column at spawn time.
 - Each herbivore follows a shortest reachable path toward food in its diet.
@@ -156,15 +159,29 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   every four ticks and it can eat only once every eight ticks. An animal dies
   and is removed from the world when its hunger reaches zero. Animals also die
   of old age after a species-specific long lifespan of
-  300 to 600 ecosystem ticks. The same individual hunger and aging rules apply
+  300 to 600 ecosystem ticks; Humans live for 720 ticks. The same individual hunger and aging rules apply
   to future animal species.
-- Two nearby adults of any animal species become breeding partners when both
+- Two nearby adults of any non-human animal species become breeding partners when both
   have at least 70 hunger and their breeding cooldowns are ready. They approach
   one another, including predators choosing a mate before prey. When adjacent
   and a neighboring surface is open, each parent spends 30 hunger to create a
   visibly smaller baby of their species. Babies eat but do not breed; after
   three meals, a baby visibly grows into an adult and begins a short breeding
   cooldown.
+- Humans use a fixed, deterministic work routine in this release and do not
+  breed. A hungry Human seeks and attacks a nearby land animal; a crafted Spear
+  increases its hunting damage. At other times it seeks Wood, chops one exposed
+  Wood block at a time, and carries that one log in a single hand slot. Its
+  first log becomes a Basic Crafting Bench on a neighboring safe surface.
+- A Human places one carried log into its own bench and leaves its hand empty
+  while the bench works. The next tick it takes the result. Its first three
+  recipes produce an Axe, Hammer, and Spear in that order; the Axe makes logging
+  faster, the Hammer enables construction work, and the Spear improves hunting.
+  Later logs become one Planks block each. Tools are worn equipment rather than
+  extra hand inventory, so the Human still carries no more than one resource.
+- Once equipped, a Human carries each Planks result to the next cell in a small
+  square-house blueprint around its bench. It places only one Planks block per
+  trip. Destroying the bench cancels anything left inside it.
 - Foxes, Wolves, Bears, Eagles, and Crocodiles are predators. Each has a listed
   prey category with multiple species and never treats plants or another
   predator as food. A predator seeks the nearest listed prey and has higher
@@ -183,7 +200,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   indexes and skips unchanged block, vegetation, and animal models so larger
   populations do not trigger repeated whole-world scans or redraws.
 - Vegetation, animal species, positions, facing, hunger, age, health, fire, meal
-  counts, and breeding cooldowns persist with the local world. Reset restores a
+  counts, breeding cooldowns, and Human hands, tools, benches, and unfinished
+  recipes persist with the local world. Reset restores a
   fresh ecosystem; Clear removes it.
 
 ## God powers
@@ -219,6 +237,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   recolored quadruped body. Large identifying features stay readable at the
   normal camera distance: horns and antlers, ears and muzzles, manes and tails,
   wings and beaks, shells and flippers, and the Crocodile's long body and snout.
+  Humans have an upright silhouette and visibly show a carried log or plank and
+  their most recently crafted tool.
 - The first-use message should leave after the first world edit.
 - Motion should honor the operating system's reduced-motion preference.
 
@@ -243,19 +263,24 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   material tolerance.
 - Dirt can become grassy dirt, grassy dirt can sprout non-block vegetation, and
   covered grassy dirt returns to Dirt. Short grass matures into tall grass, and
-  rare tree saplings can grow on exposed grass. All eighteen animals can be spawned and face
+  rare tree saplings can grow on exposed grass and mature into trees. All
+  nineteen creatures can be spawned and face
   their movement direction. Herbivores seek their species-specific growths plus
   shared grassy dirt, Leaves, and Moss without crossing steps taller than one
   block, while beavers slowly eat only saplings or Wood, predators hunt only
   their listed prey species, and prey randomly
   fight or flee. Species use distinct, staggered movement cadences, with
   predators faster on average but fast herbivores able to keep pace. Animals
-  starve at zero and die of old age. Every species can produce smaller babies
-  from a well-fed same-species adult pair and grow those babies into adults
+  starve at zero and die of old age. Every non-human animal species can produce
+  smaller babies from a well-fed same-species adult pair and grow those babies into adults
   without displaying overhead bars. Burning animals rush into
   reachable water and extinguish; land animals swim across water. Kelp regrows
   on Water, Small Fish eat kelp, and Big Fish hunt Small Fish without leaving
   connected water.
+- Humans never reproduce in this release. They carry one resource, hunt land
+  animals, chop Wood, build and use a Basic Crafting Bench, craft an Axe,
+  Hammer, and Spear, turn later logs into Planks, and place those planks into a
+  small house one trip at a time.
 - Removing the last connection beneath or beside a structure makes the detached group settle.
 - Gravity pause and resume work as specified.
 - Verdant Touch, Wildfire, Rain, Deep Freeze, and Thaw affect only eligible
@@ -269,5 +294,7 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 
 The architecture should leave room for more god powers, additional creatures, biomes,
 weather, erosion, richer terrain generation, larger worlds, time controls, and
-shareable world files. These ideas must not be added until their behavior and
+shareable world files. Inherited Human behavior, mutation, fitness selection,
+and Human reproduction are specifically not part of this release and require a
+separate approved design. These ideas must not be added until their behavior and
 performance budgets are specified.

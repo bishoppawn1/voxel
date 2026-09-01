@@ -462,6 +462,7 @@ describe('world persistence validation', () => {
       'slate',
       'sandstone',
       'planks',
+      'crafting-bench',
       'terracotta',
       'concrete',
       'steel',
@@ -477,7 +478,7 @@ describe('world persistence validation', () => {
       'coral',
     ] as const;
 
-    expect(MATERIAL_KEYS).toHaveLength(40);
+    expect(MATERIAL_KEYS).toHaveLength(41);
     expect(MATERIALS.soil.label).toBe('Dirt');
     expect(MATERIALS.wood.label).toBe('Wood');
     expect(newMaterials.every((material) => MATERIAL_KEYS.includes(material))).toBe(true);
@@ -505,6 +506,12 @@ describe('world persistence validation', () => {
       supportTolerance: 5,
     });
     expect(MATERIALS.planks.burnDuration).toBe(6);
+    expect(MATERIALS['crafting-bench']).toMatchObject({
+      label: 'Basic Crafting Bench',
+      gravityBehavior: 'structural',
+      supportTolerance: 9,
+      burnDuration: 6,
+    });
     expect(MATERIALS.diamond.supportTolerance).toBe(11);
     expect(MATERIALS.bamboo.burnDuration).toBe(5);
     expect(MATERIALS.peat).toMatchObject({
