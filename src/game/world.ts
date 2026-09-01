@@ -386,6 +386,119 @@ function flowBlockId(sourceId: string, target: Cell, usedIds: Set<string>) {
   return id;
 }
 
+function displaceLiquidCell(
+  liquid: VoxelBlock,
+  byId: Map<string, VoxelBlock>,
+  byCell: Map<string, VoxelBlock>,
+  usedIds: Set<string>,
+) {
+  const candidates = liquidDirections(liquid).map((offset) => {
+    const cell = {
+      x: liquid.x + offset.x,
+      y: liquid.y,
+      z: liquid.z + offset.z,
+    };
+    const existing = isInWorld(cell) ? byCell.get(cellKey(cell)) : undefined;
+    const capacity = !isInWorld(cell) || (existing && existing.material !== liquid.material)
+      ? 0
+      : existing
+        ? MAX_LIQUID_LEVEL - getLiquidLevel(existing)
+        : MAX_LIQUID_LEVEL;
+    return { cell, existing, capacity, amount: 0 };
+  });
+  let remaining: number = getLiquidLevel(liquid);
+  if (candidates.reduce((capacity, candidate) => capacity + candidate.capacity, 0) < remaining) {
+    return false;
+  }
+
+  while (remaining > 0) {
+    for (const candidate of candidates) {
+      if (remaining === 0) break;
+      if (candidate.amount >= candidate.capacity) continue;
+      candidate.amount += 1;
+      remaining -= 1;
+    }
+  }
+
+  byId.delete(liquid.id);
+  byCell.delete(cellKey(liquid));
+  usedIds.delete(liquid.id);
+  let inheritedId = false;
+
+  for (const candidate of candidates) {
+    if (candidate.amount === 0) continue;
+    if (candidate.existing) {
+      const filled = {
+        ...candidate.existing,
+        liquidLevel: (getLiquidLevel(candidate.existing) + candidate.amount) as LiquidLevel,
+      };
+      byId.set(filled.id, filled);
+      byCell.set(cellKey(filled), filled);
+      continue;
+    }
+
+    const id = inheritedId
+      ? flowBlockId(liquid.id, candidate.cell, usedIds)
+      : liquid.id;
+    inheritedId = true;
+    const displaced = {
+      ...candidate.cell,
+      id,
+      material: liquid.material,
+      liquidLevel: candidate.amount as LiquidLevel,
+    };
+    usedIds.add(id);
+    byId.set(id, displaced);
+    byCell.set(cellKey(displaced), displaced);
+  }
+
+  return true;
+}
+
+/**
+ * Lets a freshly placed solid sink through liquid cells by pushing each
+ * displaced quarter-unit evenly into neighboring cells. Nothing moves when
+ * the surrounding cells cannot hold the complete liquid volume.
+ */
+export function settlePlacedBlockOnLiquid(input: VoxelBlock[], blockId: string) {
+  const original = input.find((block) => block.id === blockId);
+  if (!original || MATERIALS[original.material].gravityBehavior === 'fluid') {
+    return { blocks: input, moved: false };
+  }
+
+  const byId = new Map(input.map((block) => [block.id, block]));
+  const byCell = new Map(input.map((block) => [cellKey(block), block]));
+  const usedIds = new Set(byId.keys());
+  let moving = original;
+  let moved = false;
+
+  while (moving.y > 0) {
+    const destination = { x: moving.x, y: moving.y - 1, z: moving.z };
+    const liquid = byCell.get(cellKey(destination));
+    if (!liquid || MATERIALS[liquid.material].gravityBehavior !== 'fluid') break;
+    if (!displaceLiquidCell(liquid, byId, byCell, usedIds)) break;
+
+    byCell.delete(cellKey(moving));
+    moving = { ...moving, ...destination };
+    byId.set(moving.id, moving);
+    byCell.set(cellKey(moving), moving);
+    moved = true;
+  }
+
+  if (!moved) return { blocks: input, moved: false };
+  const originalIds = new Set(input.map((block) => block.id));
+  return {
+    blocks: [
+      ...input.flatMap((block) => {
+        const next = byId.get(block.id);
+        return next ? [next] : [];
+      }),
+      ...[...byId.values()].filter((block) => !originalIds.has(block.id)),
+    ],
+    moved: true,
+  };
+}
+
 /**
  * Advances fluid by one visible step while conserving quarter-block units.
  * Full cells split across all four horizontal directions at once; thinner

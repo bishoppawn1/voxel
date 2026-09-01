@@ -93,6 +93,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 - Liquid flow advances on a slower cadence than structural gravity. Each flow
   step remains visible, preserves an original stable ID when a cell moves or
   splits, and never places more than one liquid block in a cell.
+- Placing a solid block directly on liquid displaces the complete liquid volume
+  evenly into neighboring cells first, then lets the solid fall straight into
+  the vacated cell instead of rolling off the liquid surface.
 - Lava radiates heat up to two horizontal cells away and one level vertically,
   igniting nearby grass, wood, planks, leaves, moss, and coal. Burning blocks
   show visible flames and ignite adjacent flammable blocks. Wood, planks,

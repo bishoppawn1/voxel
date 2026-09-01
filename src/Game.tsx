@@ -51,6 +51,7 @@ import {
   hasBlock,
   isInWorld,
   isValidWorld,
+  settlePlacedBlockOnLiquid,
   worldToCell,
   type BlockMaterial,
   type Cell,
@@ -882,7 +883,8 @@ export default function Game() {
       material,
     };
     const added = [...blocks, placed];
-    commit(added, gravityOn);
+    const displaced = settlePlacedBlockOnLiquid(added, placed.id);
+    commit(displaced.blocks, gravityOn || displaced.moved);
   };
 
   const removeBlock = (id: string) => {

@@ -14,6 +14,7 @@ import {
   isValidWorld,
   settleLiquids,
   settlePlacedBlock,
+  settlePlacedBlockOnLiquid,
   settleWorld,
   worldToCell,
   type VoxelBlock,
@@ -159,6 +160,40 @@ describe('quarter-scale world grid', () => {
 });
 
 describe('fresh block pouring', () => {
+  it('pushes a full liquid block evenly aside so a placed solid falls straight down', () => {
+    const world = [
+      block('water', 0, 0, 0, 'water'),
+      block('placed', 0, 1, 0, 'stone'),
+    ];
+    const result = settlePlacedBlockOnLiquid(world, 'placed');
+    const water = result.blocks.filter(({ material }) => material === 'water');
+
+    expect(result.moved).toBe(true);
+    expect(result.blocks.find(({ id }) => id === 'placed')).toMatchObject({ x: 0, y: 0, z: 0 });
+    expect(water).toHaveLength(4);
+    expect(water.every(({ x, y, z }) => y === 0 && Math.abs(x) + Math.abs(z) === 1))
+      .toBe(true);
+    expect(water.map(getLiquidLevel)).toEqual([1, 1, 1, 1]);
+    expect(water.reduce((volume, liquid) => volume + getLiquidLevel(liquid), 0))
+      .toBe(MAX_LIQUID_LEVEL);
+    expect(water.some(({ id }) => id === 'water')).toBe(true);
+    expect(new Set(result.blocks.map(({ x, y, z }) => `${x},${y},${z}`)).size)
+      .toBe(result.blocks.length);
+  });
+
+  it('conserves partial liquid volume when a solid displaces it', () => {
+    const world = [
+      { ...block('water', 0, 0, 0, 'water'), liquidLevel: 2 as const },
+      block('placed', 0, 1, 0, 'brick'),
+    ];
+    const result = settlePlacedBlockOnLiquid(world, 'placed');
+    const water = result.blocks.filter(({ material }) => material === 'water');
+
+    expect(result.blocks.find(({ id }) => id === 'placed')?.y).toBe(0);
+    expect(water).toHaveLength(2);
+    expect(water.map(getLiquidLevel)).toEqual([1, 1]);
+  });
+
   it('drops a newly placed block while preserving its stable ID', () => {
     const result = settlePlacedBlock([block('seed', 2, 5, -1, 'sand')], 'seed');
     expect(result).toEqual({
