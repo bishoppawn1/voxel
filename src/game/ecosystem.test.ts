@@ -4,6 +4,7 @@ import {
   ANIMAL_KEYS,
   MAX_ANIMAL_HUNGER,
   advanceEcosystem,
+  convertCoveredGrassToSoil,
   createInitialEcosystem,
   isValidEcosystem,
   spawnAnimal,
@@ -48,6 +49,16 @@ const emptyEcosystem = (): EcosystemState => ({
 });
 
 describe('vegetation growth', () => {
+  it('turns covered grassy dirt back into dirt while preserving block identity', () => {
+    const grassyDirt = { ...block('grass', 0, 0, 'grass'), burning: 1 };
+    const cover = block('cover', 0, 0, 'stone', 1);
+
+    expect(convertCoveredGrassToSoil([grassyDirt, cover])).toEqual([
+      block('grass', 0, 0, 'soil'),
+      cover,
+    ]);
+  });
+
   it('turns exposed dirt into grassy dirt without adding a block', () => {
     const dirt = block('dirt', 0, 0, 'soil');
     const result = advanceEcosystem([dirt], emptyEcosystem(), () => 0);
@@ -180,6 +191,67 @@ describe('animal life cycle', () => {
     const result = advanceEcosystem(world, ecosystem, () => 1);
 
     expect(result.ecosystem.animals[0]).toMatchObject({ x: 1, z: 0, eaten: 0 });
+  });
+
+  it('keeps following a reachable food path instead of pacing back to a dead end', () => {
+    const world = [
+      block('start', 0, 0, 'stone'),
+      block('step-1', -1, 0, 'stone'),
+      block('step-2', -1, 1, 'stone'),
+      block('step-3', -1, 2, 'stone'),
+      block('step-4', 0, 2, 'stone'),
+      block('step-5', 1, 2, 'stone'),
+      block('step-6', 2, 2, 'stone'),
+      block('step-7', 2, 1, 'stone'),
+      block('food', 2, 0, 'grass'),
+      block('cliff', 1, 0, 'stone', 2),
+    ];
+    let ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('sheep', 'sheep-0')],
+      nextEntityId: 1,
+    };
+
+    ecosystem = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+    expect(ecosystem.animals[0]).toMatchObject({ x: -1, z: 0 });
+
+    ecosystem = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+    expect(ecosystem.animals[0]).toMatchObject({ x: -1, z: 1 });
+  });
+
+  it('climbs one block level per step and refuses a two-level jump', () => {
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('sheep', 'sheep-0')],
+      nextEntityId: 1,
+    };
+    const climbableWorld = [
+      block('start', 0, 0, 'stone', 0),
+      block('step', 1, 0, 'stone', 1),
+      block('food', 2, 0, 'grass', 2),
+    ];
+    const tooSteepWorld = [
+      block('start', 0, 0, 'stone', 0),
+      block('food', 1, 0, 'grass', 2),
+    ];
+    const descendableWorld = [
+      block('start', 0, 0, 'stone', 2),
+      block('step', 1, 0, 'stone', 1),
+      block('food', 2, 0, 'grass', 0),
+    ];
+    const tooFarDownWorld = [
+      block('start', 0, 0, 'stone', 2),
+      block('food', 1, 0, 'grass', 0),
+    ];
+
+    expect(advanceEcosystem(climbableWorld, ecosystem, () => 1).ecosystem.animals[0])
+      .toMatchObject({ x: 1, z: 0 });
+    expect(advanceEcosystem(tooSteepWorld, ecosystem, () => 1).ecosystem.animals[0])
+      .toMatchObject({ x: 0, z: 0 });
+    expect(advanceEcosystem(descendableWorld, ecosystem, () => 1).ecosystem.animals[0])
+      .toMatchObject({ x: 1, z: 0 });
+    expect(advanceEcosystem(tooFarDownWorld, ecosystem, () => 1).ecosystem.animals[0])
+      .toMatchObject({ x: 0, z: 0 });
   });
 
   it('brings fed adults of the same species together and creates a baby', () => {

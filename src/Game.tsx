@@ -1,4 +1,4 @@
-import { Billboard, Edges, Grid, OrbitControls } from '@react-three/drei';
+import { Edges, Grid, OrbitControls } from '@react-three/drei';
 import { Canvas, type ThreeEvent, useFrame } from '@react-three/fiber';
 import {
   Box,
@@ -26,8 +26,8 @@ import {
   ANIMALS,
   ANIMAL_KEYS,
   ECOSYSTEM_TICK_MS,
-  MAX_ANIMAL_HUNGER,
   advanceEcosystem,
+  convertCoveredGrassToSoil,
   createInitialEcosystem,
   getSurfaceBlock,
   isValidEcosystem,
@@ -76,7 +76,7 @@ function loadWorld() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     const parsed: unknown = saved ? JSON.parse(saved) : null;
-    return isValidWorld(parsed) ? parsed : createStarterWorld();
+    return isValidWorld(parsed) ? convertCoveredGrassToSoil(parsed) : createStarterWorld();
   } catch {
     return createStarterWorld();
   }
@@ -289,17 +289,8 @@ function AnimalModel({ animal, surfaceY }: { animal: Animal; surfaceY: number })
   const bodyLength = rabbit ? 0.82 : 1.08;
   const bodyHeight = rabbit ? 0.5 : 0.62;
   const headX = rabbit ? 0.5 : 0.63;
-  const hungerRatio = Math.max(0, Math.min(1, animal.hunger / MAX_ANIMAL_HUNGER));
-  const hungerColor = hungerRatio > 0.5
-    ? '#72a952'
-    : hungerRatio > 0.25
-      ? '#d2a33e'
-      : '#c85f4c';
-  const hungerWidth = BLOCK_SIZE * 1.12;
-
   return (
-    <group ref={group} position={initialPosition}>
-      <group scale={scale}>
+    <group ref={group} position={initialPosition} scale={scale}>
         <mesh position={[0, BLOCK_SIZE * 0.43, 0]} castShadow>
         <boxGeometry args={[BLOCK_SIZE * bodyLength, BLOCK_SIZE * bodyHeight, BLOCK_SIZE * 0.68]} />
         <meshStandardMaterial color={colors.body} roughness={0.92} />
@@ -364,24 +355,10 @@ function AnimalModel({ animal, surfaceY }: { animal: Animal; surfaceY: number })
           </mesh>
         </>
       )}
-        <mesh position={[BLOCK_SIZE * (headX + 0.21), BLOCK_SIZE * 0.51, BLOCK_SIZE * 0.18]}>
-          <sphereGeometry args={[BLOCK_SIZE * 0.035, 6, 4]} />
-          <meshBasicMaterial color="#171a18" />
-        </mesh>
-      </group>
-      <Billboard position={[0, BLOCK_SIZE * 0.96, 0]}>
-        <mesh>
-          <planeGeometry args={[BLOCK_SIZE * 1.2, BLOCK_SIZE * 0.14]} />
-          <meshBasicMaterial color="#24312b" transparent opacity={0.76} depthWrite={false} />
-        </mesh>
-        <mesh
-          position={[-hungerWidth * (1 - hungerRatio) / 2, 0, 0.001]}
-          scale={[hungerRatio, 1, 1]}
-        >
-          <planeGeometry args={[hungerWidth, BLOCK_SIZE * 0.085]} />
-          <meshBasicMaterial color={hungerColor} toneMapped={false} depthWrite={false} />
-        </mesh>
-      </Billboard>
+      <mesh position={[BLOCK_SIZE * (headX + 0.21), BLOCK_SIZE * 0.51, BLOCK_SIZE * 0.18]}>
+        <sphereGeometry args={[BLOCK_SIZE * 0.035, 6, 4]} />
+        <meshBasicMaterial color="#171a18" />
+      </mesh>
     </group>
   );
 }
@@ -585,7 +562,10 @@ function WorldScene({
 
       {ecosystem.vegetation.map((growth) => {
         const block = blocks.find(({ id }) => id === growth.blockId);
-        return block ? <VegetationSprout key={growth.id} growth={growth} block={block} /> : null;
+        const surface = block && getSurfaceBlock(blocks, block.x, block.z);
+        return block?.material === 'grass' && !block.burning && surface?.id === block.id
+          ? <VegetationSprout key={growth.id} growth={growth} block={block} />
+          : null;
       })}
 
       {ecosystem.animals.map((animal) => {
@@ -821,8 +801,9 @@ export default function Game() {
         setSettling(false);
         return;
       }
-      blocksRef.current = step.blocks;
-      setBlocks(step.blocks);
+      const nextBlocks = convertCoveredGrassToSoil(step.blocks);
+      blocksRef.current = nextBlocks;
+      setBlocks(nextBlocks);
       setSettling(true);
     }, WORLD_TICK_MS);
 
@@ -842,11 +823,12 @@ export default function Game() {
   }, []);
 
   const commit = (next: VoxelBlock[], didMove = false) => {
-    if (next === blocks) return;
+    const nextBlocks = convertCoveredGrassToSoil(next);
+    if (nextBlocks === blocks) return;
     setPast((history) => [...history.slice(-29), blocks]);
     setFuture([]);
-    blocksRef.current = next;
-    setBlocks(next);
+    blocksRef.current = nextBlocks;
+    setBlocks(nextBlocks);
     setWelcomeVisible(false);
     if (didMove) setSettling(true);
   };

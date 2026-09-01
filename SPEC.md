@@ -101,6 +101,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 
 - The Grass material represents grassy dirt. Every exposed Dirt block has a
   small deterministic chance on each ecosystem tick to become grassy dirt.
+- If another block occupies the cell directly above grassy dirt, its covered
+  grass layer disappears immediately and the supporting block becomes Dirt.
 - Exposed grassy dirt without an existing growth has a small chance to sprout
   short grass, a flower, or tall grass. These growths are lightweight surface
   attachments keyed to stable block IDs; they do not occupy world cells and
@@ -109,19 +111,20 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   The player can spawn Sheep, Cows, Pigs, Rabbits, and Goats on any unoccupied,
   non-burning surface. Only one animal may occupy a surface column at spawn
   time.
-- Each species walks one neighboring surface cell at a time and seeks food in
-  its own diet:
+- Each species follows a shortest reachable path toward food in its own diet:
   Sheep eat short grass, tall grass, and grassy dirt; Cows eat tall grass and
   grassy dirt; Pigs eat flowers and grassy dirt; Rabbits eat short grass and
   flowers; and Goats eat tall grass, flowers, and grassy dirt. Animals remove
   what they eat and track their meal count.
 - Animals move only one horizontal cell per ecosystem tick and can step up or
-  down by at most one block level at a time. Eating bare grassy dirt changes it
+  down by at most one block level at a time. When no food is reachable, they
+  wait rather than pacing back and forth. Eating bare grassy dirt changes it
   back to Dirt, allowing the grass cycle to begin again. Animals avoid eating
   burning grass.
-- Every animal has an individual, visible hunger bar. Hunger falls on each
-  ecosystem tick, eating restores it up to its maximum, and an animal dies and
-  is removed from the world when its hunger reaches zero.
+- Every animal has individual hunger, but no overhead health or hunger bar.
+  Hunger falls on each ecosystem tick, eating restores it up to its maximum,
+  and an animal dies and is removed from the world when its hunger reaches
+  zero. The same individual hunger rule applies to future animal species.
 - Once two nearby adults of the same species have each eaten three meals, they
   approach one another. When adjacent and a neighboring surface is open, they
   reset their meal counts and create a visibly smaller baby of their species.
@@ -173,10 +176,10 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 - Liquids seek their lowest reachable level, flammable blocks burn and spread
   fire, and weak vertical columns cannot exceed their material tolerance.
 - Dirt can become grassy dirt, grassy dirt can sprout non-block vegetation, and
-  all five animals can be spawned, seek
+  covered grassy dirt returns to Dirt. All five animals can be spawned, seek
   only food in their listed diets without crossing steps taller than one block,
-  starve at zero, seek same-species partners, and produce smaller babies while
-  displaying individual hunger bars.
+  starve at zero, seek same-species partners, and produce smaller babies without
+  displaying overhead bars.
 - Removing the last connection beneath or beside a structure makes the detached group settle.
 - Gravity pause and resume work as specified.
 - Verdant Touch, Wildfire, Rain, Deep Freeze, and Thaw affect only eligible

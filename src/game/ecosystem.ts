@@ -122,6 +122,24 @@ export function getSurfaceBlock(blocks: VoxelBlock[], x: number, z: number) {
   return surfaceMap(blocks).get(columnKey(x, z));
 }
 
+export function convertCoveredGrassToSoil(blocks: VoxelBlock[]) {
+  const cells = new Set(blocks.map((block) => `${block.x},${block.y},${block.z}`));
+  let changed = false;
+  const converted = blocks.map((block) => {
+    if (
+      block.material === 'grass' &&
+      cells.has(`${block.x},${block.y + 1},${block.z}`)
+    ) {
+      changed = true;
+      const covered = { ...block, material: 'soil' as const };
+      delete covered.burning;
+      return covered;
+    }
+    return block;
+  });
+  return changed ? converted : blocks;
+}
+
 function createAnimal(kind: AnimalKind, idNumber: number, position: Position): Animal {
   return {
     id: `${kind}-${idNumber}`,
@@ -180,6 +198,43 @@ function chooseVegetation(value: number): VegetationKind {
   return 'flower';
 }
 
+function moveTowardGoal(
+  animal: Animal,
+  isGoal: (position: Position) => boolean,
+  surfaces: Map<string, VoxelBlock>,
+  occupied: Set<string>,
+) {
+  if (isGoal(animal)) return animal;
+  const startKey = columnKey(animal.x, animal.z);
+  if (!surfaces.has(startKey)) return animal;
+
+  const visited = new Set([startKey]);
+  const queue: Array<Position & { firstStep?: Position }> = [{ x: animal.x, z: animal.z }];
+  for (let index = 0; index < queue.length; index += 1) {
+    const current = queue[index];
+    const currentSurface = surfaces.get(columnKey(current.x, current.z))!;
+    for (const direction of DIRECTIONS) {
+      const next = { x: current.x + direction.x, z: current.z + direction.z };
+      const key = columnKey(next.x, next.z);
+      const nextSurface = surfaces.get(key);
+      if (
+        visited.has(key) ||
+        occupied.has(key) ||
+        !nextSurface ||
+        Math.abs(nextSurface.y - currentSurface.y) > 1
+      ) {
+        continue;
+      }
+      visited.add(key);
+      const firstStep = current.firstStep ?? next;
+      if (isGoal(next)) return { ...animal, ...firstStep };
+      queue.push({ ...next, firstStep });
+    }
+  }
+
+  return animal;
+}
+
 function moveToward(
   animal: Animal,
   target: Position,
@@ -187,42 +242,28 @@ function moveToward(
   occupied: Set<string>,
   stopDistance = 0,
 ) {
-  if (distance(animal, target) <= stopDistance) return animal;
-  const currentSurface = surfaces.get(columnKey(animal.x, animal.z));
-  if (!currentSurface) return animal;
-
-  const candidates = DIRECTIONS.map((direction, order) => ({
-    x: animal.x + direction.x,
-    z: animal.z + direction.z,
-    order,
-  }))
-    .filter((candidate) => {
-      const surface = surfaces.get(columnKey(candidate.x, candidate.z));
-      return (
-        surface &&
-        Math.abs(surface.y - currentSurface.y) <= 1 &&
-        !occupied.has(columnKey(candidate.x, candidate.z))
-      );
-    })
-    .sort(
-      (a, b) =>
-        distance(a, target) - distance(b, target) ||
-        a.order - b.order,
-    );
-
-  const next = candidates[0];
-  return next ? { ...animal, x: next.x, z: next.z } : animal;
+  return moveTowardGoal(
+    animal,
+    (position) => distance(position, target) <= stopDistance,
+    surfaces,
+    occupied,
+  );
 }
 
-function nearestTarget(animal: Animal, targets: Position[]) {
-  return targets
-    .filter((target) => target.x !== animal.x || target.z !== animal.z)
-    .sort(
-      (a, b) =>
-        distance(animal, a) - distance(animal, b) ||
-        a.x - b.x ||
-        a.z - b.z,
-    )[0];
+function moveTowardNearestFood(
+  animal: Animal,
+  targets: Position[],
+  surfaces: Map<string, VoxelBlock>,
+  occupied: Set<string>,
+) {
+  if (!targets.length) return animal;
+  const targetKeys = new Set(targets.map(({ x, z }) => columnKey(x, z)));
+  return moveTowardGoal(
+    animal,
+    ({ x, z }) => targetKeys.has(columnKey(x, z)),
+    surfaces,
+    occupied,
+  );
 }
 
 function findBabyCell(
@@ -430,14 +471,8 @@ export function advanceEcosystem(
         );
       })
       .map(({ x, z }) => ({ x, z }));
-    const target = nearestTarget(animal, foodTargets);
-    if (!target && tick % 4 !== 0) continue;
-    const wanderTarget = target ?? {
-      x: animal.x + DIRECTIONS[tick % DIRECTIONS.length].x,
-      z: animal.z + DIRECTIONS[tick % DIRECTIONS.length].z,
-    };
     occupied.delete(columnKey(animal.x, animal.z));
-    const moved = moveToward(animal, wanderTarget, surfaces, occupied);
+    const moved = moveTowardNearestFood(animal, foodTargets, surfaces, occupied);
     animalsById.set(animal.id, moved);
     occupied.add(columnKey(moved.x, moved.z));
   }
