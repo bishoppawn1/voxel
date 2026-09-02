@@ -73,7 +73,14 @@ same device the next time the game opens.
 Gravity is material-aware and connectivity-based rather than a full rigid-body simulation.
 
 - A block touching the plane is grounded.
-- Every material has a support tolerance describing how far it can carry a face-connected structure away from direct support. Each upward or sideways connection consumes that tolerance, so grass and dirt columns topple after only a few levels while marble, obsidian, wood, basalt, brick, and stone can carry taller or longer structures.
+- Every structural or cohesive material has a generous support tolerance
+  describing how far it can carry a face-connected structure away from direct
+  support. Each upward or sideways connection consumes that tolerance, but all
+  solid materials are substantially more stable than the initial balance:
+  even Dirt and Peat carry five connections, Grass carries six, common masonry
+  carries long spans, Planks and Basic Crafting Benches carry 24, and Wood
+  carries 32. Materials still differ in strength, but placed building blocks
+  should rarely slide off ordinary walls, roofs, or narrow supports.
 - Rigid and cohesive blocks can transmit support through face connections. Wood can carry a tree canopy, and leaves connect through neighboring wood and leaves within their shorter tolerance.
 - A vertical Wood trunk rooted directly on supported terrain begins with
   Wood's own support tolerance, allowing a grown tree to remain upright.

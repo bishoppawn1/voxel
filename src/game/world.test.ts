@@ -87,6 +87,18 @@ describe('voxel gravity', () => {
     expect(settleWorld(world)).toEqual({ blocks: world, moved: false });
   });
 
+  it('lets planks carry a twenty-block span without sliding off', () => {
+    const world = [
+      block('root', 0, 0, 0, 'planks'),
+      block('column', 0, 1, 0, 'planks'),
+      ...Array.from({ length: 20 }, (_, index) =>
+        block(`span-${index}`, index + 1, 1, 0, 'planks'),
+      ),
+    ];
+
+    expect(settleWorld(world)).toEqual({ blocks: world, moved: false });
+  });
+
   it('lets wood support a connected leaf canopy', () => {
     const world = [
       block('trunk-0', 0, 0, 0, 'wood'),
@@ -121,17 +133,21 @@ describe('voxel gravity', () => {
       block('column', 0, 1, 0, 'soil'),
       block('near-1', 1, 1, 0, 'soil'),
       block('near-2', 2, 1, 0, 'soil'),
-      block('far', 3, 1, 0, 'soil'),
+      block('near-3', 3, 1, 0, 'soil'),
+      block('near-4', 4, 1, 0, 'soil'),
+      block('far', 5, 1, 0, 'soil'),
     ];
     const result = settleWorld(world);
 
     expect(result.blocks.find(({ id }) => id === 'near-1')?.y).toBe(1);
-    expect(result.blocks.find(({ id }) => id === 'near-2')?.y).toBe(0);
+    expect(result.blocks.find(({ id }) => id === 'near-2')?.y).toBe(1);
+    expect(result.blocks.find(({ id }) => id === 'near-3')?.y).toBe(1);
+    expect(result.blocks.find(({ id }) => id === 'near-4')?.y).toBe(1);
     expect(result.blocks.find(({ id }) => id === 'far')?.y).toBe(0);
   });
 
   it('topples the overloaded top of a tall grass column without overlaps', () => {
-    const world = Array.from({ length: 7 }, (_, y) =>
+    const world = Array.from({ length: 10 }, (_, y) =>
       block(`grass-${y}`, 0, y, 0, 'grass'),
     );
     const result = settleWorld(world);
@@ -140,7 +156,7 @@ describe('voxel gravity', () => {
     expect(result.moved).toBe(true);
     expect(occupied.size).toBe(world.length);
     expect(Math.max(...result.blocks.filter(({ x, z }) => x === 0 && z === 0).map(({ y }) => y)))
-      .toBeLessThan(6);
+      .toBeLessThan(9);
   });
 });
 
@@ -225,8 +241,8 @@ describe('fresh block pouring', () => {
 
   it('rolls grass away when a weak column has exhausted its tolerance', () => {
     const world = [
-      ...Array.from({ length: 4 }, (_, y) => block(`grass-${y}`, 0, y, 0, 'grass')),
-      block('seed', 0, 4, 0, 'grass'),
+      ...Array.from({ length: 7 }, (_, y) => block(`grass-${y}`, 0, y, 0, 'grass')),
+      block('seed', 0, 7, 0, 'grass'),
     ];
     const result = settlePlacedBlock(world, 'seed');
     const seed = result.blocks.find(({ id }) => id === 'seed');
@@ -498,27 +514,41 @@ describe('world persistence validation', () => {
   it('gives the new blocks material-specific structural and fire behavior', () => {
     expect(MATERIALS.steel).toMatchObject({
       gravityBehavior: 'structural',
-      supportTolerance: 12,
+      supportTolerance: 30,
       metalness: 0.8,
     });
     expect(MATERIALS.terracotta).toMatchObject({
       gravityBehavior: 'cohesive',
-      supportTolerance: 5,
+      supportTolerance: 11,
     });
     expect(MATERIALS.planks.burnDuration).toBe(6);
     expect(MATERIALS['crafting-bench']).toMatchObject({
       label: 'Basic Crafting Bench',
       gravityBehavior: 'structural',
-      supportTolerance: 9,
+      supportTolerance: 24,
       burnDuration: 6,
     });
-    expect(MATERIALS.diamond.supportTolerance).toBe(11);
+    expect(MATERIALS.diamond.supportTolerance).toBe(26);
     expect(MATERIALS.bamboo.burnDuration).toBe(5);
     expect(MATERIALS.peat).toMatchObject({
       gravityBehavior: 'cohesive',
-      supportTolerance: 2,
+      supportTolerance: 5,
       burnDuration: 8,
     });
+  });
+
+  it('makes every non-loose material substantially more stable', () => {
+    const stableMaterials = MATERIAL_KEYS.filter((material) =>
+      !['loose', 'fluid'].includes(MATERIALS[material].gravityBehavior));
+    const fallingMaterials = MATERIAL_KEYS.filter((material) =>
+      ['loose', 'fluid'].includes(MATERIALS[material].gravityBehavior));
+
+    expect(stableMaterials.every((material) => MATERIALS[material].supportTolerance >= 5))
+      .toBe(true);
+    expect(MATERIALS.planks.supportTolerance).toBe(24);
+    expect(MATERIALS.wood.supportTolerance).toBe(32);
+    expect(fallingMaterials.every((material) => MATERIALS[material].supportTolerance === 0))
+      .toBe(true);
   });
 
   it('validates persisted fire state only on flammable materials', () => {
