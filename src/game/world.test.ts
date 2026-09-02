@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BLOCK_SIZE,
+  LEAF_DECAY_TICKS,
   MAX_LIQUID_LEVEL,
   MATERIALS,
   MATERIAL_KEYS,
@@ -8,6 +9,7 @@ import {
   MAX_WORLD_BLOCKS,
   WORLD_SIZE,
   advanceFire,
+  advanceLeafDecay,
   advanceWorldStep,
   cellToWorld,
   createRandomWorld,
@@ -428,6 +430,43 @@ describe('fire', () => {
   });
 });
 
+describe('leaf decay', () => {
+  it('keeps an entire face-connected canopy healthy while it reaches Wood', () => {
+    const world = [
+      block('wood', 0, 1, 0, 'wood'),
+      block('near-leaf', 1, 1, 0, 'leaves'),
+      { ...block('far-leaf', 2, 1, 0, 'leaves'), leafDecay: 3 },
+    ];
+
+    const result = advanceLeafDecay(world);
+
+    expect(result.blocks).toEqual([
+      world[0],
+      world[1],
+      block('far-leaf', 2, 1, 0, 'leaves'),
+    ]);
+    expect(result.decayed).toBe(0);
+  });
+
+  it('slowly deteriorates an orphaned canopy before removing it', () => {
+    let world = [
+      block('leaf-0', 0, 2, 0, 'leaves'),
+      block('leaf-1', 1, 2, 0, 'leaves'),
+    ];
+
+    for (let tick = 1; tick < LEAF_DECAY_TICKS; tick += 1) {
+      const result = advanceLeafDecay(world);
+      world = result.blocks;
+      expect(world).toHaveLength(2);
+      expect(world.every(({ leafDecay }) => leafDecay === tick)).toBe(true);
+    }
+
+    const decayed = advanceLeafDecay(world);
+    expect(decayed.blocks).toEqual([]);
+    expect(decayed.decayed).toBe(2);
+  });
+});
+
 describe('world persistence validation', () => {
   const seededRandom = (seed: number) => () => {
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
@@ -582,5 +621,16 @@ describe('world persistence validation', () => {
   it('validates persisted fire state only on flammable materials', () => {
     expect(isValidWorld([{ ...block('wood', 0, 0, 0, 'wood'), burning: 2 }])).toBe(true);
     expect(isValidWorld([{ ...block('stone', 0, 0, 0), burning: 1 }])).toBe(false);
+  });
+
+  it('validates only active leaf-decay stages on Leaves', () => {
+    expect(isValidWorld([{ ...block('leaf', 0, 1, 0, 'leaves'), leafDecay: 2 }]))
+      .toBe(true);
+    expect(isValidWorld([{ ...block('wood', 0, 1, 0, 'wood'), leafDecay: 2 }]))
+      .toBe(false);
+    expect(isValidWorld([{
+      ...block('finished-leaf', 0, 1, 0, 'leaves'),
+      leafDecay: LEAF_DECAY_TICKS,
+    }])).toBe(false);
   });
 });

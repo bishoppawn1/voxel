@@ -65,11 +65,13 @@ export type VoxelBlock = {
   z: number;
   material: BlockMaterial;
   burning?: number;
+  leafDecay?: number;
   liquidLevel?: LiquidLevel;
 };
 
 export const MAX_LIQUID_LEVEL = 4;
 export type LiquidLevel = 1 | 2 | 3 | 4;
+export const LEAF_DECAY_TICKS = 6;
 
 export type Cell = Pick<VoxelBlock, 'x' | 'y' | 'z'>;
 
@@ -151,6 +153,54 @@ const HORIZONTAL_DIRECTIONS: Cell[] = [
 ];
 
 export const cellKey = ({ x, y, z }: Cell) => `${x},${y},${z}`;
+
+export function advanceLeafDecay(input: VoxelBlock[]): {
+  blocks: VoxelBlock[];
+  changed: boolean;
+  decayed: number;
+} {
+  const byCell = new Map(input.map((block) => [cellKey(block), block]));
+  const supportedLeaves = new Set<string>();
+  const queue = input.filter(({ material }) => material === 'wood');
+
+  for (let index = 0; index < queue.length; index += 1) {
+    const current = queue[index];
+    for (const offset of NEIGHBORS) {
+      const neighbor = byCell.get(cellKey({
+        x: current.x + offset.x,
+        y: current.y + offset.y,
+        z: current.z + offset.z,
+      }));
+      if (!neighbor || neighbor.material !== 'leaves' || supportedLeaves.has(neighbor.id)) {
+        continue;
+      }
+      supportedLeaves.add(neighbor.id);
+      queue.push(neighbor);
+    }
+  }
+
+  let changed = false;
+  let decayed = 0;
+  const blocks = input.flatMap<VoxelBlock>((block) => {
+    if (block.material !== 'leaves') return [block];
+    if (supportedLeaves.has(block.id)) {
+      if (block.leafDecay === undefined) return [block];
+      const { leafDecay: _leafDecay, ...healthyLeaf } = block;
+      changed = true;
+      return [healthyLeaf];
+    }
+
+    const leafDecay = (block.leafDecay ?? 0) + 1;
+    changed = true;
+    if (leafDecay >= LEAF_DECAY_TICKS) {
+      decayed += 1;
+      return [];
+    }
+    return [{ ...block, leafDecay }];
+  });
+
+  return { blocks: changed ? blocks : input, changed, decayed };
+}
 
 export const cellToWorld = (coordinate: number) => coordinate * BLOCK_SIZE;
 
@@ -988,6 +1038,15 @@ export function isValidWorld(value: unknown): value is VoxelBlock[] {
         !Number.isInteger(block.liquidLevel) ||
         block.liquidLevel < 1 ||
         block.liquidLevel > MAX_LIQUID_LEVEL)
+    ) {
+      return false;
+    }
+    if (
+      block.leafDecay !== undefined &&
+      (material !== 'leaves' ||
+        !Number.isInteger(block.leafDecay) ||
+        block.leafDecay < 1 ||
+        block.leafDecay >= LEAF_DECAY_TICKS)
     ) {
       return false;
     }

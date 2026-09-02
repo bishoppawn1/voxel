@@ -1,5 +1,6 @@
 import {
   MAX_WORLD_BLOCKS,
+  advanceLeafDecay,
   cellKey,
   isInWorld,
   type BlockMaterial,
@@ -38,6 +39,8 @@ const HUMAN_EMERGENCY_HUNGER = 36;
 const HUMAN_MIN_MATE_SEARCH_RADIUS = 24;
 export const HUMAN_WORKBENCH_SEARCH_RADIUS = 10;
 export const HUMAN_STUCK_TASK_TICKS = 8;
+export const HUMAN_STACK_CAPACITY = 8;
+export const PLANKS_PER_LOG = 4;
 export const NIGHT_PREDATOR_HUNT_CHANCE = 0.35;
 const BED_HEAL_EVERY_TICKS = 4;
 
@@ -511,6 +514,7 @@ export type Animal = {
   facingZ: number;
   burning?: number;
   heldItem?: HumanHeldItem;
+  heldItemCount?: number;
   tools?: HumanTool[];
   activeTool?: HumanTool;
   workbenchId?: string;
@@ -1320,6 +1324,19 @@ function nextHumanCraft(tools: readonly HumanTool[]): HumanCraft {
   return HUMAN_TOOL_CRAFT_ORDER.find((tool) => !tools.includes(tool)) ?? 'planks';
 }
 
+function humanHeldItemCount(human: Pick<Animal, 'heldItem' | 'heldItemCount'>) {
+  return human.heldItem ? human.heldItemCount ?? 1 : 0;
+}
+
+function useOneHeldItem(human: Animal) {
+  const count = humanHeldItemCount(human);
+  if (count > 1) return { ...human, heldItemCount: count - 1 };
+  const emptied = { ...human };
+  delete emptied.heldItem;
+  delete emptied.heldItemCount;
+  return emptied;
+}
+
 function findWorkbenchCell(
   human: Animal,
   surfaces: Map<string, VoxelBlock>,
@@ -1876,6 +1893,7 @@ export function advanceEcosystem(
         nextHuman.x !== human!.x ||
         nextHuman.z !== human!.z ||
         nextHuman.heldItem !== human!.heldItem ||
+        nextHuman.heldItemCount !== human!.heldItemCount ||
         nextHuman.crafting !== human!.crafting ||
         nextHuman.craftingReadyTick !== human!.craftingReadyTick ||
         nextHuman.workbenchId !== human!.workbenchId ||
@@ -1887,6 +1905,7 @@ export function advanceEcosystem(
       if (taskStallTicks >= HUMAN_STUCK_TASK_TICKS) {
         savedHuman = { ...savedHuman, taskStallTicks: 0 };
         delete savedHuman.heldItem;
+        delete savedHuman.heldItemCount;
         delete savedHuman.crafting;
         delete savedHuman.craftingReadyTick;
         delete savedHuman.activeTool;
@@ -2050,7 +2069,10 @@ export function advanceEcosystem(
         continue;
       }
       const finishedHuman = { ...human };
-      if (human.crafting === 'planks') finishedHuman.heldItem = 'planks';
+      if (human.crafting === 'planks') {
+        finishedHuman.heldItem = 'planks';
+        finishedHuman.heldItemCount = PLANKS_PER_LOG;
+      }
       else finishedHuman.tools = [...new Set([...(human.tools ?? []), human.crafting])];
       delete finishedHuman.crafting;
       delete finishedHuman.craftingReadyTick;
@@ -2074,8 +2096,7 @@ export function advanceEcosystem(
         blocksById.set(block.id, block);
         blocksByCell.set(`${block.x},${block.y},${block.z}`, block);
         occupiedBlockCells.add(`${block.x},${block.y},${block.z}`);
-        const builder = { ...human, workbenchId: block.id };
-        delete builder.heldItem;
+        const builder = { ...useOneHeldItem(human), workbenchId: block.id };
         saveHuman(builder);
         continue;
       }
@@ -2089,6 +2110,7 @@ export function advanceEcosystem(
         craftingReadyTick: tick + humanCraftingTicks(human),
       };
       delete crafter.heldItem;
+      delete crafter.heldItemCount;
       saveHuman(crafter);
       continue;
     }
@@ -2105,6 +2127,7 @@ export function advanceEcosystem(
       if (!task) {
         const stocked = { ...human };
         delete stocked.heldItem;
+        delete stocked.heldItemCount;
         saveHuman(stocked);
         continue;
       }
@@ -2125,8 +2148,7 @@ export function advanceEcosystem(
       blocksById.set(task.block.id, task.block);
       blocksByCell.set(taskCell, task.block);
       occupiedBlockCells.add(taskCell);
-      const builder = { ...human };
-      delete builder.heldItem;
+      const builder = useOneHeldItem(human);
       saveHuman(builder);
       continue;
     }
@@ -2186,7 +2208,7 @@ export function advanceEcosystem(
     }
     consumedBlockIds.add(wood.id);
     occupiedBlockCells.delete(`${wood.x},${wood.y},${wood.z}`);
-    saveHuman({ ...human, heldItem: 'wood' });
+    saveHuman({ ...human, heldItem: 'wood', heldItemCount: 1 });
   }
 
   const paired = new Set<string>();
@@ -2332,9 +2354,10 @@ export function advanceEcosystem(
     tick,
     random,
   );
+  const leafDecay = advanceLeafDecay(treeGrowth.blocks);
 
   return {
-    blocks: treeGrowth.blocks,
+    blocks: leafDecay.blocks,
     ecosystem: {
       tick,
       vegetation: treeGrowth.vegetation,
@@ -2404,7 +2427,13 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
     );
     const humanStateValid = animal.kind === 'human'
       ? (
-          (animal.heldItem === undefined || ['wood', 'planks'].includes(animal.heldItem)) &&
+          ((animal.heldItem === undefined && animal.heldItemCount === undefined) || (
+            animal.heldItem !== undefined &&
+            ['wood', 'planks'].includes(animal.heldItem) &&
+            Number.isInteger(animal.heldItemCount) &&
+            (animal.heldItemCount ?? 0) >= 1 &&
+            (animal.heldItemCount ?? HUMAN_STACK_CAPACITY + 1) <= HUMAN_STACK_CAPACITY
+          )) &&
           (tools === undefined || (
             Array.isArray(tools) &&
             tools.length <= HUMAN_TOOL_KEYS.length &&
@@ -2433,6 +2462,7 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
           ((animal.generation ?? 0) === 0 || animal.parentIds !== undefined)
         )
       : animal.heldItem === undefined &&
+        animal.heldItemCount === undefined &&
         animal.tools === undefined &&
         animal.activeTool === undefined &&
         animal.workbenchId === undefined &&
@@ -2496,6 +2526,9 @@ export function migrateEcosystem(value: unknown): EcosystemState | undefined {
       facingX: Number.isInteger(animal.facingX) ? animal.facingX : 1,
       facingZ: Number.isInteger(animal.facingZ) ? animal.facingZ : 0,
       ...(isHuman && animal.tools === undefined ? { tools: [] } : {}),
+      ...(isHuman && animal.heldItem !== undefined && animal.heldItemCount === undefined
+        ? { heldItemCount: 1 }
+        : {}),
       ...(isHuman && animal.taskStallTicks === undefined ? { taskStallTicks: 0 } : {}),
       ...(isHuman && animal.traits === undefined
         ? { traits: createFounderHumanTraits(animal.id ?? 'human-legacy') }

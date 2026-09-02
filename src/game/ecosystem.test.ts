@@ -10,10 +10,12 @@ import {
   HUMAN_HOUSE_BLUEPRINT,
   HUMAN_MAX_POPULATION,
   HUMAN_REPRODUCTION_MIN_HUNGER,
+  HUMAN_STACK_CAPACITY,
   HUMAN_STUCK_TASK_TICKS,
   HUMAN_WORKBENCH_SEARCH_RADIUS,
   HERBIVORE_KEYS,
   MAX_ANIMAL_HUNGER,
+  PLANKS_PER_LOG,
   PREDATOR_KEYS,
   SAPLING_MATURATION_TICKS,
   SHORT_GRASS_MATURATION_TICKS,
@@ -76,6 +78,9 @@ const animal = (
     generation: 0,
   } : {}),
   ...overrides,
+  ...(overrides.heldItem
+    ? { heldItemCount: overrides.heldItemCount ?? 1 }
+    : {}),
 });
 
 const emptyEcosystem = (): EcosystemState => ({
@@ -635,7 +640,7 @@ describe('animal spawning and diets', () => {
 });
 
 describe('human crafting and building', () => {
-  it('spawns a human with an empty one-item hand and no tools', () => {
+  it('spawns a human with an empty resource stack and no tools', () => {
     const world = [block('ground', 0, 0, 'stone')];
     const result = spawnAnimal(world, emptyEcosystem(), 'human', 0, 0);
 
@@ -644,11 +649,12 @@ describe('human crafting and building', () => {
     ]);
   });
 
-  it('chops one adjacent log into its single hand slot', () => {
+  it('chops one adjacent log and starts decaying its orphaned canopy', () => {
     const world = [
       block('ground', 0, 0, 'stone'),
       block('tree-ground', 1, 0, 'stone'),
       block('log', 1, 0, 'wood', 1),
+      block('leaf', 1, 0, 'leaves', 2),
     ];
     const ecosystem: EcosystemState = {
       ...emptyEcosystem(),
@@ -660,8 +666,10 @@ describe('human crafting and building', () => {
     expect(result.blocks.some(({ id }) => id === 'log')).toBe(false);
     expect(result.ecosystem.animals[0]).toMatchObject({
       heldItem: 'wood',
+      heldItemCount: 1,
       activeTool: 'axe',
     });
+    expect(result.blocks.find(({ id }) => id === 'leaf')?.leafDecay).toBe(1);
   });
 
   it('switches from its spear back to its axe when logging resumes', () => {
@@ -813,7 +821,7 @@ describe('human crafting and building', () => {
     });
   });
 
-  it('puts one log into the bench, waits, and takes one plank out', () => {
+  it('puts one log into the bench, waits, and takes four planks out', () => {
     const bench = block('bench', 1, 0, 'crafting-bench', 1);
     const world = [block('ground', 0, 0, 'stone'), block('bench-ground', 1, 0, 'stone'), bench];
     const ecosystem: EcosystemState = {
@@ -832,7 +840,10 @@ describe('human crafting and building', () => {
     expect(inserted.animals[0].heldItem).toBeUndefined();
 
     const finished = advanceEcosystem(world, inserted, () => 1).ecosystem;
-    expect(finished.animals[0]).toMatchObject({ heldItem: 'planks' });
+    expect(finished.animals[0]).toMatchObject({
+      heldItem: 'planks',
+      heldItemCount: PLANKS_PER_LOG,
+    });
     expect(finished.animals[0].crafting).toBeUndefined();
   });
 
@@ -856,7 +867,7 @@ describe('human crafting and building', () => {
     expect(finished.animals[0].tools).toEqual(['axe']);
   });
 
-  it('places one carried plank into the next part of a roomy house outside the bench', () => {
+  it('places one plank while keeping the rest of its carried stack', () => {
     const bench = block('bench', 1, 0, 'crafting-bench', 1);
     const world = [
       block('ground', 0, 2, 'stone'),
@@ -867,6 +878,7 @@ describe('human crafting and building', () => {
       ...emptyEcosystem(),
       animals: [animal('human', 'human-0', 0, 2, {
         heldItem: 'planks',
+        heldItemCount: PLANKS_PER_LOG,
         tools: ['axe', 'hammer', 'spear'],
         workbenchId: bench.id,
       })],
@@ -882,7 +894,10 @@ describe('human crafting and building', () => {
       material: 'planks',
     });
     expect(result.ecosystem.animals[0]).toMatchObject({ activeTool: 'hammer' });
-    expect(result.ecosystem.animals[0].heldItem).toBeUndefined();
+    expect(result.ecosystem.animals[0]).toMatchObject({
+      heldItem: 'planks',
+      heldItemCount: PLANKS_PER_LOG - 1,
+    });
   });
 
   it('continues a half-built cabin using planks left by a previous builder', () => {
@@ -2412,7 +2427,7 @@ describe('ecosystem persistence validation', () => {
     })).toBe(true);
   });
 
-  it('validates the human one-item hand, equipment, and in-bench crafting state', () => {
+  it('validates the human same-material stack, equipment, and crafting state', () => {
     const human = animal('human', 'human-0', 0, 0, {
       heldItem: 'wood',
       tools: ['axe', 'hammer'],
@@ -2423,6 +2438,18 @@ describe('ecosystem persistence validation', () => {
     expect(isValidEcosystem({
       ...emptyEcosystem(),
       animals: [{ ...human, heldItem: 'stone' }],
+    })).toBe(false);
+    expect(isValidEcosystem({
+      ...emptyEcosystem(),
+      animals: [{ ...human, heldItemCount: 0 }],
+    })).toBe(false);
+    expect(isValidEcosystem({
+      ...emptyEcosystem(),
+      animals: [{ ...human, heldItemCount: HUMAN_STACK_CAPACITY + 1 }],
+    })).toBe(false);
+    expect(isValidEcosystem({
+      ...emptyEcosystem(),
+      animals: [{ ...human, heldItem: undefined, heldItemCount: 1 }],
     })).toBe(false);
     expect(isValidEcosystem({
       ...emptyEcosystem(),
@@ -2484,6 +2511,24 @@ describe('ecosystem persistence validation', () => {
       crafting: 'axe',
       craftingReadyTick: 12,
       taskStallTicks: 0,
+    });
+  });
+
+  it('upgrades older held items into one-block stacks', () => {
+    const legacyHuman = animal('human', 'human-8', 0, 0, { heldItem: 'wood' });
+    delete legacyHuman.heldItemCount;
+    const legacy: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [legacyHuman],
+      nextEntityId: 9,
+    };
+
+    expect(isValidEcosystem(legacy)).toBe(false);
+    const migrated = migrateEcosystem(legacy);
+    expect(isValidEcosystem(migrated)).toBe(true);
+    expect(migrated?.animals[0]).toMatchObject({
+      heldItem: 'wood',
+      heldItemCount: 1,
     });
   });
 });

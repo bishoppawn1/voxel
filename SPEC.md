@@ -87,6 +87,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   carries 32. Materials still differ in strength, but placed building blocks
   should rarely slide off ordinary walls, roofs, or narrow supports.
 - Rigid and cohesive blocks can transmit support through face connections. Wood can carry a tree canopy, and leaves connect through neighboring wood and leaves within their shorter tolerance.
+- Leaves remain healthy while their face-connected canopy reaches any Wood
+  block. An orphaned canopy left after its Wood is chopped browns and fades
+  through six ecosystem ticks, then its Leaves disappear.
 - A vertical Wood trunk rooted directly on supported terrain begins with
   Wood's own support tolerance, allowing a grown tree to remain upright.
 - Loose and fluid materials—including sand, gravel, snow, mud, water, and lava—do not receive or transmit sideways support. They fall and roll downhill until directly supported by the plane or a block below.
@@ -202,8 +205,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   traits. A hungry Human seeks and attacks a nearby animal, including fish it
   can reach by swimming; a crafted Spear
   increases its hunting damage. At other times it seeks Wood, chops one exposed
-  Wood block at a time, and carries that one log in a single hand slot. If no
-  communal bench is nearby, its first log becomes a Basic Crafting Bench on a
+  Wood block at a time, and carries resources in a single-material stack of up
+  to eight matching blocks. If no communal bench is nearby, its first log
+  becomes a Basic Crafting Bench on a
   neighboring safe surface. A Human tracks whether its current task makes
   meaningful progress. After eight consecutive awake ticks without moving or
   advancing that task, it abandons the blocked commitment and explores toward
@@ -220,9 +224,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   A Human equips only the tool for its current job and switches back to the Axe
   for logging, the Hammer for construction, or the Spear for hunting whenever
   its priority changes. Only the equipped tool provides its work bonus. Later
-  logs become one Planks block each. Owned tools remain worn equipment rather
-  than extra hand inventory, so the Human still carries no more than one resource.
-- Once equipped, a Human carries each Planks result to the next cell in a
+  logs become four Planks each. Owned tools remain worn equipment rather than
+  occupying the single-material resource stack.
+- Once equipped, a Human carries its Planks stack to the next cell in a
   five-by-five cabin blueprint. The cabin has a clear three-by-three interior,
   a two-block-tall front doorway, side and rear window openings, and a complete
   roof. Its doorway faces the communal Basic Crafting Bench, which remains
@@ -251,8 +255,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   and chooses randomly among eligible unrelated partners. Active crafting and
   carrying jobs remain committed work, while emergency hunger always overrides
   the roll: the Human searches the entire reachable world for prey and accepts
-  risks it would normally avoid. A colored sash makes individuals visually
-  distinct.
+  risks it would normally avoid. It spends one block from its carried Planks
+  stack for each cabin or furniture block. A colored sash makes individuals
+  visually distinct.
 - A healthy Human can reproduce after age 12 when it has at least 70 hunger,
   at least 60% health, no cooldown, and a reachable unrelated partner meeting
   the same rules. Parent-child and sibling pairs are rejected. Each parent
@@ -384,9 +389,10 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   on Water, Small Fish eat kelp, and Big Fish hunt Small Fish without leaving
   connected water. Fish keep planning through temporary animal traffic, wait
   before entering an occupied cell, and never plan through solid terrain.
-- Humans carry one resource, hunt animals, chop Wood, share and use a nearby
-  Basic Crafting Bench, craft an Axe, Hammer, and Spear, turn later logs into
-  Planks, randomly choose among available work, hunting, and exploration tasks,
+- Humans carry one material type at a time, hunt animals, chop Wood, share and use a nearby
+  Basic Crafting Bench, craft an Axe, Hammer, and Spear, turn each later log
+  into four Planks, carry up to eight matching resource blocks, randomly choose
+  among available work, hunting, and exploration tasks,
   switch among tools as their job changes, and place planks into a roomy
   five-by-five cabin while keeping the shared bench outside. Finished cabins
   contain a visible bed and pantry; Humans use the bed to heal while sleeping
@@ -395,6 +401,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   on a task for eight awake ticks abandons it and retries reachable work.
   Surviving builders reuse Planks in abandoned cabin blueprint cells, skip
   completed parts, and dismantle incompatible blocks before continuing.
+  Leaves cut off from every Wood block visibly decay over six ecosystem ticks
+  before disappearing.
   Healthy mature
   unrelated pairs can produce children whose six behavior traits average both
   parents with bounded mutation. Parent-child and sibling pairing is blocked,

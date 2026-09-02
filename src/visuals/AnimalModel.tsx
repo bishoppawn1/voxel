@@ -250,13 +250,21 @@ function HumanEquipment({ animal }: { animal: Animal }) {
   const traitHue = animal.traits
     ? Math.round((animal.traits.exploration * 2.2 + animal.traits.aggression) % 300)
     : 170;
+  const visibleHeldBlocks = animal.heldItem
+    ? Math.min(3, animal.heldItemCount ?? 1)
+    : 0;
   return <>
     <Part part={box([0.22, 0.84, 0], [0.035, 0.48, 0.46], `hsl(${traitHue} 54% 55%)`, [0.62, 0, 0])} />
-    {animal.heldItem && <Part part={box(
-      [0.28, 0.7, -0.42],
-      [0.3, 0.3, 0.3],
-      animal.heldItem === 'wood' ? '#85512c' : '#c0874b',
-    )} />}
+    {Array.from({ length: visibleHeldBlocks }, (_, index) => (
+      <Part
+        key={`held-${index}`}
+        part={box(
+          [0.28, 0.7 + index * 0.24, -0.42],
+          [0.3, 0.3, 0.3],
+          animal.heldItem === 'wood' ? '#85512c' : '#c0874b',
+        )}
+      />
+    ))}
     {tool && <group>
       <Part part={box([0.04, 0.72, 0.42], [0.07, 0.72, 0.07], '#6f4628', [0, 0, -0.28])} />
       {tool === 'spear'
@@ -349,6 +357,7 @@ export const AnimalModel = memo(function AnimalModel({
   previous.animal.isBaby === next.animal.isBaby &&
   previous.animal.burning === next.animal.burning &&
   previous.animal.heldItem === next.animal.heldItem &&
+  previous.animal.heldItemCount === next.animal.heldItemCount &&
   previous.animal.activeTool === next.animal.activeTool &&
   previous.animal.tools?.join(',') === next.animal.tools?.join(',') &&
   previous.animal.traits?.aggression === next.animal.traits?.aggression &&

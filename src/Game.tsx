@@ -52,6 +52,7 @@ import {
 import { formatWorldTime, getDayCycle, type DayCycle } from './game/dayNight';
 import {
   BLOCK_SIZE,
+  LEAF_DECAY_TICKS,
   MAX_LIQUID_LEVEL,
   MATERIALS,
   MATERIAL_KEYS,
@@ -319,6 +320,13 @@ const AnimatedBlock = memo(function AnimatedBlock({
   );
   const initialPosition = useRef(target.clone()).current;
   const grassCapHeight = block.material === 'grass' ? BLOCK_SIZE * 0.06 : 0;
+  const leafDecayProgress = block.material === 'leaves'
+    ? (block.leafDecay ?? 0) / LEAF_DECAY_TICKS
+    : 0;
+  const materialOpacity = (colors.opacity ?? 1) * (1 - leafDecayProgress * 0.55);
+  const materialTint = leafDecayProgress
+    ? `hsl(${95 - leafDecayProgress * 63} 45% ${100 - leafDecayProgress * 45}%)`
+    : '#ffffff';
   const textures = useMemo(() => getBlockTextures(block.material), [block.material]);
   const faceTextures = useMemo(
     () => [
@@ -354,17 +362,22 @@ const AnimatedBlock = memo(function AnimatedBlock({
             key={index}
             attach={`material-${index}`}
             map={map}
-            color="#ffffff"
+            color={materialTint}
             roughness={colors.roughness ?? 0.82}
             metalness={colors.metalness ?? 0}
-            transparent={(colors.opacity ?? 1) < 1}
-            opacity={colors.opacity ?? 1}
-            depthWrite={(colors.opacity ?? 1) >= 0.7}
+            transparent={materialOpacity < 1}
+            opacity={materialOpacity}
+            depthWrite={materialOpacity >= 0.7}
             emissive={block.burning ? '#ff541c' : colors.emissive}
             emissiveIntensity={block.burning ? 0.72 : (colors.emissiveIntensity ?? 0)}
           />
         ))}
-        <Edges threshold={22} color={colors.edge} opacity={0.42} transparent />
+        <Edges
+          threshold={22}
+          color={colors.edge}
+          opacity={0.42 * (1 - leafDecayProgress * 0.6)}
+          transparent
+        />
       </mesh>}
       {!furnitureKind && block.material === 'grass' && (
         <mesh position={[0, BLOCK_SIZE / 2 - grassCapHeight / 2, 0]} castShadow>
@@ -1203,12 +1216,12 @@ function HumanInspector({ human, tick, onClose }: { human: Animal; tick: number;
   const activity = animalSleepsAtNight(human, tick)
     ? 'Sleeping — beds restore health and pantries conserve hunger'
     : human.isBaby
-    ? `Growing up — ${Math.max(0, HUMAN_CHILDHOOD_TICKS - human.age)} ticks left`
-    : human.crafting
-      ? `Crafting ${human.crafting}`
-      : human.heldItem
-        ? `Carrying ${human.heldItem}`
-        : 'Choosing the next task';
+      ? `Growing up — ${Math.max(0, HUMAN_CHILDHOOD_TICKS - human.age)} ticks left`
+      : human.crafting
+        ? `Crafting ${human.crafting}`
+        : human.heldItem
+          ? `Carrying ${human.heldItemCount ?? 1} ${human.heldItem}`
+          : 'Choosing the next task';
   const parents = human.parentIds?.map((id) => humanDisplayName({ id })).join(' + ');
 
   return (
