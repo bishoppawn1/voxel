@@ -39,6 +39,8 @@ The player can:
    Obsidian, and Thaw melts Ice and Snow into Water.
 10. Select one of 19 land or aquatic creatures from the animal palette,
     then left-click the top of an unoccupied block column to spawn it.
+11. Watch the persisted world clock move through sunrise, daylight, dusk, and
+    a starry night with matching sky color, fog, shadows, and ambient light.
 
 The palette contains Grass, Dirt, Stone, Sand, Wood, Leaves, Brick, Clay, Snow,
 Ice, Water, Lava, Obsidian, Coal, Iron, Gold, Copper, Glass, Moss, Mud, Gravel,
@@ -170,6 +172,12 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   rather than pacing back and forth. Eating bare grassy dirt changes it back to
   Dirt, allowing the grass cycle to begin again. Animals avoid eating burning
   grass. Every animal visibly turns to face the direction it moves.
+- One full day and night lasts 80 ecosystem ticks and resumes from the saved
+  ecosystem tick. At night ordinary animals sleep in place instead of feeding,
+  moving, or breeding. Each predator has a deterministic 35% chance per night
+  to remain awake as a night stalker. An awake predator can hunt sleeping prey,
+  which cannot counterattack or flee from that surprise attack. Burning
+  animals always stay awake and continue rushing toward water.
 - Every animal has individual hunger, but no overhead health or hunger bar.
   Hunger falls by only one point per ecosystem tick, and animals do not consume
   food until they are missing a complete meal. Eating restores it up to its
@@ -213,8 +221,15 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   a two-block-tall front doorway, side and rear window openings, and a complete
   roof. Its doorway faces the communal Basic Crafting Bench, which remains
   outside with a clear cell between the workshop and house. A Human places only
-  one Planks block per trip. Destroying the bench cancels anything left inside
-  it.
+  one Planks block per trip. Generated cabin roofs do not replace the walkable
+  interior ground in the animal surface map; walls and furniture remain solid.
+  Destroying the bench cancels anything left inside it.
+- After the cabin shell is complete, Humans use later Planks to build a bed and
+  pantry inside. At night a Human approaches its bed, sleeps, and recovers one
+  health every four ticks. A completed pantry doubles the Human's overnight
+  hunger-loss interval. Once the cabin and both furnishings are complete,
+  Humans stop harvesting wood for that finished home and return to other work,
+  hunting, or exploration.
 - Every founder receives bounded individual Aggression, Caution, Exploration,
   Gathering, Craftsmanship, and Efficiency values. Aggression changes how early
   it hunts and its attack strength; Caution changes the health risk it accepts;
@@ -287,7 +302,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 
 ## Interface and visual direction
 
-- Full-screen isometric world with soft sage sky, warm neutral plane, visible grid, subtle fog, and directional shadows.
+- Full-screen isometric world with a soft sage daytime sky, deep blue starry
+  nights, a warm neutral plane, visible grid, time-varying fog, and directional
+  sun or moon shadows. The world status shows Day or Night and the current time.
 - Compact translucent tool surfaces use cream, forest green, lime, soil brown, stone gray, and sand gold.
 - Creation tools and the separate Powers section are grouped on the left side;
   the right side remains open for viewing the world.
@@ -341,8 +358,11 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   fight or flee. Species use distinct, staggered movement cadences, with
   predators faster on average but fast herbivores able to keep pace. Animals
   plan through temporary animal traffic, wait before entering an occupied
-  cell, and never plan through impassable terrain. They starve at zero and die
-  of old age. Every non-human animal species can produce
+  cell, and never plan through impassable terrain. Ordinary animals sleep at
+  night while a deterministic minority of predators remain awake to surprise
+  sleeping prey. The visible clock, sky, stars, fog, and lighting complete the
+  same persisted 80-tick cycle. Animals starve at zero and die of old age.
+  Every non-human animal species can produce
   smaller babies from a well-fed same-species adult pair and grow those babies into adults
   without displaying overhead bars. Burning animals rush into
   reachable water and extinguish; land animals swim across water. Kelp regrows
@@ -353,8 +373,10 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   Basic Crafting Bench, craft an Axe, Hammer, and Spear, turn later logs into
   Planks, randomly choose among available work, hunting, and exploration tasks,
   switch among tools as their job changes, and place planks into a roomy
-  five-by-five cabin while keeping the shared bench outside. Right-clicking a
-  Human without dragging opens its individual stats.
+  five-by-five cabin while keeping the shared bench outside. Finished cabins
+  contain a visible bed and pantry; Humans use the bed to heal while sleeping
+  and the pantry to reduce overnight hunger loss. Right-clicking a Human
+  without dragging opens its individual stats.
   Healthy mature
   unrelated pairs can produce children whose six behavior traits average both
   parents with bounded mutation. Parent-child and sibling pairing is blocked,

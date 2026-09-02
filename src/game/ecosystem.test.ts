@@ -5,6 +5,7 @@ import {
   ANIMAL_FEED_THRESHOLD,
   ANIMAL_KEYS,
   BABY_GROWTH_MEALS,
+  HUMAN_FURNITURE_BLUEPRINT,
   HUMAN_CHILDHOOD_TICKS,
   HUMAN_HOUSE_BLUEPRINT,
   HUMAN_MAX_POPULATION,
@@ -18,6 +19,7 @@ import {
   SHORT_GRASS_MATURATION_TICKS,
   advanceEcosystem,
   animalMovesOnTick,
+  animalSleepsAtNight,
   chooseHumanActivity,
   convertCoveredGrassToSoil,
   createAnimalSurfaceIndex,
@@ -290,6 +292,24 @@ describe('vegetation growth', () => {
 
     expect(surfaces.get('0,0')).toEqual(canopyGround);
     expect(surfaces.has('1,0')).toBe(false);
+  });
+
+  it('keeps cabin interiors walkable below roofs while blocking walls and furniture', () => {
+    const interiorGround = block('interior-ground', 0, 0, 'stone');
+    const wallGround = block('wall-ground', 1, 0, 'stone');
+    const bedGround = block('bed-ground', 2, 0, 'stone');
+    const surfaces = createAnimalSurfaceIndex([
+      interiorGround,
+      block('human-builder-house-99', 0, 0, 'planks', 3),
+      wallGround,
+      block('human-builder-house-0', 1, 0, 'planks', 1),
+      bedGround,
+      block('human-builder-furniture-bed', 2, 0, 'planks', 1),
+    ]);
+
+    expect(surfaces.get('0,0')).toEqual(interiorGround);
+    expect(surfaces.has('1,0')).toBe(false);
+    expect(surfaces.has('2,0')).toBe(false);
   });
 
   it('keeps a hungry rabbit on the ground below a mature tree canopy', () => {
@@ -881,6 +901,116 @@ describe('human crafting and building', () => {
         expect(occupied.has(`${x},2,${z}`)).toBe(true);
       }
     }
+  });
+
+  it('furnishes a completed cabin with a bed and pantry', () => {
+    const bench = block('bench', 0, 0, 'crafting-bench', 1);
+    const shell = HUMAN_HOUSE_BLUEPRINT.map((offset, index) =>
+      block(
+        `human-builder-house-${index}`,
+        bench.x + offset.x,
+        bench.z + offset.z,
+        'planks',
+        bench.y + offset.y,
+      ));
+    const world = [
+      block('bench-ground', 0, 0, 'stone'),
+      block('bed-approach', -1, 3, 'stone'),
+      block('bed-ground', -1, 4, 'stone'),
+      block('pantry-approach', 1, 4, 'stone'),
+      block('pantry-ground', 1, 5, 'stone'),
+      bench,
+      ...shell,
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('human', 'human-0', -1, 3, {
+        heldItem: 'planks',
+        tools: ['axe', 'hammer', 'spear'],
+        workbenchId: bench.id,
+      })],
+      nextEntityId: 1,
+    };
+
+    const withBed = advanceEcosystem(world, ecosystem, () => 1);
+    expect(withBed.blocks).toContainEqual(expect.objectContaining({
+      id: 'human-human-0-furniture-bed',
+      x: -1,
+      y: 1,
+      z: 4,
+    }));
+
+    const pantryBuilder: EcosystemState = {
+      ...withBed.ecosystem,
+      animals: [{
+        ...withBed.ecosystem.animals[0],
+        x: 1,
+        z: 4,
+        heldItem: 'planks',
+      }],
+    };
+    const furnished = advanceEcosystem(withBed.blocks, pantryBuilder, () => 1);
+
+    expect(furnished.blocks).toContainEqual(expect.objectContaining({
+      id: 'human-human-0-furniture-pantry',
+      x: 1,
+      y: 1,
+      z: 5,
+    }));
+    expect(
+      furnished.blocks.filter((item) => item.id.includes('-furniture-')),
+    ).toHaveLength(HUMAN_FURNITURE_BLUEPRINT.length);
+  });
+
+  it('uses a cabin bed to recover health while sleeping at night', () => {
+    const bench = block('bench', 0, 0, 'crafting-bench', 1);
+    const world = [
+      block('bench-ground', 0, 0, 'stone'),
+      block('human-ground', -1, 3, 'stone'),
+      block('bed-ground', -1, 4, 'stone'),
+      bench,
+      block('human-builder-furniture-bed', -1, 4, 'planks', 1),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      tick: 39,
+      animals: [animal('human', 'human-0', -1, 3, {
+        health: ANIMALS.human.maxHealth - 2,
+        workbenchId: bench.id,
+      })],
+      nextEntityId: 1,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem.animals[0];
+
+    expect(result.health).toBe(ANIMALS.human.maxHealth - 1);
+    expect(result).toMatchObject({ x: -1, z: 3 });
+  });
+
+  it('uses a cabin pantry to slow overnight hunger loss', () => {
+    const bench = block('bench', 0, 0, 'crafting-bench', 1);
+    const ground = block('human-ground', 0, 1, 'stone');
+    const human = animal('human', 'human-0', 0, 1, {
+      hunger: MAX_ANIMAL_HUNGER,
+      traits: { ...createFounderHumanTraits('human-0'), efficiency: 0 },
+      workbenchId: bench.id,
+    });
+    const makeState = (): EcosystemState => ({
+      ...emptyEcosystem(),
+      tick: 40,
+      animals: [human],
+      nextEntityId: 1,
+    });
+    const baseWorld = [block('bench-ground', 0, 0, 'stone'), ground, bench];
+    const pantry = block('human-builder-furniture-pantry', 1, 5, 'planks', 1);
+
+    const withoutPantry = advanceEcosystem(baseWorld, makeState(), () => 1)
+      .ecosystem.animals[0];
+    const withPantry = advanceEcosystem([...baseWorld, pantry], makeState(), () => 1)
+      .ecosystem.animals[0];
+
+    expect(withoutPantry.hunger).toBe(MAX_ANIMAL_HUNGER - 1);
+    expect(withPantry.hunger).toBe(MAX_ANIMAL_HUNGER);
   });
 
   it('hunts a neighboring animal and uses a spear for a clean kill', () => {
@@ -1705,6 +1835,52 @@ describe('animal life cycle', () => {
     expect(advanceEcosystem(world, ecosystem, () => 1).ecosystem.animals).toMatchObject([
       { id: 'fed-cow', hunger: MAX_ANIMAL_HUNGER - 1 },
     ]);
+  });
+});
+
+describe('night behavior', () => {
+  it('puts ordinary animals to sleep so they stop eating and moving', () => {
+    const world = [
+      block('sheep-ground', 0, 0, 'stone'),
+      block('food', 1, 0, 'grass'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      tick: 39,
+      animals: [animal('sheep', 'sheep-0', 0, 0, { hunger: 40 })],
+      nextEntityId: 1,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem.animals[0];
+
+    expect(animalSleepsAtNight(result, 40, () => 1)).toBe(true);
+    expect(result).toMatchObject({ x: 0, z: 0, eaten: 0, hunger: 39 });
+  });
+
+  it('lets some predators stay awake and surprise sleeping prey', () => {
+    const world = [
+      block('fox-ground', 0, 0, 'stone'),
+      block('rabbit-ground', 1, 0, 'stone'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      tick: 39,
+      animals: [
+        animal('fox', 'fox-0', 0, 0, { hunger: 40 }),
+        animal('rabbit', 'rabbit-1', 1, 0, { health: 1 }),
+      ],
+      nextEntityId: 2,
+    };
+    const nightStalker = advanceEcosystem(world, ecosystem, (key) =>
+      key.startsWith('night-stalker:') ? 0 : 1).ecosystem;
+    const sleepingPredator = advanceEcosystem(world, ecosystem, (key) =>
+      key.startsWith('night-stalker:') ? 1 : 0).ecosystem;
+
+    expect(nightStalker.animals).toHaveLength(1);
+    expect(nightStalker.animals[0]).toMatchObject({ id: 'fox-0', eaten: 1 });
+    expect(sleepingPredator.animals).toHaveLength(2);
+    expect(sleepingPredator.animals.find(({ id }) => id === 'rabbit-1'))
+      .toMatchObject({ health: 1 });
   });
 });
 

@@ -1,4 +1,4 @@
-import { Edges, Grid, OrbitControls } from '@react-three/drei';
+import { Edges, Grid, OrbitControls, Stars } from '@react-three/drei';
 import { Canvas, type ThreeEvent, useFrame } from '@react-three/fiber';
 import {
   Box,
@@ -8,6 +8,7 @@ import {
   Flame,
   Heart,
   Leaf,
+  Moon,
   PawPrint,
   Pause,
   Play,
@@ -22,7 +23,7 @@ import {
   X,
 } from 'lucide-react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { type Group, MOUSE, Vector3 } from 'three';
+import { Color, type Group, MOUSE, Vector3 } from 'three';
 import {
   ANIMALS,
   ANIMAL_KEYS,
@@ -31,12 +32,14 @@ import {
   HUMAN_TRAITS,
   HUMAN_TRAIT_KEYS,
   advanceEcosystem,
+  animalSleepsAtNight,
   convertCoveredGrassToSoil,
   createAnimalSurfaceIndex,
   createInitialEcosystem,
   createSurfaceIndex,
   isAquaticAnimal,
   humanDisplayName,
+  getHumanFurnitureKind,
   migrateEcosystem,
   spawnAnimal,
   type AnimalKind,
@@ -44,6 +47,7 @@ import {
   type EcosystemState,
   type Vegetation,
 } from './game/ecosystem';
+import { formatWorldTime, getDayCycle, type DayCycle } from './game/dayNight';
 import {
   BLOCK_SIZE,
   MAX_LIQUID_LEVEL,
@@ -239,6 +243,48 @@ function CameraKeyboardControls() {
   return null;
 }
 
+function blendColor(night: string, day: string, daylight: number) {
+  return `#${new Color(night).lerp(new Color(day), daylight).getHexString()}`;
+}
+
+function HumanFurniture({ kind }: { kind: 'bed' | 'pantry' }) {
+  if (kind === 'bed') {
+    return (
+      <group>
+        <mesh position={[0, -BLOCK_SIZE * 0.34, 0]} castShadow receiveShadow>
+          <boxGeometry args={[BLOCK_SIZE * 0.9, BLOCK_SIZE * 0.22, BLOCK_SIZE * 0.68]} />
+          <meshStandardMaterial color="#8a572f" roughness={0.94} />
+        </mesh>
+        <mesh position={[0, -BLOCK_SIZE * 0.18, 0]} castShadow>
+          <boxGeometry args={[BLOCK_SIZE * 0.84, BLOCK_SIZE * 0.18, BLOCK_SIZE * 0.64]} />
+          <meshStandardMaterial color="#d9d1b8" roughness={0.9} />
+        </mesh>
+        <mesh position={[0, -BLOCK_SIZE * 0.08, BLOCK_SIZE * 0.15]} castShadow>
+          <boxGeometry args={[BLOCK_SIZE * 0.78, BLOCK_SIZE * 0.08, BLOCK_SIZE * 0.3]} />
+          <meshStandardMaterial color="#668b72" roughness={0.92} />
+        </mesh>
+      </group>
+    );
+  }
+  return (
+    <group>
+      <mesh position={[0, -BLOCK_SIZE * 0.08, 0]} castShadow receiveShadow>
+        <boxGeometry args={[BLOCK_SIZE * 0.78, BLOCK_SIZE * 0.72, BLOCK_SIZE * 0.7]} />
+        <meshStandardMaterial color="#8a572f" roughness={0.95} />
+        <Edges threshold={18} color="#4e2e1b" opacity={0.5} transparent />
+      </mesh>
+      <mesh position={[0, BLOCK_SIZE * 0.02, BLOCK_SIZE * 0.36]}>
+        <boxGeometry args={[BLOCK_SIZE * 0.64, BLOCK_SIZE * 0.03, BLOCK_SIZE * 0.03]} />
+        <meshStandardMaterial color="#c9a258" roughness={0.55} metalness={0.35} />
+      </mesh>
+      <mesh position={[0, -BLOCK_SIZE * 0.12, BLOCK_SIZE * 0.37]}>
+        <sphereGeometry args={[BLOCK_SIZE * 0.045, 7, 5]} />
+        <meshStandardMaterial color="#d5b56d" roughness={0.5} metalness={0.45} />
+      </mesh>
+    </group>
+  );
+}
+
 const AnimatedBlock = memo(function AnimatedBlock({
   block,
   onHover,
@@ -254,6 +300,7 @@ const AnimatedBlock = memo(function AnimatedBlock({
 }) {
   const group = useRef<Group>(null);
   const colors = MATERIALS[block.material];
+  const furnitureKind = getHumanFurnitureKind(block);
   const blockHeight = colors.gravityBehavior === 'fluid'
     ? BLOCK_SIZE * getLiquidLevel(block) / MAX_LIQUID_LEVEL
     : BLOCK_SIZE;
@@ -296,7 +343,7 @@ const AnimatedBlock = memo(function AnimatedBlock({
       onPointerOut={onLeave}
       onClick={(event) => onSelect(event, block)}
     >
-      <mesh position={[0, -grassCapHeight / 2, 0]} castShadow receiveShadow>
+      {furnitureKind ? <HumanFurniture kind={furnitureKind} /> : <mesh position={[0, -grassCapHeight / 2, 0]} castShadow receiveShadow>
         <boxGeometry args={[BLOCK_SIZE, blockHeight - grassCapHeight, BLOCK_SIZE]} />
         {faceTextures.map((map, index) => (
           <meshStandardMaterial
@@ -314,8 +361,8 @@ const AnimatedBlock = memo(function AnimatedBlock({
           />
         ))}
         <Edges threshold={22} color={colors.edge} opacity={0.42} transparent />
-      </mesh>
-      {block.material === 'grass' && (
+      </mesh>}
+      {!furnitureKind && block.material === 'grass' && (
         <mesh position={[0, BLOCK_SIZE / 2 - grassCapHeight / 2, 0]} castShadow>
           <boxGeometry args={[BLOCK_SIZE, grassCapHeight, BLOCK_SIZE]} />
           <meshStandardMaterial map={textures.top} color="#ffffff" roughness={0.94} />
@@ -415,6 +462,7 @@ function WorldScene({
   tool,
   animalKind,
   activeAbility,
+  dayCycle,
   onAdd,
   onRemove,
   onSpawnAnimal,
@@ -426,6 +474,7 @@ function WorldScene({
   tool: Tool;
   animalKind: AnimalKind;
   activeAbility: AbilityKey;
+  dayCycle: DayCycle;
   onAdd: (cell: Cell) => void;
   onRemove: (id: string) => void;
   onSpawnAnimal: (x: number, z: number) => void;
@@ -440,6 +489,9 @@ function WorldScene({
     () => createAnimalSurfaceIndex(blocks),
     [blocks],
   );
+  const skyColor = blendColor('#17243b', '#dfeee5', dayCycle.daylight);
+  const fogColor = blendColor('#26364c', '#dfeee5', dayCycle.daylight);
+  const sunAngle = (dayCycle.hour - 6) / 12 * Math.PI;
   const blocksById = useMemo(
     () => new Map(blocks.map((block) => [block.id, block])),
     [blocks],
@@ -627,13 +679,21 @@ function WorldScene({
 
   return (
     <>
-      <color attach="background" args={['#dfeee5']} />
-      <fog attach="fog" args={['#dfeee5', 19, 38]} />
-      <ambientLight intensity={1.55} />
-      <hemisphereLight args={['#f6fff5', '#789180', 1.2]} />
+      <color attach="background" args={[skyColor]} />
+      <fog attach="fog" args={[fogColor, 16 + dayCycle.daylight * 3, 32 + dayCycle.daylight * 6]} />
+      {dayCycle.daylight < 0.18 && (
+        <Stars radius={42} depth={16} count={750} factor={2} saturation={0.12} fade speed={0.35} />
+      )}
+      <ambientLight intensity={0.42 + dayCycle.daylight * 1.13} />
+      <hemisphereLight args={[skyColor, '#526057', 0.52 + dayCycle.daylight * 0.68]} />
       <directionalLight
-        position={[9, 15, 7]}
-        intensity={2.1}
+        position={[
+          Math.cos(sunAngle) * 12,
+          Math.max(3, Math.sin(sunAngle) * 15),
+          7,
+        ]}
+        color={dayCycle.isNight ? '#9db7e8' : '#fff0c4'}
+        intensity={0.34 + dayCycle.daylight * 1.76}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-14}
@@ -739,6 +799,7 @@ function WorldScene({
                 animal={animal}
                 surfaceY={surface.y}
                 inWater={surface.material === 'water'}
+                sleeping={animalSleepsAtNight(animal, ecosystem.tick)}
                 onInspect={onInspectHuman}
               />
             )
@@ -960,9 +1021,11 @@ function PowerPanel({
   );
 }
 
-function HumanInspector({ human, onClose }: { human: Animal; onClose: () => void }) {
+function HumanInspector({ human, tick, onClose }: { human: Animal; tick: number; onClose: () => void }) {
   if (human.kind !== 'human' || !human.traits) return null;
-  const activity = human.isBaby
+  const activity = animalSleepsAtNight(human, tick)
+    ? 'Sleeping — beds restore health and pantries conserve hunger'
+    : human.isBaby
     ? `Growing up — ${Math.max(0, HUMAN_CHILDHOOD_TICKS - human.age)} ticks left`
     : human.crafting
       ? `Crafting ${human.crafting}`
@@ -1041,6 +1104,7 @@ export default function Game() {
   const inspectedHuman = inspectedHumanId
     ? ecosystem.animals.find((animal) => animal.id === inspectedHumanId && animal.kind === 'human')
     : undefined;
+  const dayCycle = useMemo(() => getDayCycle(ecosystem.tick), [ecosystem.tick]);
 
   useEffect(() => {
     if (inspectedHumanId && !inspectedHuman) setInspectedHumanId(null);
@@ -1234,6 +1298,7 @@ export default function Game() {
             tool={tool}
             animalKind={animalKind}
             activeAbility={activeAbility}
+            dayCycle={dayCycle}
             onAdd={addBlock}
             onRemove={removeBlock}
             onSpawnAnimal={spawnSelectedAnimal}
@@ -1338,6 +1403,9 @@ export default function Game() {
       </section>
 
       <div className="world-status" aria-label="World status">
+        {dayCycle.isNight ? <Moon size={15} /> : <Sun size={15} />}
+        <span>{dayCycle.isNight ? 'Night' : 'Day'} · {formatWorldTime(dayCycle.hour)}</span>
+        <span className="status-rule" />
         {settling ? <ArrowDown size={15} className="falling-icon" /> : <span className={`status-dot ${gravityOn ? '' : 'paused'}`} />}
         <span>{settling ? 'Blocks falling' : gravityOn ? 'Gravity on' : 'Gravity paused'}</span>
         <span className="status-rule" />
@@ -1357,7 +1425,7 @@ export default function Game() {
       </div>
 
       {inspectedHuman && (
-        <HumanInspector human={inspectedHuman} onClose={() => setInspectedHumanId(null)} />
+        <HumanInspector human={inspectedHuman} tick={ecosystem.tick} onClose={() => setInspectedHumanId(null)} />
       )}
 
       <div className="controls-hint">

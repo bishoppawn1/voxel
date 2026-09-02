@@ -6,6 +6,7 @@ import {
   type Cell,
   type VoxelBlock,
 } from './world';
+import { getDayCycle } from './dayNight';
 
 export const ECOSYSTEM_TICK_MS = 900;
 export const ANIMAL_BREEDING_MIN_HUNGER = 70;
@@ -36,6 +37,8 @@ const HUMAN_MUTATION_RANGE = 8;
 const HUMAN_EMERGENCY_HUNGER = 36;
 const HUMAN_MIN_MATE_SEARCH_RADIUS = 24;
 export const HUMAN_WORKBENCH_SEARCH_RADIUS = 10;
+export const NIGHT_PREDATOR_HUNT_CHANCE = 0.35;
+const BED_HEAL_EVERY_TICKS = 4;
 
 const DIRECTIONS = [
   { x: 1, z: 0 },
@@ -86,6 +89,18 @@ export const HUMAN_HOUSE_BLUEPRINT = [
       z: zIndex + HUMAN_HOUSE_FRONT_Z,
     }))).flat(),
 ] as const;
+
+export const HUMAN_FURNITURE_BLUEPRINT = [
+  { kind: 'bed', x: -1, y: 0, z: 4 },
+  { kind: 'pantry', x: 1, y: 0, z: 5 },
+] as const;
+
+export type HumanFurnitureKind = (typeof HUMAN_FURNITURE_BLUEPRINT)[number]['kind'];
+
+export function getHumanFurnitureKind(block: Pick<VoxelBlock, 'id'>) {
+  return HUMAN_FURNITURE_BLUEPRINT.find(({ kind }) =>
+    block.id.includes(`-furniture-${kind}`))?.kind;
+}
 
 export type VegetationKind = 'grass' | 'flower' | 'tall-grass' | 'sapling' | 'kelp';
 
@@ -560,6 +575,18 @@ function deterministicRandom(key: string) {
   return hashString(key) / 4294967296;
 }
 
+export function animalSleepsAtNight(
+  animal: Pick<Animal, 'id' | 'kind' | 'burning'>,
+  tick: number,
+  random: RandomSource = deterministicRandom,
+) {
+  const cycle = getDayCycle(tick);
+  if (!cycle.isNight || animal.burning) return false;
+  if (!ANIMALS[animal.kind].predator) return true;
+  return random(`night-stalker:${cycle.cycleIndex}:${animal.id}`) >=
+    NIGHT_PREDATOR_HUNT_CHANCE;
+}
+
 function clampTrait(value: number) {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
@@ -624,18 +651,25 @@ export function createSurfaceIndex(blocks: VoxelBlock[]) {
   return surfaces;
 }
 
-/** Keeps high generated canopies from becoming animal platforms while treating
- * a trunk directly above the ground as a blocked column. */
+function isGeneratedAnimalStructure(block: Pick<VoxelBlock, 'id'>) {
+  return block.id.startsWith('tree-') ||
+    (block.id.startsWith('human-') &&
+      (block.id.includes('-house-') || block.id.includes('-furniture-')));
+}
+
+/** Keeps generated canopies and cabin roofs from becoming animal platforms
+ * while treating trunks, walls, and furniture directly above the ground as
+ * blocked columns. */
 export function createAnimalSurfaceIndex(blocks: VoxelBlock[]) {
   const surfaces = new Map<string, VoxelBlock>();
-  const generatedTreeYByColumn = new Map<string, number[]>();
+  const generatedStructureYByColumn = new Map<string, number[]>();
 
   for (const block of blocks) {
     const key = columnKey(block.x, block.z);
-    if (block.id.startsWith('tree-')) {
-      const treeLevels = generatedTreeYByColumn.get(key) ?? [];
-      treeLevels.push(block.y);
-      generatedTreeYByColumn.set(key, treeLevels);
+    if (isGeneratedAnimalStructure(block)) {
+      const structureLevels = generatedStructureYByColumn.get(key) ?? [];
+      structureLevels.push(block.y);
+      generatedStructureYByColumn.set(key, structureLevels);
       continue;
     }
     const current = surfaces.get(key);
@@ -643,7 +677,7 @@ export function createAnimalSurfaceIndex(blocks: VoxelBlock[]) {
   }
 
   for (const [key, surface] of surfaces) {
-    if (generatedTreeYByColumn.get(key)?.includes(surface.y + 1)) {
+    if (generatedStructureYByColumn.get(key)?.includes(surface.y + 1)) {
       surfaces.delete(key);
     }
   }
@@ -1293,18 +1327,58 @@ function findHouseTarget(
   return undefined;
 }
 
+function findFurnishingTarget(
+  human: Animal,
+  workbench: VoxelBlock,
+  occupiedBlocks: ReadonlySet<string>,
+) {
+  for (const furnishing of HUMAN_FURNITURE_BLUEPRINT) {
+    const cell = {
+      x: workbench.x + furnishing.x,
+      y: workbench.y + furnishing.y,
+      z: workbench.z + furnishing.z,
+    };
+    if (
+      isInWorld(cell) &&
+      !occupiedBlocks.has(`${cell.x},${cell.y},${cell.z}`)
+    ) {
+      return {
+        ...cell,
+        id: `human-${human.id}-furniture-${furnishing.kind}`,
+        material: 'planks' as const,
+      };
+    }
+  }
+  return undefined;
+}
+
+function homeFurnitureAt(
+  workbench: VoxelBlock,
+  kind: HumanFurnitureKind,
+  blocksByCell: ReadonlyMap<string, VoxelBlock>,
+) {
+  const furnishing = HUMAN_FURNITURE_BLUEPRINT.find((item) => item.kind === kind);
+  if (!furnishing) return undefined;
+  const block = blocksByCell.get(
+    `${workbench.x + furnishing.x},${workbench.y + furnishing.y},${workbench.z + furnishing.z}`,
+  );
+  return block && getHumanFurnitureKind(block) === kind ? block : undefined;
+}
+
 export function advanceEcosystem(
   blocks: VoxelBlock[],
   state: EcosystemState,
   random: RandomSource = deterministicRandom,
 ) {
   const tick = state.tick + 1;
+  const dayCycle = getDayCycle(tick);
   let nextEntityId = state.nextEntityId;
   const workingBlocks = blocks;
   const worldSurfaces = createSurfaceIndex(workingBlocks);
   const surfaces = createAnimalSurfaceIndex(workingBlocks);
   const surfaceIds = new Set([...worldSurfaces.values()].map(({ id }) => id));
   const blocksById = new Map(workingBlocks.map((block) => [block.id, block]));
+  const blocksByCell = new Map(workingBlocks.map((block) => [cellKey(block), block]));
   const materialChanges = new Map<string, BlockMaterial>();
   const consumedBlockIds = new Set<string>();
   const convertedToGrass = new Set<string>();
@@ -1372,12 +1446,27 @@ export function advanceEcosystem(
   }
 
   const availableSurfaces = [...surfaces.values()];
+  const sleeping = new Set(
+    state.animals
+      .filter((animal) => animalSleepsAtNight(animal, tick, random))
+      .map(({ id }) => id),
+  );
   let animals = state.animals.flatMap((animal) => {
     const age = animal.age + 1;
     if (age >= ANIMALS[animal.kind].lifespan) return [];
-    const hungerLossEveryTicks = animal.kind === 'human'
+    let hungerLossEveryTicks = animal.kind === 'human'
       ? humanHungerLossEveryTicks(animal)
       : ANIMALS[animal.kind].hungerLossEveryTicks ?? 1;
+    const workbench = animal.kind === 'human' && animal.workbenchId
+      ? blocksById.get(animal.workbenchId)
+      : undefined;
+    if (
+      sleeping.has(animal.id) &&
+      workbench &&
+      homeFurnitureAt(workbench, 'pantry', blocksByCell)
+    ) {
+      hungerLossEveryTicks *= 2;
+    }
     const hunger = animal.hunger - (tick % hungerLossEveryTicks === 0 ? 1 : 0);
     if (hunger <= 0) return [];
     const surface = surfaces.get(columnKey(animal.x, animal.z));
@@ -1442,6 +1531,7 @@ export function advanceEcosystem(
   for (const animal of animals) {
     if (
       rushing.has(animal.id) ||
+      sleeping.has(animal.id) ||
       !animalNeedsMeal(animal) ||
       !animalCanEatOnTick(animal, tick)
     ) continue;
@@ -1499,6 +1589,7 @@ export function advanceEcosystem(
     .filter(
       (animal) =>
         ANIMALS[animal.kind].predator &&
+        !sleeping.has(animal.id) &&
         animalNeedsMeal(animal) &&
         animalCanEatOnTick(animal, tick),
     )
@@ -1506,7 +1597,7 @@ export function advanceEcosystem(
   for (const originalPredator of predators) {
     let predator = animalsById.get(originalPredator.id);
     if (!predator) continue;
-    if (hasBreedingPartner(predator, animalsById, surfaces)) continue;
+    if (!dayCycle.isNight && hasBreedingPartner(predator, animalsById, surfaces)) continue;
     const preyKinds = ANIMALS[predator.kind].prey;
     const prey = [...animalsById.values()]
       .filter(
@@ -1538,12 +1629,13 @@ export function advanceEcosystem(
     animalsById.set(defendingPrey.id, defendingPrey);
     actedThisTick.add(defendingPrey.id);
 
-    const fightsBack =
+    const caughtSleeping = sleeping.has(defendingPrey.id);
+    const fightsBack = !caughtSleeping &&
       random(`defend:${tick}:${predator.id}:${defendingPrey.id}`) <
       HERBIVORE_FIGHT_BACK_CHANCE;
     if (!fightsBack) {
       occupied.delete(columnKey(defendingPrey.x, defendingPrey.z));
-      const escaped = animalMovesOnTick(defendingPrey, tick)
+      const escaped = !caughtSleeping && animalMovesOnTick(defendingPrey, tick)
         ? fleeFrom(defendingPrey, predator, surfaces, occupied)
         : defendingPrey;
       animalsById.set(escaped.id, escaped);
@@ -1589,6 +1681,7 @@ export function advanceEcosystem(
         (human) =>
           human.kind === 'human' &&
           !actedThisTick.has(human.id) &&
+          !sleeping.has(human.id) &&
           humanIsReadyToReproduce(human),
       )
       .sort((a, b) => a.id.localeCompare(b.id));
@@ -1729,6 +1822,21 @@ export function advanceEcosystem(
 
     human = equipHumanTool(human);
     animalsById.set(human.id, human);
+
+    if (sleeping.has(human.id)) {
+      const bed = workbench
+        ? homeFurnitureAt(workbench, 'bed', blocksByCell)
+        : undefined;
+      if (bed && distance(human, bed) > 1) {
+        saveHuman(moveToward(human, bed, surfaces, occupied, 1));
+        continue;
+      }
+      const recoveredHealth = bed && tick % BED_HEAL_EVERY_TICKS === 0
+        ? Math.min(ANIMALS.human.maxHealth, human.health + 1)
+        : human.health;
+      saveHuman({ ...human, health: recoveredHealth });
+      continue;
+    }
 
     const humanTraits = traitsFor(human);
     const huntHealthFloor = Math.ceil(
@@ -1883,9 +1991,12 @@ export function advanceEcosystem(
     ) {
       human = equipHumanTool(human, 'hammer');
       animalsById.set(human.id, human);
-      const target = findHouseTarget(human, workbench, occupiedBlockCells);
+      const target = findHouseTarget(human, workbench, occupiedBlockCells) ??
+        findFurnishingTarget(human, workbench, occupiedBlockCells);
       if (!target) {
-        saveHuman(human);
+        const stocked = { ...human };
+        delete stocked.heldItem;
+        saveHuman(stocked);
         continue;
       }
       if (distance(human, target) > 1) {
@@ -1907,6 +2018,15 @@ export function advanceEcosystem(
     }
 
     if (activity === 'explore') {
+      saveHuman(exploreWorld(human, tick, surfaces, occupied, random));
+      continue;
+    }
+
+    if (
+      workbench &&
+      !findHouseTarget(human, workbench, occupiedBlockCells) &&
+      !findFurnishingTarget(human, workbench, occupiedBlockCells)
+    ) {
       saveHuman(exploreWorld(human, tick, surfaces, occupied, random));
       continue;
     }
@@ -1955,6 +2075,7 @@ export function advanceEcosystem(
     .filter(
       (animal) =>
         !actedThisTick.has(animal.id) &&
+        !sleeping.has(animal.id) &&
         isReadyToBreed(animal),
     )
     .sort((a, b) => a.id.localeCompare(b.id));
@@ -2060,6 +2181,7 @@ export function advanceEcosystem(
       paired.has(animal.id) ||
       ateThisTick.has(animal.id) ||
       actedThisTick.has(animal.id) ||
+      sleeping.has(animal.id) ||
       !animalMovesOnTick(animal, tick)
     ) {
       continue;

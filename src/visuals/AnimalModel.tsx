@@ -270,11 +270,13 @@ export const AnimalModel = memo(function AnimalModel({
   animal,
   surfaceY,
   inWater,
+  sleeping,
   onInspect,
 }: {
   animal: Animal;
   surfaceY: number;
   inWater: boolean;
+  sleeping: boolean;
   onInspect?: (animal: Animal) => void;
 }) {
   const group = useRef<Group>(null);
@@ -312,13 +314,33 @@ export const AnimalModel = memo(function AnimalModel({
         }
       : undefined}
   >
-    {appearance.parts.map((part, index) => <Part key={index} part={part} />)}
-    <HumanEquipment animal={animal} />
+    <group
+      position={[0, sleeping ? -BLOCK_SIZE * 0.08 : 0, 0]}
+      rotation={[0, 0, sleeping ? -0.16 : 0]}
+      scale={[1, sleeping ? 0.76 : 1, 1]}
+    >
+      {appearance.parts.map((part, index) => <Part key={index} part={part} />)}
+      <HumanEquipment animal={animal} />
+    </group>
+    {sleeping && (
+      <group position={[BLOCK_SIZE * 0.38, BLOCK_SIZE * 0.92, 0]}>
+        {[0, 1, 2].map((index) => (
+          <mesh
+            key={index}
+            position={[BLOCK_SIZE * index * 0.12, BLOCK_SIZE * index * 0.15, 0]}
+          >
+            <sphereGeometry args={[BLOCK_SIZE * (0.045 + index * 0.015), 7, 5]} />
+            <meshBasicMaterial color="#a9c5e8" transparent opacity={0.78} />
+          </mesh>
+        ))}
+      </group>
+    )}
     {animal.burning && !inWater && <AnimalFire />}
   </group>;
 }, (previous, next) =>
   previous.surfaceY === next.surfaceY &&
   previous.inWater === next.inWater &&
+  previous.sleeping === next.sleeping &&
   previous.animal.kind === next.animal.kind &&
   previous.animal.x === next.animal.x &&
   previous.animal.z === next.animal.z &&
