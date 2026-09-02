@@ -258,13 +258,16 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   logging cadence; Craftsmanship changes bench time; and Efficiency changes how
   often hunger falls. On every free tick, a Human makes an intrinsic random,
   trait-weighted choice to hunt, work, or explore. It randomly chooses among a
-  few nearby prey or Wood targets, wanders toward a random reachable destination,
-  and chooses randomly among eligible unrelated partners. Active crafting and
-  carrying jobs remain committed work, while emergency hunger always overrides
-  the roll: the Human searches the entire reachable world for prey and accepts
-  risks it would normally avoid. It spends one block from its carried Planks
-  stack for each cabin or furniture block. A colored sash makes individuals
-  visually distinct.
+  few nearby prey at the start of a hunt, then locks onto that individual until
+  it catches it, the prey disappears, or the path stays blocked for eight awake
+  ticks. This prevents a faster Human from wasting its movement by alternating
+  between slower targets. It also randomly chooses among nearby Wood targets,
+  wanders toward a random reachable destination, and chooses randomly among
+  eligible unrelated partners. Active crafting and carrying jobs remain
+  committed work, while emergency hunger always overrides the roll: the Human
+  searches the entire reachable world for prey and accepts risks it would
+  normally avoid. It spends one block from its carried Planks stack for each
+  cabin or furniture block. A colored sash makes individuals visually distinct.
 - A healthy Human can reproduce after age 12 when it has at least 70 hunger,
   at least 60% health, no cooldown, and a reachable unrelated partner meeting
   the same rules. Parent-child and sibling pairs are rejected. Each parent
@@ -304,10 +307,10 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   populations do not trigger repeated whole-world scans or redraws.
 - Vegetation, animal species, positions, facing, hunger, age, health, fire, meal
   counts, breeding cooldowns, and Human hands, tools, benches, unfinished
-  recipes, traits, generation, parent IDs, and task-stall counters persist with
-  the local world. Older Human saves receive deterministic founder traits and
-  a clear task-stall counter during migration. Reset restores a fresh
-  ecosystem; Clear removes it.
+  recipes, current hunt targets, traits, generation, parent IDs, and task-stall
+  counters persist with the local world. Older Human saves receive deterministic
+  founder traits and a clear task-stall counter during migration. Reset restores
+  a fresh ecosystem; Clear removes it.
 
 ## God powers
 
@@ -413,6 +416,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   and the pantry to reduce overnight hunger loss. Right-clicking a Human
   without dragging opens its individual stats. A Human that makes no progress
   on a task for eight awake ticks abandons it and retries reachable work.
+  A hunter keeps one prey target throughout a chase instead of zig-zagging
+  between nearby animals.
   Surviving builders reuse Planks in abandoned cabin blueprint cells, skip
   completed parts, and dismantle incompatible blocks before continuing.
   Leaves cut off from every Wood block visibly decay over six ecosystem ticks

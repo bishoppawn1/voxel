@@ -521,6 +521,7 @@ export type Animal = {
   crafting?: HumanCraft;
   craftingReadyTick?: number;
   taskStallTicks?: number;
+  huntTargetId?: string;
   traits?: HumanTraits;
   generation?: number;
   parentIds?: [string, string];
@@ -1897,6 +1898,7 @@ export function advanceEcosystem(
         nextHuman.crafting !== human!.crafting ||
         nextHuman.craftingReadyTick !== human!.craftingReadyTick ||
         nextHuman.workbenchId !== human!.workbenchId ||
+        nextHuman.huntTargetId !== human!.huntTargetId ||
         nextHuman.tools?.join(',') !== human!.tools?.join(',');
       const taskStallTicks = madeProgress
         ? 0
@@ -1909,6 +1911,7 @@ export function advanceEcosystem(
         delete savedHuman.crafting;
         delete savedHuman.craftingReadyTick;
         delete savedHuman.activeTool;
+        delete savedHuman.huntTargetId;
         savedHuman = exploreWorld(savedHuman, tick, surfaces, occupied, random);
       }
       human = savedHuman;
@@ -1976,33 +1979,45 @@ export function advanceEcosystem(
       ANIMALS.human.maxHealth * (0.25 + humanTraits.caution * 0.004),
     );
     const emergencyHunt = human.hunger <= HUMAN_EMERGENCY_HUNGER;
+    const acceptsDanger =
+      (human.tools ?? []).includes('spear') &&
+      humanTraits.aggression >= humanTraits.caution;
+    const isPermittedPrey = (candidate: Animal | undefined) => Boolean(
+      candidate &&
+      candidate.id !== human!.id &&
+      ANIMALS.human.prey.includes(candidate.kind) &&
+      (!ANIMALS[candidate.kind].predator || acceptsDanger || emergencyHunt),
+    );
+    let lockedPrey = human.huntTargetId
+      ? animalsById.get(human.huntTargetId)
+      : undefined;
+    if (!isPermittedPrey(lockedPrey)) {
+      const unlockedHuman = { ...human };
+      delete unlockedHuman.huntTargetId;
+      human = unlockedHuman;
+      lockedPrey = undefined;
+      animalsById.set(human.id, human);
+    }
     const hasCommittedTask = Boolean(human.crafting || human.heldItem);
     const activity = emergencyHunt
       ? 'hunt'
       : hasCommittedTask
         ? 'work'
-        : chooseHumanActivity(human, tick, random);
+        : lockedPrey
+          ? 'hunt'
+          : chooseHumanActivity(human, tick, random);
     if (
       activity === 'hunt' &&
       (human.health >= huntHealthFloor || emergencyHunt)
     ) {
       const possiblePrey = [...animalsById.values()]
         .filter(
-          (candidate) => {
-            const dangerous = ANIMALS[candidate.kind].predator;
-            const acceptsDanger =
-              (human!.tools ?? []).includes('spear') &&
-              humanTraits.aggression >= humanTraits.caution;
-            return (
-              candidate.id !== human!.id &&
-              ANIMALS.human.prey.includes(candidate.kind) &&
-              (
-                emergencyHunt ||
-                standingDistance(human!, candidate, surfaces) <= humanSearchRadius(human!)
-              ) &&
-              (!dangerous || acceptsDanger || emergencyHunt)
-            );
-          },
+          (candidate) =>
+            isPermittedPrey(candidate) &&
+            (
+              emergencyHunt ||
+              standingDistance(human!, candidate, surfaces) <= humanSearchRadius(human!)
+            ),
         )
         .sort(
           (a, b) =>
@@ -2010,13 +2025,18 @@ export function advanceEcosystem(
               standingDistance(human!, b, surfaces) ||
             a.id.localeCompare(b.id),
         );
-      const prey = emergencyHunt
-        ? possiblePrey[0]
-        : pickRandom(
-          possiblePrey.slice(0, 3),
-          random(`human-prey:${tick}:${human.id}`),
-        );
+      const prey = lockedPrey ?? (
+        emergencyHunt
+          ? possiblePrey[0]
+          : pickRandom(
+            possiblePrey.slice(0, 3),
+            random(`human-prey:${tick}:${human.id}`),
+          )
+      );
       if (prey) {
+        if (human.huntTargetId !== prey.id) {
+          human = { ...human, huntTargetId: prey.id, taskStallTicks: 0 };
+        }
         human = equipHumanTool(
           human,
           (human.tools ?? []).includes('spear') ? 'spear' : undefined,
@@ -2050,11 +2070,13 @@ export function advanceEcosystem(
         }
         animalsById.delete(prey.id);
         occupied.delete(columnKey(prey.x, prey.z));
-        saveHuman({
+        const fedHuman = {
           ...human,
           eaten: human.eaten + 1,
           hunger: Math.min(MAX_ANIMAL_HUNGER, human.hunger + HUNGER_PER_MEAL),
-        }, true);
+        };
+        delete fedHuman.huntTargetId;
+        saveHuman(fedHuman, true);
         continue;
       }
     }
@@ -2445,6 +2467,7 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
             Boolean(tools?.includes(animal.activeTool))
           )) &&
           (animal.workbenchId === undefined || typeof animal.workbenchId === 'string') &&
+          (animal.huntTargetId === undefined || typeof animal.huntTargetId === 'string') &&
           (animal.crafting === undefined || [...HUMAN_TOOL_KEYS, 'planks'].includes(animal.crafting)) &&
           ((animal.crafting === undefined && animal.craftingReadyTick === undefined) || (
             animal.crafting !== undefined &&
@@ -2466,6 +2489,7 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
         animal.tools === undefined &&
         animal.activeTool === undefined &&
         animal.workbenchId === undefined &&
+        animal.huntTargetId === undefined &&
         animal.crafting === undefined &&
         animal.craftingReadyTick === undefined &&
         animal.taskStallTicks === undefined &&

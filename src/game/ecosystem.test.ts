@@ -1140,6 +1140,7 @@ describe('human crafting and building', () => {
       hunger: 63,
       activeTool: 'spear',
     });
+    expect(result.animals[0].huntTargetId).toBeUndefined();
   });
 
   it('lets prey flee a human hunter instead of counterattacking', () => {
@@ -1322,6 +1323,76 @@ describe('human crafting and building', () => {
     expect(runWithPreyRoll(0)).not.toContain('rabbit-left');
     expect(runWithPreyRoll(0.99)).toContain('rabbit-left');
     expect(runWithPreyRoll(0.99)).not.toContain('rabbit-right');
+  });
+
+  it('locks onto one pig instead of rerolling prey while chasing', () => {
+    const world = Array.from({ length: 9 }, (_, index) =>
+      block(`ground-${index}`, index - 4, 0, 'stone'));
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('human', 'human-0', 0, 0, {
+          hunger: 60,
+          traits: {
+            ...createFounderHumanTraits('human-0'),
+            aggression: 100,
+            caution: 0,
+            exploration: 100,
+          },
+        }),
+        animal('pig', 'pig-a', 4, 0, { hunger: 40 }),
+        animal('pig', 'pig-b', -4, 0, { hunger: 40 }),
+      ],
+      nextEntityId: 3,
+    };
+    const huntRandom = (preyRoll: number) => (key: string) => {
+      if (key.startsWith('human-activity:')) return 0;
+      if (key.startsWith('human-prey:')) return preyRoll;
+      return 1;
+    };
+
+    const first = advanceEcosystem(world, ecosystem, huntRandom(0)).ecosystem;
+    const firstHuman = first.animals.find(({ id }) => id === 'human-0');
+    expect(firstHuman).toMatchObject({ x: 1, z: 0, huntTargetId: 'pig-a' });
+
+    const second = advanceEcosystem(world, first, huntRandom(0.99)).ecosystem;
+    expect(second.animals.find(({ id }) => id === 'human-0')).toMatchObject({
+      x: 2,
+      z: 0,
+      huntTargetId: 'pig-a',
+    });
+  });
+
+  it('chooses a new target when its locked prey disappears', () => {
+    const world = Array.from({ length: 9 }, (_, index) =>
+      block(`ground-${index}`, index - 4, 0, 'stone'));
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('human', 'human-0', 1, 0, {
+          hunger: 60,
+          huntTargetId: 'pig-a',
+          traits: {
+            ...createFounderHumanTraits('human-0'),
+            aggression: 100,
+            caution: 0,
+            exploration: 100,
+          },
+        }),
+        animal('pig', 'pig-b', -4, 0, { hunger: 40 }),
+      ],
+      nextEntityId: 3,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, (key) =>
+      key.startsWith('human-activity:') || key.startsWith('human-prey:') ? 0 : 1)
+      .ecosystem;
+
+    expect(result.animals.find(({ id }) => id === 'human-0')).toMatchObject({
+      x: 0,
+      z: 0,
+      huntTargetId: 'pig-b',
+    });
   });
 
   it('searches beyond its normal exploration range in a hunger emergency', () => {
@@ -2433,6 +2504,7 @@ describe('ecosystem persistence validation', () => {
       tools: ['axe', 'hammer'],
       activeTool: 'axe',
       workbenchId: 'bench-0',
+      huntTargetId: 'pig-0',
     });
     expect(isValidEcosystem({ ...emptyEcosystem(), animals: [human] })).toBe(true);
     expect(isValidEcosystem({
@@ -2461,7 +2533,11 @@ describe('ecosystem persistence validation', () => {
     })).toBe(false);
     expect(isValidEcosystem({
       ...emptyEcosystem(),
-      animals: [{ ...animal('sheep', 'sheep-0'), activeTool: 'axe' }],
+      animals: [{ ...human, huntTargetId: 7 }],
+    })).toBe(false);
+    expect(isValidEcosystem({
+      ...emptyEcosystem(),
+      animals: [{ ...animal('sheep', 'sheep-0'), huntTargetId: 'pig-0' }],
     })).toBe(false);
   });
 
