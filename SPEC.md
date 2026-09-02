@@ -304,9 +304,10 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   normal camera distance: horns and antlers, ears and muzzles, manes and tails,
   wings and beaks, shells and flippers, and the Crocodile's long body and snout.
   Humans have an upright silhouette and visibly show a carried log or plank and
-  the tool equipped for their current job. Clicking a Human opens a compact individual
-  inspector with its name, activity, generation, parents, vitals, equipment,
-  and six trait values.
+  the tool equipped for their current job. Right-clicking a Human without
+  dragging opens a compact individual inspector with its name, activity,
+  generation, parents, vitals, equipment, and six trait values. The same
+  right-button gesture continues orbiting the camera when dragged.
 - The first-use message should leave after the first world edit.
 - Motion should honor the operating system's reduced-motion preference.
 
@@ -352,7 +353,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   Basic Crafting Bench, craft an Axe, Hammer, and Spear, turn later logs into
   Planks, randomly choose among available work, hunting, and exploration tasks,
   switch among tools as their job changes, and place planks into a roomy
-  five-by-five cabin while keeping the shared bench outside.
+  five-by-five cabin while keeping the shared bench outside. Right-clicking a
+  Human without dragging opens its individual stats.
   Healthy mature
   unrelated pairs can produce children whose six behavior traits average both
   parents with bounded mutation. Parent-child and sibling pairing is blocked,

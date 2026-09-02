@@ -303,9 +303,11 @@ export const AnimalModel = memo(function AnimalModel({
     ref={group}
     position={initialPosition}
     scale={scale}
-    onClick={animal.kind === 'human' && onInspect
+    onContextMenu={animal.kind === 'human' && onInspect
       ? (event: ThreeEvent<MouseEvent>) => {
+          if (event.delta > 3) return;
           event.stopPropagation();
+          event.nativeEvent.preventDefault();
           onInspect(animal);
         }
       : undefined}

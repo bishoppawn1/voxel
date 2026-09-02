@@ -1362,7 +1362,7 @@ export default function Game() {
 
       <div className="controls-hint">
         <span><kbd>WASD</kbd> Move camera</span>
-        <span><i className="mouse-icon right" /> Right-drag to orbit</span>
+        <span><i className="mouse-icon right" /> Right-drag to orbit · right-click Humans for stats</span>
         <span>
           <i className="mouse-icon left" /> Left-click to {tool === 'animal'
             ? `spawn ${ANIMALS[animalKind].label.toLowerCase()}`
@@ -1417,7 +1417,7 @@ function AnimalPalette({
           <strong>{selected.label}{tool === 'animal' ? ' selected' : ''}</strong>
           <small>
             Eats {selected.dietLabel}
-            {animalKind === 'human' ? ' · Click a human to inspect inherited traits' : ''}
+            {animalKind === 'human' ? ' · Right-click a human to inspect stats' : ''}
           </small>
         </span>
       </div>
