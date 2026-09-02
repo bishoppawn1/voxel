@@ -78,7 +78,7 @@ export const WORLD_RENDER_SIZE = 24;
 export const WORLD_SIZE = WORLD_RENDER_SIZE / BLOCK_SIZE;
 export const WORLD_RADIUS = WORLD_SIZE / 2;
 export const MAX_HEIGHT = 12 / BLOCK_SIZE;
-export const MAX_WORLD_BLOCKS = 2000;
+export const MAX_WORLD_BLOCKS = (WORLD_SIZE - 1) ** 2 * 3;
 
 export const MATERIALS: Record<
   BlockMaterial,
@@ -821,6 +821,8 @@ export function advanceFire(input: VoxelBlock[]): {
 }
 
 const GENERATED_MAP_RADIUS = 16;
+const FULL_MAP_MIN = -WORLD_RADIUS + 1;
+const FULL_MAP_MAX = WORLD_RADIUS - 1;
 
 export function createRandomWorld(random: () => number = Math.random): VoxelBlock[] {
   const generationId = Math.floor(random() * 0xffffff).toString(36);
@@ -864,6 +866,77 @@ export function createRandomWorld(random: () => number = Math.random): VoxelBloc
 
         blocks.push({
           id: `map-${generationId}-${x}-${y}-${z}`,
+          x,
+          y,
+          z,
+          material,
+        });
+      }
+    }
+  }
+
+  return blocks;
+}
+
+export function createSeedWorld(random: () => number = Math.random): VoxelBlock[] {
+  const generationId = Math.floor(random() * 0xffffff).toString(36);
+  const coordinateSpan = FULL_MAP_MAX - FULL_MAP_MIN;
+  const randomCoordinate = () => Math.round(FULL_MAP_MIN + random() * coordinateSpan);
+  const hills = Array.from({ length: 8 }, () => ({
+    x: randomCoordinate(),
+    z: randomCoordinate(),
+    radius: 7 + Math.floor(random() * 10),
+    peakHeight: 1 + Math.floor(random() * 2),
+  }));
+  const lakes = Array.from({ length: 6 }, () => ({
+    x: randomCoordinate(),
+    z: randomCoordinate(),
+    radiusX: 3 + Math.floor(random() * 6),
+    radiusZ: 3 + Math.floor(random() * 6),
+  }));
+  const blocks: VoxelBlock[] = [];
+
+  for (let x = FULL_MAP_MIN; x <= FULL_MAP_MAX; x += 1) {
+    for (let z = FULL_MAP_MIN; z <= FULL_MAP_MAX; z += 1) {
+      const lakeDistance = Math.min(...lakes.map((lake) => Math.hypot(
+        (x - lake.x) / lake.radiusX,
+        (z - lake.z) / lake.radiusZ,
+      )));
+      const isWater = lakeDistance <= 1;
+      const isShore = lakeDistance <= 1.42;
+      let topY = 0;
+
+      if (!isWater) {
+        for (const hill of hills) {
+          const distance = Math.hypot(x - hill.x, z - hill.z);
+          if (distance >= hill.radius) continue;
+          topY = Math.max(
+            topY,
+            Math.ceil((1 - distance / hill.radius) * hill.peakHeight),
+          );
+        }
+      }
+
+      const materialRoll = random();
+      for (let y = 0; y <= topY; y += 1) {
+        const isSurface = y === topY;
+        let material: BlockMaterial;
+        if (!isSurface) {
+          material = y === 0 && topY > 1 ? 'stone' : 'soil';
+        } else if (isWater) {
+          material = 'water';
+        } else if (isShore) {
+          material = 'sand';
+        } else if (topY >= 2 && materialRoll < 0.38) {
+          material = 'stone';
+        } else if (materialRoll < 0.08) {
+          material = 'soil';
+        } else {
+          material = 'grass';
+        }
+
+        blocks.push({
+          id: `seed-${generationId}-${x}-${y}-${z}`,
           x,
           y,
           z,

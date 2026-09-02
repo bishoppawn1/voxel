@@ -31,8 +31,9 @@ The player can:
 6. Hold W, A, S, or D to move the camera forward, left, backward, or right
    relative to its current view. Scroll to zoom in and out.
 7. Pause or resume gravity.
-8. Undo, redo, clear, or use the visible Reset button to generate another
-   random map with a fresh vegetation state and animals.
+8. Undo, redo, clear, use Reset to generate another compact starter island, or
+   use New Seed to generate randomized terrain across the full build plane with
+   a chance of starting wildlife.
 9. Select any power and left-click or left-drag its small circular area brush:
    Verdant Touch grassifies exposed Dirt, Wildfire ignites flammable blocks,
    Rain extinguishes fires, Deep Freeze turns Water into Ice and Lava into
@@ -64,6 +65,8 @@ same device the next time the game opens.
   horizontal cell range is `-47` through `47` on both the x and z axes.
 - The maximum physical build height remains 12 world units, represented by 48
   levels (`y = 0` through `y = 47`).
+- New Seed fills every horizontal column of the playable build plane with a
+  randomized mixture of plains, hills, lakes, beaches, soil, and stone.
 - A cell contains at most one block.
 - Every block has a stable ID, cell position, and material.
 - Saved data must be validated before it is loaded. Compatible older ecosystem
@@ -349,6 +352,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 
 - A fresh game and every Reset produce a valid, varied procedural island with
   supported hills, grassy terrain, a pond, and two starter sheep.
+- New Seed produces a valid randomized map spanning the complete playable
+  horizontal range and may begin with a small random wildlife population.
 - Place and Erase work on valid grid cells without duplicates.
 - Right-drag orbits; left-click never rotates the camera.
 - Left-drag never rotates the camera, including while painting blocks.

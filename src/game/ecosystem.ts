@@ -193,6 +193,7 @@ const LAND_PREDATOR_KEYS = ['fox', 'wolf', 'bear', 'eagle', 'crocodile'] as cons
 export const AQUATIC_KEYS = ['small-fish', 'big-fish'] as const;
 export const PREDATOR_KEYS = [...LAND_PREDATOR_KEYS, 'big-fish'] as const;
 export const HUMAN_KEYS = ['human'] as const;
+const SEEDED_LAND_ANIMAL_KEYS = [...HERBIVORE_KEYS, ...LAND_PREDATOR_KEYS] as const;
 export const ANIMAL_KEYS = [
   ...HERBIVORE_KEYS,
   ...LAND_PREDATOR_KEYS,
@@ -777,6 +778,44 @@ export function createInitialEcosystem(blocks: VoxelBlock[]): EcosystemState {
     animals: [...sheep, ...smallFish, ...bigFish],
     nextEntityId,
   };
+}
+
+export function createSeededEcosystem(
+  blocks: VoxelBlock[],
+  random: () => number = Math.random,
+): EcosystemState {
+  const empty: EcosystemState = {
+    tick: 0,
+    vegetation: [],
+    animals: [],
+    nextEntityId: 0,
+  };
+  if (random() < 0.3) return empty;
+
+  const surfaces = [...createSurfaceIndex(blocks).values()];
+  const landSurfaces = surfaces.filter(
+    ({ burning, material }) => !burning && material !== 'water' && material !== 'lava',
+  );
+  const waterSurfaces = surfaces.filter(({ burning, material }) => !burning && material === 'water');
+  const animalCount = 2 + Math.floor(random() * 5);
+  const animals: Animal[] = [];
+  let nextEntityId = 0;
+
+  for (let index = 0; index < animalCount; index += 1) {
+    const aquatic = waterSurfaces.length > 0 && random() < 0.24;
+    const kinds: readonly AnimalKind[] = aquatic ? AQUATIC_KEYS : SEEDED_LAND_ANIMAL_KEYS;
+    const candidates = aquatic ? waterSurfaces : landSurfaces;
+    if (!candidates.length) continue;
+    const kind = kinds[Math.min(kinds.length - 1, Math.floor(random() * kinds.length))];
+    const surfaceIndex = Math.min(
+      candidates.length - 1,
+      Math.floor(random() * candidates.length),
+    );
+    const [surface] = candidates.splice(surfaceIndex, 1);
+    animals.push(createAnimal(kind, nextEntityId++, surface));
+  }
+
+  return { ...empty, animals, nextEntityId };
 }
 
 export function spawnAnimal(

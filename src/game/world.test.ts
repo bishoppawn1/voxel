@@ -5,11 +5,13 @@ import {
   MATERIALS,
   MATERIAL_KEYS,
   MAX_HEIGHT,
+  MAX_WORLD_BLOCKS,
   WORLD_SIZE,
   advanceFire,
   advanceWorldStep,
   cellToWorld,
   createRandomWorld,
+  createSeedWorld,
   createStarterWorld,
   getLiquidLevel,
   isValidWorld,
@@ -444,6 +446,32 @@ describe('world persistence validation', () => {
     expect(first.length).toBeLessThanOrEqual(2000);
     expect(first.filter(({ material }) => material === 'grass').length).toBeGreaterThan(2);
     expect(first.some(({ material }) => material === 'soil')).toBe(true);
+    expect(first.some(({ material }) => material === 'water')).toBe(true);
+    expect(first.every(({ x, y, z }) => y === 0 || occupied.has(`${x},${y - 1},${z}`)))
+      .toBe(true);
+    expect(isValidWorld(first)).toBe(true);
+  });
+
+  it('generates a repeatable full-plane world from a new seed', () => {
+    const first = createSeedWorld(seededRandom(42));
+    const repeated = createSeedWorld(seededRandom(42));
+    const different = createSeedWorld(seededRandom(43));
+    const occupied = new Set(first.map(({ x, y, z }) => `${x},${y},${z}`));
+    const columns = new Set(first.map(({ x, z }) => `${x},${z}`));
+    const xCoordinates = first.map(({ x }) => x);
+    const zCoordinates = first.map(({ z }) => z);
+
+    expect(first).toEqual(repeated);
+    expect(first).not.toEqual(different);
+    expect(columns.size).toBe((WORLD_SIZE - 1) ** 2);
+    expect(Math.min(...xCoordinates)).toBe(-WORLD_SIZE / 2 + 1);
+    expect(Math.max(...xCoordinates)).toBe(WORLD_SIZE / 2 - 1);
+    expect(Math.min(...zCoordinates)).toBe(-WORLD_SIZE / 2 + 1);
+    expect(Math.max(...zCoordinates)).toBe(WORLD_SIZE / 2 - 1);
+    expect(first.length).toBeLessThanOrEqual(MAX_WORLD_BLOCKS);
+    expect(first.some(({ material }) => material === 'grass')).toBe(true);
+    expect(first.some(({ material }) => material === 'sand')).toBe(true);
+    expect(first.some(({ material }) => material === 'stone')).toBe(true);
     expect(first.some(({ material }) => material === 'water')).toBe(true);
     expect(first.every(({ x, y, z }) => y === 0 || occupied.has(`${x},${y - 1},${z}`)))
       .toBe(true);

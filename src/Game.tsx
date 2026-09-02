@@ -4,6 +4,7 @@ import {
   Box,
   ArrowDown,
   CloudRain,
+  Dices,
   Eraser,
   Flame,
   Heart,
@@ -22,8 +23,8 @@ import {
   Undo2,
   X,
 } from 'lucide-react';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Color, type Group, MOUSE, Vector3 } from 'three';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Color, type Group, type InstancedMesh, Matrix4, MOUSE, Vector3 } from 'three';
 import {
   ANIMALS,
   ANIMAL_KEYS,
@@ -36,6 +37,7 @@ import {
   convertCoveredGrassToSoil,
   createAnimalSurfaceIndex,
   createInitialEcosystem,
+  createSeededEcosystem,
   createSurfaceIndex,
   isAquaticAnimal,
   humanDisplayName,
@@ -58,6 +60,7 @@ import {
   advanceWorldStep,
   cellToWorld,
   createRandomWorld,
+  createSeedWorld,
   getLiquidLevel,
   hasBlock,
   isInWorld,
@@ -92,6 +95,7 @@ const WORLD_TICK_MS = 140;
 const LIQUID_TICK_DIVISOR = 3;
 const CAMERA_MOVE_SPEED = 5;
 const CAMERA_TARGET_LIMIT = WORLD_RENDER_SIZE / 2;
+const INSTANCED_WORLD_THRESHOLD = 3_000;
 const CAMERA_MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD']);
 const ABILITY_PREVIEW_COLORS: Record<AbilityKey, { fill: string; edge: string }> = {
   'verdant-touch': { fill: '#8dcc70', edge: '#3f754c' },
@@ -370,6 +374,169 @@ const AnimatedBlock = memo(function AnimatedBlock({
       )}
       {block.burning && <BurningEffect />}
     </group>
+  );
+});
+
+type BlockInteractionHandlers = {
+  onHover: (event: ThreeEvent<PointerEvent>, block: VoxelBlock) => void;
+  onLeave: () => void;
+  onSelect: (event: ThreeEvent<MouseEvent>, block: VoxelBlock) => void;
+  onPaintStart: (event: ThreeEvent<PointerEvent>, block: VoxelBlock) => void;
+};
+
+const InstancedBlockBatch = memo(function InstancedBlockBatch({
+  blocks,
+  ...handlers
+}: {
+  blocks: VoxelBlock[];
+} & BlockInteractionHandlers) {
+  const body = useRef<InstancedMesh>(null);
+  const grassCap = useRef<InstancedMesh>(null);
+  const sample = blocks[0];
+  const colors = MATERIALS[sample.material];
+  const blockHeight = colors.gravityBehavior === 'fluid'
+    ? BLOCK_SIZE * getLiquidLevel(sample) / MAX_LIQUID_LEVEL
+    : BLOCK_SIZE;
+  const grassCapHeight = sample.material === 'grass' ? BLOCK_SIZE * 0.06 : 0;
+  const textures = useMemo(() => getBlockTextures(sample.material), [sample.material]);
+  const faceTextures = useMemo(
+    () => [
+      textures.side,
+      textures.side,
+      textures.top,
+      textures.bottom,
+      textures.side,
+      textures.side,
+    ],
+    [textures],
+  );
+
+  useLayoutEffect(() => {
+    const matrix = new Matrix4();
+    blocks.forEach((block, index) => {
+      matrix.makeTranslation(
+        cellToWorld(block.x),
+        cellToWorld(block.y) + blockHeight / 2 - grassCapHeight / 2,
+        cellToWorld(block.z),
+      );
+      body.current?.setMatrixAt(index, matrix);
+
+      if (grassCap.current) {
+        matrix.makeTranslation(
+          cellToWorld(block.x),
+          cellToWorld(block.y) + BLOCK_SIZE - grassCapHeight / 2,
+          cellToWorld(block.z),
+        );
+        grassCap.current.setMatrixAt(index, matrix);
+      }
+    });
+
+    if (body.current) {
+      body.current.instanceMatrix.needsUpdate = true;
+      body.current.computeBoundingSphere();
+    }
+    if (grassCap.current) {
+      grassCap.current.instanceMatrix.needsUpdate = true;
+      grassCap.current.computeBoundingSphere();
+    }
+  }, [blockHeight, blocks, grassCapHeight]);
+
+  const blockAt = (instanceId: number | undefined) =>
+    instanceId === undefined ? undefined : blocks[instanceId];
+
+  const interactionProps = {
+    onPointerMove: (event: ThreeEvent<PointerEvent>) => {
+      const block = blockAt(event.instanceId);
+      if (block) handlers.onHover(event, block);
+    },
+    onPointerDown: (event: ThreeEvent<PointerEvent>) => {
+      const block = blockAt(event.instanceId);
+      if (block) handlers.onPaintStart(event, block);
+    },
+    onPointerOut: handlers.onLeave,
+    onClick: (event: ThreeEvent<MouseEvent>) => {
+      const block = blockAt(event.instanceId);
+      if (block) handlers.onSelect(event, block);
+    },
+  };
+
+  return (
+    <>
+      <instancedMesh
+        ref={body}
+        args={[undefined, undefined, blocks.length]}
+        castShadow
+        receiveShadow
+        {...interactionProps}
+      >
+        <boxGeometry args={[BLOCK_SIZE, blockHeight - grassCapHeight, BLOCK_SIZE]} />
+        {faceTextures.map((map, index) => (
+          <meshStandardMaterial
+            key={index}
+            attach={`material-${index}`}
+            map={map}
+            color="#ffffff"
+            roughness={colors.roughness ?? 0.82}
+            metalness={colors.metalness ?? 0}
+            transparent={(colors.opacity ?? 1) < 1}
+            opacity={colors.opacity ?? 1}
+            depthWrite={(colors.opacity ?? 1) >= 0.7}
+            emissive={colors.emissive}
+            emissiveIntensity={colors.emissiveIntensity ?? 0}
+          />
+        ))}
+      </instancedMesh>
+      {sample.material === 'grass' && (
+        <instancedMesh
+          ref={grassCap}
+          args={[undefined, undefined, blocks.length]}
+          castShadow
+          {...interactionProps}
+        >
+          <boxGeometry args={[BLOCK_SIZE, grassCapHeight, BLOCK_SIZE]} />
+          <meshStandardMaterial map={textures.top} color="#ffffff" roughness={0.94} />
+        </instancedMesh>
+      )}
+    </>
+  );
+});
+
+const InstancedWorldBlocks = memo(function InstancedWorldBlocks({
+  blocks,
+  ...handlers
+}: {
+  blocks: VoxelBlock[];
+} & BlockInteractionHandlers) {
+  const { batches, specialBlocks } = useMemo(() => {
+    const nextBatches = new Map<string, VoxelBlock[]>();
+    const nextSpecialBlocks: VoxelBlock[] = [];
+
+    blocks.forEach((block) => {
+      if (block.burning || getHumanFurnitureKind(block)) {
+        nextSpecialBlocks.push(block);
+        return;
+      }
+      const liquidLevel = MATERIALS[block.material].gravityBehavior === 'fluid'
+        ? getLiquidLevel(block)
+        : MAX_LIQUID_LEVEL;
+      const key = `${block.material}:${liquidLevel}`;
+      const batch = nextBatches.get(key);
+      if (batch) batch.push(block);
+      else nextBatches.set(key, [block]);
+    });
+
+    return { batches: [...nextBatches.entries()], specialBlocks: nextSpecialBlocks };
+  }, [blocks]);
+
+  return (
+    <>
+      {batches.map(([key, batch]) => (
+        <InstancedBlockBatch key={key} blocks={batch} {...handlers} />
+      ))}
+      {specialBlocks.map((block) => (
+        <AnimatedBlock key={block.id} block={block} {...handlers} />
+      ))}
+    </>
   );
 });
 
@@ -768,16 +935,26 @@ function WorldScene({
         infiniteGrid={false}
       />
 
-      {blocks.map((block) => (
-        <AnimatedBlock
-          key={block.id}
-          block={block}
+      {blocks.length >= INSTANCED_WORLD_THRESHOLD ? (
+        <InstancedWorldBlocks
+          blocks={blocks}
           onHover={handleBlockHover}
           onLeave={handlePointerLeave}
           onSelect={handleBlockSelect}
           onPaintStart={handleBlockPaintStart}
         />
-      ))}
+      ) : (
+        blocks.map((block) => (
+          <AnimatedBlock
+            key={block.id}
+            block={block}
+            onHover={handleBlockHover}
+            onLeave={handlePointerLeave}
+            onSelect={handleBlockSelect}
+            onPaintStart={handleBlockPaintStart}
+          />
+        ))
+      )}
 
       {ecosystem.vegetation.map((growth) => {
         const block = blocksById.get(growth.blockId);
@@ -1258,6 +1435,14 @@ export default function Game() {
     ecosystemRef.current = freshEcosystem;
     setEcosystem(freshEcosystem);
   };
+  const seedWorld = () => {
+    const random = Math.random;
+    const seeded = createSeedWorld(random);
+    const seededEcosystem = createSeededEcosystem(seeded, random);
+    commit(seeded);
+    ecosystemRef.current = seededEcosystem;
+    setEcosystem(seededEcosystem);
+  };
   const clearWorld = () => {
     const emptyEcosystem = createInitialEcosystem([]);
     commit([]);
@@ -1323,6 +1508,10 @@ export default function Game() {
           </button>
           <button className="icon-button" type="button" aria-label="Redo" disabled={!future.length} onClick={redo}>
             <Redo2 size={17} />
+          </button>
+          <button className="icon-button reset-button" type="button" aria-label="Generate a full random map with possible wildlife" onClick={seedWorld}>
+            <Dices size={17} />
+            <span>New seed</span>
           </button>
           <button className="icon-button reset-button" type="button" aria-label="Generate a new random map and ecosystem" onClick={resetWorld}>
             <RotateCcw size={17} />

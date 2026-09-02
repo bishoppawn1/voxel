@@ -25,6 +25,7 @@ import {
   createAnimalSurfaceIndex,
   createFounderHumanTraits,
   createInitialEcosystem,
+  createSeededEcosystem,
   inheritHumanTraits,
   isValidEcosystem,
   migrateEcosystem,
@@ -1572,6 +1573,22 @@ describe('animal life cycle', () => {
     expect(ecosystem.vegetation.some(({ kind }) => kind === 'kelp')).toBe(true);
     expect(ecosystem.animals.every(({ isBaby }) => !isBaby)).toBe(true);
     expect(ecosystem.animals.every(({ hunger }) => hunger === MAX_ANIMAL_HUNGER)).toBe(true);
+  });
+
+  it('sometimes seeds a new world with a small random wildlife population', () => {
+    const world = [
+      ...Array.from({ length: 6 }, (_, x) => block(`land-${x}`, x, 0, 'grass')),
+      block('water', 6, 0, 'water'),
+    ];
+    const empty = createSeededEcosystem(world, () => 0);
+    const populated = createSeededEcosystem(world, () => 0.5);
+
+    expect(empty.animals).toEqual([]);
+    expect(populated.animals).toHaveLength(4);
+    expect(new Set(populated.animals.map(({ x, z }) => `${x},${z}`)).size).toBe(4);
+    expect(populated.animals.every(({ kind }) => kind !== 'human')).toBe(true);
+    expect(isValidEcosystem(empty)).toBe(true);
+    expect(isValidEcosystem(populated)).toBe(true);
   });
 
   it('moves an animal saved inside a generated trunk to nearby safe ground', () => {
