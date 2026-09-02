@@ -28,7 +28,8 @@ The player can:
 4. Left-click a block with Erase selected to remove it.
 5. Right-click and drag to orbit around the center of the world. Left-drag
    never changes the camera angle; it is reserved for world editing.
-6. Scroll to zoom in and out.
+6. Hold W, A, S, or D to move the camera forward, left, backward, or right
+   relative to its current view. Scroll to zoom in and out.
 7. Pause or resume gravity.
 8. Undo, redo, clear, or use the visible Reset button to generate another
    random map with a fresh vegetation state and animals.

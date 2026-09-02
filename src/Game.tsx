@@ -86,6 +86,9 @@ const ABILITY_PAINT_INTERVAL_MS = 180;
 const FIRE_TICK_MS = 650;
 const WORLD_TICK_MS = 140;
 const LIQUID_TICK_DIVISOR = 3;
+const CAMERA_MOVE_SPEED = 5;
+const CAMERA_TARGET_LIMIT = WORLD_RENDER_SIZE / 2;
+const CAMERA_MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD']);
 const ABILITY_PREVIEW_COLORS: Record<AbilityKey, { fill: string; edge: string }> = {
   'verdant-touch': { fill: '#8dcc70', edge: '#3f754c' },
   wildfire: { fill: '#ee8a47', edge: '#a8442a' },
@@ -160,6 +163,80 @@ function BurningEffect() {
       <pointLight color="#ff6b1a" intensity={0.9} distance={1.4} decay={2} />
     </group>
   );
+}
+
+function CameraKeyboardControls() {
+  const pressedKeys = useRef(new Set<string>());
+  const forward = useMemo(() => new Vector3(), []);
+  const right = useMemo(() => new Vector3(), []);
+  const movement = useMemo(() => new Vector3(), []);
+  const nextTarget = useMemo(() => new Vector3(), []);
+
+  useEffect(() => {
+    const isTypingTarget = (target: EventTarget | null) =>
+      target instanceof HTMLElement && Boolean(
+        target.closest('input, textarea, select, [contenteditable="true"]'),
+      );
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        !CAMERA_MOVE_KEYS.has(event.code) ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        isTypingTarget(event.target)
+      ) return;
+      event.preventDefault();
+      pressedKeys.current.add(event.code);
+    };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      pressedKeys.current.delete(event.code);
+    };
+    const clearKeys = () => pressedKeys.current.clear();
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', clearKeys);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', clearKeys);
+    };
+  }, []);
+
+  useFrame(({ camera, controls }, delta) => {
+    const forwardAmount = Number(pressedKeys.current.has('KeyW')) -
+      Number(pressedKeys.current.has('KeyS'));
+    const rightAmount = Number(pressedKeys.current.has('KeyD')) -
+      Number(pressedKeys.current.has('KeyA'));
+    if ((!forwardAmount && !rightAmount) || !controls) return;
+
+    const orbit = controls as { target?: Vector3; update?: () => void };
+    if (!orbit.target) return;
+    camera.getWorldDirection(forward);
+    forward.y = 0;
+    if (forward.lengthSq() < 0.0001) forward.set(0, 0, -1);
+    forward.normalize();
+    right.crossVectors(forward, camera.up).normalize();
+    movement
+      .copy(forward)
+      .multiplyScalar(forwardAmount)
+      .addScaledVector(right, rightAmount);
+    if (movement.lengthSq() > 1) movement.normalize();
+    movement.multiplyScalar(CAMERA_MOVE_SPEED * Math.min(delta, 0.05));
+
+    nextTarget.copy(orbit.target).add(movement);
+    nextTarget.x = Math.max(-CAMERA_TARGET_LIMIT, Math.min(CAMERA_TARGET_LIMIT, nextTarget.x));
+    nextTarget.z = Math.max(-CAMERA_TARGET_LIMIT, Math.min(CAMERA_TARGET_LIMIT, nextTarget.z));
+    movement.set(
+      nextTarget.x - orbit.target.x,
+      0,
+      nextTarget.z - orbit.target.z,
+    );
+    camera.position.add(movement);
+    orbit.target.add(movement);
+    orbit.update?.();
+  });
+
+  return null;
 }
 
 const AnimatedBlock = memo(function AnimatedBlock({
@@ -745,6 +822,7 @@ function WorldScene({
           RIGHT: MOUSE.ROTATE,
         }}
       />
+      <CameraKeyboardControls />
     </>
   );
 }
@@ -1283,6 +1361,7 @@ export default function Game() {
       )}
 
       <div className="controls-hint">
+        <span><kbd>WASD</kbd> Move camera</span>
         <span><i className="mouse-icon right" /> Right-drag to orbit</span>
         <span>
           <i className="mouse-icon left" /> Left-click to {tool === 'animal'
