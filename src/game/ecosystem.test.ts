@@ -18,6 +18,7 @@ import {
   SHORT_GRASS_MATURATION_TICKS,
   advanceEcosystem,
   animalMovesOnTick,
+  chooseHumanActivity,
   convertCoveredGrassToSoil,
   createAnimalSurfaceIndex,
   createFounderHumanTraits,
@@ -916,6 +917,69 @@ describe('human crafting and building', () => {
     expect({ x: result.x, z: result.z }).not.toEqual({ x: 0, z: 0 });
   });
 
+  it('uses intrinsic random rolls to choose between hunting, exploring, and working', () => {
+    const human = animal('human', 'human-0', 0, 0, {
+      hunger: 60,
+      traits: {
+        ...createFounderHumanTraits('human-0'),
+        aggression: 100,
+        exploration: 100,
+      },
+    });
+
+    expect(chooseHumanActivity(human, 1, () => 0.1)).toBe('hunt');
+    expect(chooseHumanActivity({ ...human, hunger: 100 }, 1, () => 0.1)).toBe('explore');
+    expect(chooseHumanActivity({ ...human, hunger: 100 }, 1, () => 0.9)).toBe('work');
+    expect(chooseHumanActivity({ ...human, hunger: 30 }, 1, () => 0.99)).toBe('hunt');
+  });
+
+  it('randomly varies its wandering destination', () => {
+    const world = Array.from({ length: 5 }, (_, index) =>
+      block(`ground-${index}`, index - 2, 0, 'stone'));
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('human', 'human-0')],
+      nextEntityId: 1,
+    };
+
+    const left = advanceEcosystem(world, ecosystem, () => 0).ecosystem.animals[0];
+    const right = advanceEcosystem(world, ecosystem, () => 1).ecosystem.animals[0];
+
+    expect(left).toMatchObject({ x: -1, z: 0 });
+    expect(right).toMatchObject({ x: 1, z: 0 });
+  });
+
+  it('randomly chooses among several nearby prey', () => {
+    const world = [-1, 0, 1].map((x) => block(`ground-${x}`, x, 0, 'stone'));
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('human', 'human-0', 0, 0, {
+          hunger: 60,
+          traits: {
+            ...createFounderHumanTraits('human-0'),
+            aggression: 100,
+            caution: 0,
+          },
+        }),
+        animal('rabbit', 'rabbit-left', -1, 0),
+        animal('rabbit', 'rabbit-right', 1, 0),
+      ],
+      nextEntityId: 3,
+    };
+    const runWithPreyRoll = (preyRoll: number) =>
+      advanceEcosystem(world, ecosystem, (key) => {
+        if (key.startsWith('human-activity:')) return 0;
+        if (key.startsWith('human-prey:')) return preyRoll;
+        return 1;
+      }).ecosystem.animals.map(({ id }) => id);
+
+    expect(runWithPreyRoll(0)).toContain('rabbit-right');
+    expect(runWithPreyRoll(0)).not.toContain('rabbit-left');
+    expect(runWithPreyRoll(0.99)).toContain('rabbit-left');
+    expect(runWithPreyRoll(0.99)).not.toContain('rabbit-right');
+  });
+
   it('searches beyond its normal exploration range in a hunger emergency', () => {
     const world = Array.from({ length: 11 }, (_, x) => block(`ground-${x}`, x, 0, 'stone'));
     const ecosystem: EcosystemState = {
@@ -990,6 +1054,27 @@ describe('human inheritance and selection', () => {
     expect(result.animals.filter(({ isBaby }) => !isBaby).every(
       ({ hunger }) => hunger < HUMAN_REPRODUCTION_MIN_HUNGER,
     )).toBe(true);
+  });
+
+  it('randomly chooses among eligible unrelated partners', () => {
+    const world = Array.from({ length: 5 }, (_, index) =>
+      block(`ground-${index}`, index - 2, 0, 'stone'));
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('human', 'human-0', 0, 0, { age: 24 }),
+        animal('human', 'human-1', 1, 0, { age: 24 }),
+        animal('human', 'human-2', -1, 0, { age: 24 }),
+      ],
+      nextEntityId: 3,
+    };
+    const childForPartnerRoll = (partnerRoll: number) =>
+      advanceEcosystem(world, ecosystem, (key) =>
+        key === 'human-partner:1:human-0' ? partnerRoll : 0.5)
+        .ecosystem.animals.find(({ isBaby }) => isBaby);
+
+    expect(childForPartnerRoll(0)?.parentIds).toEqual(['human-0', 'human-1']);
+    expect(childForPartnerRoll(0.99)?.parentIds).toEqual(['human-0', 'human-2']);
   });
 
   it('reaches reproduction age before ordinary hunger can block a founder pair', () => {
@@ -1121,8 +1206,8 @@ describe('human inheritance and selection', () => {
       nextEntityId: 2,
     });
 
-    expect(advanceEcosystem(world, makeState(0), () => 1).ecosystem.animals).toHaveLength(2);
-    expect(advanceEcosystem(world, makeState(100), () => 1).ecosystem.animals).toHaveLength(1);
+    expect(advanceEcosystem(world, makeState(0), () => 0.4).ecosystem.animals).toHaveLength(2);
+    expect(advanceEcosystem(world, makeState(100), () => 0.4).ecosystem.animals).toHaveLength(1);
   });
 
   it('grows a human child by age and enforces the population cap on spawning', () => {

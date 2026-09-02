@@ -213,10 +213,14 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   it hunts and its attack strength; Caution changes the health risk it accepts;
   Exploration sets its resource and mate search distance; Gathering changes
   logging cadence; Craftsmanship changes bench time; and Efficiency changes how
-  often hunger falls. With no visible task, a Human actively explores toward a
-  deterministic destination rather than standing still. At emergency hunger it
-  searches the entire reachable world for prey and accepts risks it would
-  normally avoid. A colored sash makes individuals visually distinct.
+  often hunger falls. On every free tick, a Human makes an intrinsic random,
+  trait-weighted choice to hunt, work, or explore. It randomly chooses among a
+  few nearby prey or Wood targets, wanders toward a random reachable destination,
+  and chooses randomly among eligible unrelated partners. Active crafting and
+  carrying jobs remain committed work, while emergency hunger always overrides
+  the roll: the Human searches the entire reachable world for prey and accepts
+  risks it would normally avoid. A colored sash makes individuals visually
+  distinct.
 - A healthy Human can reproduce after age 12 when it has at least 70 hunger,
   at least 60% health, no cooldown, and a reachable unrelated partner meeting
   the same rules. Parent-child and sibling pairs are rejected. Each parent
@@ -339,8 +343,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   before entering an occupied cell, and never plan through solid terrain.
 - Humans carry one resource, hunt animals, chop Wood, share and use a nearby
   Basic Crafting Bench, craft an Axe, Hammer, and Spear, turn later logs into
-  Planks, switch among those tools as their job changes, and place those planks
-  into a roomy five-by-five cabin while keeping the shared bench outside.
+  Planks, randomly choose among available work, hunting, and exploration tasks,
+  switch among tools as their job changes, and place planks into a roomy
+  five-by-five cabin while keeping the shared bench outside.
   Healthy mature
   unrelated pairs can produce children whose six behavior traits average both
   parents with bounded mutation. Parent-child and sibling pairing is blocked,

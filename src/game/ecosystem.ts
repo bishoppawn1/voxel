@@ -1033,27 +1033,23 @@ function exploreWorld(
   tick: number,
   surfaces: Map<string, VoxelBlock>,
   occupied: Set<string>,
+  random: RandomSource,
 ) {
   const epoch = Math.floor(tick / 8);
   const radius = humanSearchRadius(human);
-  let target: VoxelBlock | undefined;
-  let targetScore = Number.POSITIVE_INFINITY;
-  for (const surface of surfaces.values()) {
+  const candidates = [...surfaces.values()].filter((surface) => {
     const targetDistance = distance(human, surface);
-    if (
+    return !(
       targetDistance < 2 ||
       targetDistance > radius ||
       occupied.has(columnKey(surface.x, surface.z)) ||
       !surfaceIsTraversable(human, surface)
-    ) {
-      continue;
-    }
-    const score = hashString(`${human.id}:explore:${epoch}:${surface.x},${surface.z}`);
-    if (score < targetScore) {
-      target = surface;
-      targetScore = score;
-    }
-  }
+    );
+  }).sort((a, b) => a.x - b.x || a.z - b.z || a.id.localeCompare(b.id));
+  const target = pickRandom(
+    candidates,
+    random(`human-wander:${tick}:${epoch}:${human.id}`),
+  );
   return target ? moveToward(human, target, surfaces, occupied) : human;
 }
 
@@ -1105,6 +1101,29 @@ function humanHuntThreshold(human: Animal) {
   return 55 + Math.round(traitsFor(human).aggression * 0.3);
 }
 
+export type HumanActivity = 'hunt' | 'work' | 'explore';
+
+export function chooseHumanActivity(
+  human: Animal,
+  tick: number,
+  random: RandomSource = deterministicRandom,
+): HumanActivity {
+  if (human.hunger <= HUMAN_EMERGENCY_HUNGER) return 'hunt';
+  const traits = traitsFor(human);
+  const huntThreshold = humanHuntThreshold(human);
+  const huntChance = human.hunger <= huntThreshold
+    ? Math.min(
+      0.92,
+      0.35 + traits.aggression * 0.004 + (huntThreshold - human.hunger) * 0.012,
+    )
+    : 0;
+  const exploreChance = 0.1 + traits.exploration * 0.0025;
+  const roll = random(`human-activity:${tick}:${human.id}`);
+  if (roll < huntChance) return 'hunt';
+  if (roll < huntChance + exploreChance) return 'explore';
+  return 'work';
+}
+
 function humanSearchRadius(human: Animal) {
   return 6 + Math.floor(traitsFor(human).exploration / 4);
 }
@@ -1132,6 +1151,15 @@ function equipHumanTool(human: Animal, tool?: HumanTool) {
 function humanCanWorkOnTick(human: Animal, tick: number) {
   const interval = humanLoggingInterval(human);
   return interval === 1 || tick % interval === hashString(human.id) % interval;
+}
+
+function pickRandom<T>(items: readonly T[], roll: number): T | undefined {
+  if (!items.length) return undefined;
+  const index = Math.min(
+    items.length - 1,
+    Math.floor(Math.max(0, roll) * items.length),
+  );
+  return items[index];
 }
 
 function humansAreCloseFamily(first: Animal, second: Animal) {
@@ -1569,7 +1597,7 @@ export function advanceEcosystem(
       if (pairedHumans.has(first.id) || humanPopulation >= HUMAN_MAX_POPULATION) continue;
       const currentFirst = animalsById.get(first.id);
       if (!currentFirst || !humanIsReadyToReproduce(currentFirst)) continue;
-      const partner = eligibleHumans
+      const possiblePartners = eligibleHumans
         .filter((candidate) => {
           if (
             candidate.id === currentFirst.id ||
@@ -1592,7 +1620,11 @@ export function advanceEcosystem(
             standingDistance(currentFirst, a, surfaces) -
               standingDistance(currentFirst, b, surfaces) ||
             a.id.localeCompare(b.id),
-        )[0];
+        );
+      const partner = pickRandom(
+        possiblePartners,
+        random(`human-partner:${tick}:${currentFirst.id}`),
+      );
       if (!partner) continue;
       const currentPartner = animalsById.get(partner.id);
       if (!currentPartner || !humanIsReadyToReproduce(currentPartner)) continue;
@@ -1703,11 +1735,17 @@ export function advanceEcosystem(
       ANIMALS.human.maxHealth * (0.25 + humanTraits.caution * 0.004),
     );
     const emergencyHunt = human.hunger <= HUMAN_EMERGENCY_HUNGER;
+    const hasCommittedTask = Boolean(human.crafting || human.heldItem);
+    const activity = emergencyHunt
+      ? 'hunt'
+      : hasCommittedTask
+        ? 'work'
+        : chooseHumanActivity(human, tick, random);
     if (
-      human.hunger <= humanHuntThreshold(human) &&
+      activity === 'hunt' &&
       (human.health >= huntHealthFloor || emergencyHunt)
     ) {
-      const prey = [...animalsById.values()]
+      const possiblePrey = [...animalsById.values()]
         .filter(
           (candidate) => {
             const dangerous = ANIMALS[candidate.kind].predator;
@@ -1730,7 +1768,13 @@ export function advanceEcosystem(
             standingDistance(human!, a, surfaces) -
               standingDistance(human!, b, surfaces) ||
             a.id.localeCompare(b.id),
-      )[0];
+        );
+      const prey = emergencyHunt
+        ? possiblePrey[0]
+        : pickRandom(
+          possiblePrey.slice(0, 3),
+          random(`human-prey:${tick}:${human.id}`),
+        );
       if (prey) {
         human = equipHumanTool(
           human,
@@ -1802,7 +1846,7 @@ export function advanceEcosystem(
       if (!workbench) {
         const cell = findWorkbenchCell(human, surfaces, occupied, occupiedBlockCells);
         if (!cell) {
-          saveHuman(exploreWorld(human, tick, surfaces, occupied));
+          saveHuman(exploreWorld(human, tick, surfaces, occupied, random));
           continue;
         }
         const block: VoxelBlock = {
@@ -1862,7 +1906,12 @@ export function advanceEcosystem(
       continue;
     }
 
-    const wood = workingBlocks
+    if (activity === 'explore') {
+      saveHuman(exploreWorld(human, tick, surfaces, occupied, random));
+      continue;
+    }
+
+    const possibleWood = workingBlocks
       .filter(
         (block) =>
           block.material === 'wood' &&
@@ -1874,9 +1923,13 @@ export function advanceEcosystem(
           distance(human!, a) - distance(human!, b) ||
           a.y - b.y ||
           a.id.localeCompare(b.id),
-      )[0];
+      );
+    const wood = pickRandom(
+      possibleWood.slice(0, 4),
+      random(`human-wood:${tick}:${human.id}`),
+    );
     if (!wood) {
-      saveHuman(exploreWorld(human, tick, surfaces, occupied));
+      saveHuman(exploreWorld(human, tick, surfaces, occupied, random));
       continue;
     }
     human = equipHumanTool(
