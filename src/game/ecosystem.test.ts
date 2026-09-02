@@ -405,6 +405,17 @@ describe('animal spawning and diets', () => {
     expect(result.nextEntityId).toBe(1);
   });
 
+  it('spawns an animal on clear ground below a generated tree canopy', () => {
+    const world = [
+      block('ground', 0, 0, 'stone'),
+      block('tree-canopy', 0, 0, 'leaves', 8),
+    ];
+
+    const result = spawnAnimal(world, emptyEcosystem(), 'sheep', 0, 0);
+
+    expect(result.animals).toMatchObject([{ id: 'sheep-0', x: 0, z: 0 }]);
+  });
+
   it('does not spawn without a surface or on an occupied animal cell', () => {
     const world = [block('stone', 0, 0, 'stone')];
     const occupied = spawnAnimal(world, emptyEcosystem(), 'pig', 0, 0);
@@ -1389,6 +1400,28 @@ describe('animal life cycle', () => {
     expect(advanceEcosystem(world, ecosystem, () => 1).ecosystem.animals).toHaveLength(2);
   });
 
+  it('does not breed animals through a two-level cliff', () => {
+    const world = [
+      block('low-ground', 0, 0, 'stone'),
+      block('high-ground', 1, 0, 'stone', 2),
+      block('low-open-cell', -1, 0, 'stone'),
+      block('high-open-cell', 2, 0, 'stone', 2),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('cow', 'cow-0', 0, 0),
+        animal('cow', 'cow-1', 1, 0),
+      ],
+      nextEntityId: 2,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+
+    expect(result.animals).toHaveLength(2);
+    expect(result.animals.every(({ isBaby }) => !isBaby)).toBe(true);
+  });
+
   it('grows a baby into an adult after its third meal', () => {
     const grassyDirt = block('grass', 0, 0, 'grass');
     const ecosystem: EcosystemState = {
@@ -1606,6 +1639,51 @@ describe('predator hunting', () => {
       facingX: 1,
       facingZ: 0,
     });
+  });
+
+  it('does not attack prey across a two-level cliff', () => {
+    const world = [
+      block('fox-cell', 0, 0, 'stone'),
+      block('rabbit-cell', 1, 0, 'stone', 2),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('fox', 'fox-0', 0, 0, { hunger: 40 }),
+        animal('rabbit', 'rabbit-1', 1, 0, { health: 1 }),
+      ],
+      nextEntityId: 2,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+
+    expect(result.animals).toHaveLength(2);
+    expect(result.animals.find(({ id }) => id === 'rabbit-1')).toMatchObject({ health: 1 });
+    expect(result.animals.find(({ id }) => id === 'fox-0')).toMatchObject({
+      x: 0,
+      z: 0,
+      eaten: 0,
+    });
+  });
+
+  it('can attack prey across a traversable one-level step', () => {
+    const world = [
+      block('fox-cell', 0, 0, 'stone'),
+      block('rabbit-cell', 1, 0, 'stone', 1),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('fox', 'fox-0', 0, 0, { hunger: 40 }),
+        animal('rabbit', 'rabbit-1', 1, 0, { health: 1 }),
+      ],
+      nextEntityId: 2,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+
+    expect(result.animals).toHaveLength(1);
+    expect(result.animals[0]).toMatchObject({ id: 'fox-0', eaten: 1 });
   });
 
   it('survives multiple counterattacks because it has tank-like health', () => {

@@ -492,6 +492,35 @@ const columnKey = (x: number, z: number) => `${x},${z}`;
 const distance = (a: Position, b: Position) =>
   Math.abs(a.x - b.x) + Math.abs(a.z - b.z);
 
+function standingDistance(
+  a: Position,
+  b: Position,
+  surfaces: ReadonlyMap<string, VoxelBlock>,
+) {
+  const aSurface = surfaces.get(columnKey(a.x, a.z));
+  const bSurface = surfaces.get(columnKey(b.x, b.z));
+  if (!aSurface || !bSurface) return Number.POSITIVE_INFINITY;
+  return distance(a, b) + Math.abs(aSurface.y - bSurface.y);
+}
+
+/** Animals can interact only across a horizontal neighbor step whose rise or
+ * drop is itself traversable. This prevents attacks and breeding through tall
+ * cliffs or between the ground and a canopy. */
+function animalsCanInteract(
+  a: Position,
+  b: Position,
+  surfaces: ReadonlyMap<string, VoxelBlock>,
+) {
+  const aSurface = surfaces.get(columnKey(a.x, a.z));
+  const bSurface = surfaces.get(columnKey(b.x, b.z));
+  return Boolean(
+    aSurface &&
+    bSurface &&
+    distance(a, b) <= 1 &&
+    Math.abs(aSurface.y - bSurface.y) <= 1
+  );
+}
+
 function hashString(key: string) {
   let hash = 2166136261;
   for (let index = 0; index < key.length; index += 1) {
@@ -915,6 +944,20 @@ function moveToward(
   );
 }
 
+function moveTowardAnimal(
+  animal: Animal,
+  target: Animal,
+  surfaces: Map<string, VoxelBlock>,
+  occupied: Set<string>,
+) {
+  return moveTowardGoal(
+    animal,
+    (position) => animalsCanInteract(position, target, surfaces),
+    surfaces,
+    occupied,
+  );
+}
+
 function moveTowardNearestFood(
   animal: Animal,
   targetKeys: ReadonlySet<string>,
@@ -994,12 +1037,15 @@ function findBabyCell(
   occupied: Set<string>,
 ) {
   for (const parent of parents) {
+    const parentSurface = surfaces.get(columnKey(parent.x, parent.z));
+    if (!parentSurface) continue;
     for (const direction of DIRECTIONS) {
       const cell = { x: parent.x + direction.x, z: parent.z + direction.z };
       const surface = surfaces.get(columnKey(cell.x, cell.z));
       if (
         surface &&
         surfaceIsTraversable(parent, surface) &&
+        Math.abs(surface.y - parentSurface.y) <= 1 &&
         !occupied.has(columnKey(cell.x, cell.z))
       ) {
         return cell;
@@ -1112,6 +1158,7 @@ function isReadyToBreed(animal: Animal) {
 function hasBreedingPartner(
   animal: Animal,
   animalsById: ReadonlyMap<string, Animal>,
+  surfaces: ReadonlyMap<string, VoxelBlock>,
 ) {
   if (!isReadyToBreed(animal)) return false;
   return [...animalsById.values()].some(
@@ -1119,7 +1166,7 @@ function hasBreedingPartner(
       candidate.id !== animal.id &&
       candidate.kind === animal.kind &&
       isReadyToBreed(candidate) &&
-      distance(animal, candidate) <= MATE_SEARCH_RADIUS,
+      standingDistance(animal, candidate, surfaces) <= MATE_SEARCH_RADIUS,
   );
 }
 
@@ -1396,7 +1443,7 @@ export function advanceEcosystem(
   for (const originalPredator of predators) {
     let predator = animalsById.get(originalPredator.id);
     if (!predator) continue;
-    if (hasBreedingPartner(predator, animalsById)) continue;
+    if (hasBreedingPartner(predator, animalsById, surfaces)) continue;
     const preyKinds = ANIMALS[predator.kind].prey;
     const prey = [...animalsById.values()]
       .filter(
@@ -1406,16 +1453,17 @@ export function advanceEcosystem(
       )
       .sort(
         (a, b) =>
-          distance(predator!, a) - distance(predator!, b) ||
+          standingDistance(predator!, a, surfaces) -
+            standingDistance(predator!, b, surfaces) ||
           a.id.localeCompare(b.id),
       )[0];
     if (!prey) continue;
 
     actedThisTick.add(predator.id);
-    if (distance(predator, prey) > 1) {
+    if (!animalsCanInteract(predator, prey, surfaces)) {
       if (!animalMovesOnTick(predator, tick)) continue;
       occupied.delete(columnKey(predator.x, predator.z));
-      const moved = moveToward(predator, prey, surfaces, occupied, 1);
+      const moved = moveTowardAnimal(predator, prey, surfaces, occupied);
       animalsById.set(predator.id, moved);
       occupied.add(columnKey(moved.x, moved.z));
       continue;
@@ -1502,11 +1550,12 @@ export function advanceEcosystem(
               humanSearchRadius(candidate),
             ),
           );
-          return distance(currentFirst, candidate) <= sharedSearchRadius;
+          return standingDistance(currentFirst, candidate, surfaces) <= sharedSearchRadius;
         })
         .sort(
           (a, b) =>
-            distance(currentFirst, a) - distance(currentFirst, b) ||
+            standingDistance(currentFirst, a, surfaces) -
+              standingDistance(currentFirst, b, surfaces) ||
             a.id.localeCompare(b.id),
         )[0];
       if (!partner) continue;
@@ -1518,7 +1567,7 @@ export function advanceEcosystem(
       actedThisTick.add(currentFirst.id);
       actedThisTick.add(currentPartner.id);
 
-      if (distance(currentFirst, currentPartner) <= 1) {
+      if (animalsCanInteract(currentFirst, currentPartner, surfaces)) {
         const babyCell = findBabyCell([currentFirst, currentPartner], surfaces, occupied);
         if (!babyCell) continue;
         animalsById.set(currentFirst.id, {
@@ -1545,12 +1594,12 @@ export function advanceEcosystem(
       }
 
       occupied.delete(columnKey(currentFirst.x, currentFirst.z));
-      const movedFirst = moveToward(currentFirst, currentPartner, surfaces, occupied, 1);
+      const movedFirst = moveTowardAnimal(currentFirst, currentPartner, surfaces, occupied);
       animalsById.set(currentFirst.id, movedFirst);
       occupied.add(columnKey(movedFirst.x, movedFirst.z));
 
       occupied.delete(columnKey(currentPartner.x, currentPartner.z));
-      const movedPartner = moveToward(currentPartner, movedFirst, surfaces, occupied, 1);
+      const movedPartner = moveTowardAnimal(currentPartner, movedFirst, surfaces, occupied);
       animalsById.set(currentPartner.id, movedPartner);
       occupied.add(columnKey(movedPartner.x, movedPartner.z));
     }
@@ -1630,19 +1679,23 @@ export function advanceEcosystem(
             return (
               candidate.id !== human!.id &&
               ANIMALS.human.prey.includes(candidate.kind) &&
-              (emergencyHunt || distance(human!, candidate) <= humanSearchRadius(human!)) &&
+              (
+                emergencyHunt ||
+                standingDistance(human!, candidate, surfaces) <= humanSearchRadius(human!)
+              ) &&
               (!dangerous || acceptsDanger || emergencyHunt)
             );
           },
         )
         .sort(
           (a, b) =>
-            distance(human!, a) - distance(human!, b) ||
+            standingDistance(human!, a, surfaces) -
+              standingDistance(human!, b, surfaces) ||
             a.id.localeCompare(b.id),
         )[0];
       if (prey) {
-        if (distance(human, prey) > 1) {
-          saveHuman(moveToward(human, prey, surfaces, occupied, 1));
+        if (!animalsCanInteract(human, prey, surfaces)) {
+          saveHuman(moveTowardAnimal(human, prey, surfaces, occupied));
           continue;
         }
         const huntingHuman = faceToward(human, prey);
@@ -1812,11 +1865,12 @@ export function advanceEcosystem(
           candidate.kind === currentFirst.kind &&
           candidate.id !== first.id &&
           !paired.has(candidate.id) &&
-          distance(currentFirst, candidate) <= MATE_SEARCH_RADIUS,
+          standingDistance(currentFirst, candidate, surfaces) <= MATE_SEARCH_RADIUS,
       )
       .sort(
         (a, b) =>
-          distance(currentFirst, a) - distance(currentFirst, b) ||
+          standingDistance(currentFirst, a, surfaces) -
+            standingDistance(currentFirst, b, surfaces) ||
           a.id.localeCompare(b.id),
       )[0];
     if (!partner) continue;
@@ -1825,7 +1879,7 @@ export function advanceEcosystem(
     paired.add(partner.id);
     let currentPartner = animalsById.get(partner.id)!;
 
-    if (distance(currentFirst, currentPartner) <= 1) {
+    if (animalsCanInteract(currentFirst, currentPartner, surfaces)) {
       const babyCell = findBabyCell([currentFirst, currentPartner], surfaces, occupied);
       if (babyCell) {
         animalsById.set(first.id, {
@@ -1861,7 +1915,7 @@ export function advanceEcosystem(
 
     occupied.delete(columnKey(currentFirst.x, currentFirst.z));
     const movedFirst = animalMovesOnTick(currentFirst, tick)
-      ? moveToward(currentFirst, currentPartner, surfaces, occupied, 1)
+      ? moveTowardAnimal(currentFirst, currentPartner, surfaces, occupied)
       : currentFirst;
     animalsById.set(first.id, movedFirst);
     occupied.add(columnKey(movedFirst.x, movedFirst.z));
@@ -1869,7 +1923,7 @@ export function advanceEcosystem(
     currentPartner = animalsById.get(partner.id)!;
     occupied.delete(columnKey(currentPartner.x, currentPartner.z));
     const movedPartner = animalMovesOnTick(currentPartner, tick)
-      ? moveToward(currentPartner, movedFirst, surfaces, occupied, 1)
+      ? moveTowardAnimal(currentPartner, movedFirst, surfaces, occupied)
       : currentPartner;
     animalsById.set(partner.id, movedPartner);
     occupied.add(columnKey(movedPartner.x, movedPartner.z));

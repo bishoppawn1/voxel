@@ -132,8 +132,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   only when its footprint is unobstructed;
   otherwise it waits and tries again on a later ecosystem tick. Generated
   canopies do not become animal platforms: animals walk on clear ground below
-  high branches, cannot enter trunk columns, and move to nearby safe ground if
-  an older save left them inside a trunk.
+  high branches, can be spawned there, cannot enter trunk columns, and move to
+  nearby safe ground if an older save left them inside a trunk.
 - A starter or newly reset world contains two adult sheep on grassy terrain,
   naturally seeded kelp, two small fish, and one big fish in its pond.
   The player can spawn Sheep, Cows, Pigs, Rabbits, Goats, Deer, Horses,
@@ -174,7 +174,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 - Two nearby adults of any non-human animal species become breeding partners when both
   have at least 70 hunger and their breeding cooldowns are ready. They approach
   one another, including predators choosing a mate before prey. When adjacent
-  and a neighboring surface is open, each parent spends 30 hunger to create a
+  on surfaces no more than one block level apart, and a neighboring reachable
+  surface is open, each parent spends 30 hunger to create a
   visibly smaller baby of their species. Babies eat but do not breed; after
   three meals, a baby visibly grows into an adult and begins a short breeding
   cooldown.
@@ -222,6 +223,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   predator as food. All five can enter Water to hunt both Small Fish and Big
   Fish. A predator seeks the nearest listed prey and has higher
   health and attack damage than herbivores. When it reaches prey, that animal
+  must be on a horizontally neighboring surface no more than one block level
+  higher or lower; predators cannot attack through cliffs or into canopies. It
   has a 15% deterministic chance to fight back and otherwise flees if its own
   movement cadence is ready. A fleeing animal moves to an open reachable
   surface farther from the predator, or is caught if no escape exists. A
