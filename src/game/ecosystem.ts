@@ -43,23 +43,47 @@ const DIRECTIONS = [
   { x: 0, z: -1 },
 ] as const;
 
-const HUMAN_HOUSE_BLUEPRINT = [
-  { x: -1, y: 0, z: -1 },
-  { x: -1, y: 0, z: 0 },
-  { x: -1, y: 0, z: 1 },
-  { x: 0, y: 0, z: -1 },
-  { x: 1, y: 0, z: -1 },
-  { x: 1, y: 0, z: 0 },
-  { x: 1, y: 0, z: 1 },
-  { x: -1, y: 1, z: -1 },
-  { x: -1, y: 1, z: 1 },
-  { x: 1, y: 1, z: -1 },
-  { x: 1, y: 1, z: 1 },
-  { x: 0, y: 2, z: 0 },
-  { x: -1, y: 2, z: 0 },
-  { x: 1, y: 2, z: 0 },
-  { x: 0, y: 2, z: -1 },
-  { x: 0, y: 2, z: 1 },
+const HUMAN_HOUSE_WIDTH = 5;
+const HUMAN_HOUSE_DEPTH = 5;
+const HUMAN_HOUSE_FRONT_Z = 2;
+const HUMAN_HOUSE_BACK_Z = HUMAN_HOUSE_FRONT_Z + HUMAN_HOUSE_DEPTH - 1;
+const HUMAN_HOUSE_HALF_WIDTH = Math.floor(HUMAN_HOUSE_WIDTH / 2);
+
+export const HUMAN_HOUSE_BLUEPRINT = [
+  // Build the lower wall ring first, leaving a centered doorway toward the
+  // outdoor workbench at the origin.
+  ...Array.from({ length: HUMAN_HOUSE_WIDTH }, (_, index) => index - HUMAN_HOUSE_HALF_WIDTH)
+    .filter((x) => x !== 0)
+    .map((x) => ({ x, y: 0, z: HUMAN_HOUSE_FRONT_Z })),
+  ...Array.from({ length: HUMAN_HOUSE_WIDTH }, (_, index) => index - HUMAN_HOUSE_HALF_WIDTH)
+    .map((x) => ({ x, y: 0, z: HUMAN_HOUSE_BACK_Z })),
+  ...Array.from({ length: HUMAN_HOUSE_DEPTH - 2 }, (_, index) => index + HUMAN_HOUSE_FRONT_Z + 1)
+    .flatMap((z) => [
+      { x: -HUMAN_HOUSE_HALF_WIDTH, y: 0, z },
+      { x: HUMAN_HOUSE_HALF_WIDTH, y: 0, z },
+    ]),
+  // The upper walls keep the door open and add one window on each remaining
+  // side so the finished structure reads as a cabin rather than a solid box.
+  ...Array.from({ length: HUMAN_HOUSE_WIDTH }, (_, index) => index - HUMAN_HOUSE_HALF_WIDTH)
+    .filter((x) => x !== 0)
+    .map((x) => ({ x, y: 1, z: HUMAN_HOUSE_FRONT_Z })),
+  ...Array.from({ length: HUMAN_HOUSE_WIDTH }, (_, index) => index - HUMAN_HOUSE_HALF_WIDTH)
+    .filter((x) => x !== 0)
+    .map((x) => ({ x, y: 1, z: HUMAN_HOUSE_BACK_Z })),
+  ...Array.from({ length: HUMAN_HOUSE_DEPTH - 2 }, (_, index) => index + HUMAN_HOUSE_FRONT_Z + 1)
+    .filter((z) => z !== HUMAN_HOUSE_FRONT_Z + Math.floor(HUMAN_HOUSE_DEPTH / 2))
+    .flatMap((z) => [
+      { x: -HUMAN_HOUSE_HALF_WIDTH, y: 1, z },
+      { x: HUMAN_HOUSE_HALF_WIDTH, y: 1, z },
+    ]),
+  // A complete flat roof closes the cabin while preserving a clear 3x3 room
+  // below it.
+  ...Array.from({ length: HUMAN_HOUSE_WIDTH }, (_, xIndex) =>
+    Array.from({ length: HUMAN_HOUSE_DEPTH }, (_, zIndex) => ({
+      x: xIndex - HUMAN_HOUSE_HALF_WIDTH,
+      y: 2,
+      z: zIndex + HUMAN_HOUSE_FRONT_Z,
+    }))).flat(),
 ] as const;
 
 export type VegetationKind = 'grass' | 'flower' | 'tall-grass' | 'sapling' | 'kelp';

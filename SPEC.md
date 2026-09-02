@@ -199,9 +199,13 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   its priority changes. Only the equipped tool provides its work bonus. Later
   logs become one Planks block each. Owned tools remain worn equipment rather
   than extra hand inventory, so the Human still carries no more than one resource.
-- Once equipped, a Human carries each Planks result to the next cell in a small
-  square-house blueprint around its bench. It places only one Planks block per
-  trip. Destroying the bench cancels anything left inside it.
+- Once equipped, a Human carries each Planks result to the next cell in a
+  five-by-five cabin blueprint. The cabin has a clear three-by-three interior,
+  a two-block-tall front doorway, side and rear window openings, and a complete
+  roof. Its doorway faces the communal Basic Crafting Bench, which remains
+  outside with a clear cell between the workshop and house. A Human places only
+  one Planks block per trip. Destroying the bench cancels anything left inside
+  it.
 - Every founder receives bounded individual Aggression, Caution, Exploration,
   Gathering, Craftsmanship, and Efficiency values. Aggression changes how early
   it hunts and its attack strength; Caution changes the health risk it accepts;
@@ -334,7 +338,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 - Humans carry one resource, hunt animals, chop Wood, share and use a nearby
   Basic Crafting Bench, craft an Axe, Hammer, and Spear, turn later logs into
   Planks, switch among those tools as their job changes, and place those planks
-  into a small house one trip at a time. Healthy mature
+  into a roomy five-by-five cabin while keeping the shared bench outside.
+  Healthy mature
   unrelated pairs can produce children whose six behavior traits average both
   parents with bounded mutation. Parent-child and sibling pairing is blocked,
   childhood takes 30 ticks, and total Human population never exceeds 40.

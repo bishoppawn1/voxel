@@ -6,6 +6,7 @@ import {
   ANIMAL_KEYS,
   BABY_GROWTH_MEALS,
   HUMAN_CHILDHOOD_TICKS,
+  HUMAN_HOUSE_BLUEPRINT,
   HUMAN_MAX_POPULATION,
   HUMAN_REPRODUCTION_MIN_HUNGER,
   HERBIVORE_FIGHT_BACK_CHANCE,
@@ -766,12 +767,16 @@ describe('human crafting and building', () => {
     expect(finished.animals[0].tools).toEqual(['axe']);
   });
 
-  it('places one carried plank into the next part of a small house', () => {
+  it('places one carried plank into the next part of a roomy house outside the bench', () => {
     const bench = block('bench', 1, 0, 'crafting-bench', 1);
-    const world = [block('ground', 0, 0, 'stone'), block('bench-ground', 1, 0, 'stone'), bench];
+    const world = [
+      block('ground', 0, 2, 'stone'),
+      block('bench-ground', 1, 0, 'stone'),
+      bench,
+    ];
     const ecosystem: EcosystemState = {
       ...emptyEcosystem(),
-      animals: [animal('human', 'human-0', 0, 0, {
+      animals: [animal('human', 'human-0', 0, 2, {
         heldItem: 'planks',
         tools: ['axe', 'hammer', 'spear'],
         workbenchId: bench.id,
@@ -782,13 +787,33 @@ describe('human crafting and building', () => {
 
     expect(result.blocks).toContainEqual({
       id: 'human-human-0-house-0',
-      x: 0,
+      x: -1,
       y: 1,
-      z: -1,
+      z: 2,
       material: 'planks',
     });
     expect(result.ecosystem.animals[0]).toMatchObject({ activeTool: 'hammer' });
     expect(result.ecosystem.animals[0].heldItem).toBeUndefined();
+  });
+
+  it('keeps the workbench outside a roofed cabin with a clear doorway and 3x3 interior', () => {
+    const occupied = new Set(
+      HUMAN_HOUSE_BLUEPRINT.map(({ x, y, z }) => `${x},${y},${z}`),
+    );
+
+    expect(occupied.size).toBe(HUMAN_HOUSE_BLUEPRINT.length);
+    expect([...HUMAN_HOUSE_BLUEPRINT].every(({ z }) => z >= 2)).toBe(true);
+    expect(occupied.has('0,0,0')).toBe(false);
+    expect(occupied.has('0,0,2')).toBe(false);
+    expect(occupied.has('0,1,2')).toBe(false);
+
+    for (const x of [-1, 0, 1]) {
+      for (const z of [3, 4, 5]) {
+        expect(occupied.has(`${x},0,${z}`)).toBe(false);
+        expect(occupied.has(`${x},1,${z}`)).toBe(false);
+        expect(occupied.has(`${x},2,${z}`)).toBe(true);
+      }
+    }
   });
 
   it('hunts a neighboring animal and uses a spear for a clean kill', () => {
