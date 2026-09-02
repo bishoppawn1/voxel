@@ -343,8 +343,10 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   gravity, and liquid flow while leaving direct editing controls available.
 - Selecting an animal displays its name and diet, and the spawn preview clearly
   distinguishes a valid surface from an occupied or otherwise invalid one.
-- Every animal has a species-specific low-poly silhouette rather than sharing a
-  recolored quadruped body. Large identifying features stay readable at the
+- Every animal is assembled entirely from hard-edged, grid-snapped cuboids so
+  its pixelated voxel style matches the ground. Each still has a
+  species-specific silhouette rather than sharing a recolored quadruped body.
+  Large identifying features stay readable at the
   normal camera distance: horns and antlers, ears and muzzles, manes and tails,
   wings and beaks, shells and flippers, and the Crocodile's long body and snout.
   Humans have an upright silhouette and visibly show a carried log or plank and

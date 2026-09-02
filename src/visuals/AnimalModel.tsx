@@ -16,6 +16,14 @@ type PartData = {
 type Appearance = { scale: number; parts: PartData[] };
 
 const scaled = ([x, y, z]: V3): V3 => [x * BLOCK_SIZE, y * BLOCK_SIZE, z * BLOCK_SIZE];
+const MODEL_PIXEL_STEP = 1 / 32;
+const snap = (value: number) => Math.round(value / MODEL_PIXEL_STEP) * MODEL_PIXEL_STEP;
+const snapped = ([x, y, z]: V3): V3 => [snap(x), snap(y), snap(z)];
+const voxelSize = ({ shape, size }: PartData): V3 => {
+  if (shape === 'round') return snapped([size[0] * 2, size[1] * 2, size[2] * 2]);
+  if (shape === 'cone') return snapped([size[0] * 2, size[1], size[0] * 2]);
+  return snapped(size);
+};
 const box = (position: V3, size: V3, color: string, rotation?: V3): PartData =>
   ({ shape: 'box', position, size, color, rotation });
 const round = (position: V3, size: V3, color: string): PartData =>
@@ -213,18 +221,14 @@ const APPEARANCES: Record<string, Appearance> = {
 };
 
 function Part({ part }: { part: PartData }) {
-  if (part.shape === 'round') {
-    return <mesh position={scaled(part.position)} scale={part.size} castShadow>
-      <sphereGeometry args={[BLOCK_SIZE, 8, 6]} /><meshStandardMaterial color={part.color} roughness={0.92} />
-    </mesh>;
-  }
-  if (part.shape === 'cone') {
-    return <mesh position={scaled(part.position)} rotation={part.rotation} castShadow>
-      <coneGeometry args={[part.size[0] * BLOCK_SIZE, part.size[1] * BLOCK_SIZE, 5]} /><meshStandardMaterial color={part.color} roughness={0.88} />
-    </mesh>;
-  }
-  return <mesh position={scaled(part.position)} rotation={part.rotation} castShadow>
-    <boxGeometry args={scaled(part.size)} /><meshStandardMaterial color={part.color} roughness={0.9} />
+  return <mesh
+    position={scaled(snapped(part.position))}
+    rotation={part.rotation}
+    castShadow
+    receiveShadow
+  >
+    <boxGeometry args={scaled(voxelSize(part))} />
+    <meshStandardMaterial color={part.color} roughness={0.96} flatShading />
   </mesh>;
 }
 
@@ -237,7 +241,11 @@ function AnimalFire() {
   return <group ref={flames} position={[0, BLOCK_SIZE * 0.55, 0]}>
     {[-0.26, 0, 0.26].map((x, index) => (
       <mesh key={x} position={[BLOCK_SIZE * x, BLOCK_SIZE * (0.28 + index * 0.08), 0]}>
-        <coneGeometry args={[BLOCK_SIZE * 0.15, BLOCK_SIZE * 0.62, 6]} />
+        <boxGeometry args={[
+          BLOCK_SIZE * (index === 1 ? 0.2 : 0.16),
+          BLOCK_SIZE * (0.48 + index * 0.08),
+          BLOCK_SIZE * (index === 1 ? 0.2 : 0.16),
+        ]} />
         <meshBasicMaterial color={index === 1 ? '#ffd05a' : '#f06a2c'} transparent opacity={0.9} />
       </mesh>
     ))}
@@ -337,7 +345,7 @@ export const AnimalModel = memo(function AnimalModel({
             key={index}
             position={[BLOCK_SIZE * index * 0.12, BLOCK_SIZE * index * 0.15, 0]}
           >
-            <sphereGeometry args={[BLOCK_SIZE * (0.045 + index * 0.015), 7, 5]} />
+            <boxGeometry args={Array(3).fill(BLOCK_SIZE * (0.08 + index * 0.03)) as V3} />
             <meshBasicMaterial color="#a9c5e8" transparent opacity={0.78} />
           </mesh>
         ))}
