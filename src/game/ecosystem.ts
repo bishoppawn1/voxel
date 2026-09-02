@@ -35,6 +35,7 @@ const HUMAN_REPRODUCTION_AGE = 12;
 const HUMAN_MUTATION_RANGE = 8;
 const HUMAN_EMERGENCY_HUNGER = 36;
 const HUMAN_MIN_MATE_SEARCH_RADIUS = 24;
+export const HUMAN_WORKBENCH_SEARCH_RADIUS = 10;
 
 const DIRECTIONS = [
   { x: 1, z: 0 },
@@ -1680,7 +1681,7 @@ export function advanceEcosystem(
           (block) =>
             block.material === 'crafting-bench' &&
             !consumedBlockIds.has(block.id) &&
-            distance(human!, block) <= humanSearchRadius(human!),
+            distance(human!, block) <= HUMAN_WORKBENCH_SEARCH_RADIUS,
         )
         .sort(
           (a, b) =>

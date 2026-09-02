@@ -9,6 +9,7 @@ import {
   HUMAN_HOUSE_BLUEPRINT,
   HUMAN_MAX_POPULATION,
   HUMAN_REPRODUCTION_MIN_HUNGER,
+  HUMAN_WORKBENCH_SEARCH_RADIUS,
   HERBIVORE_FIGHT_BACK_CHANCE,
   HERBIVORE_KEYS,
   MAX_ANIMAL_HUNGER,
@@ -722,6 +723,71 @@ describe('human crafting and building', () => {
       expect.objectContaining({ id: 'human-0', workbenchId: bench.id, crafting: 'axe' }),
       expect.objectContaining({ id: 'human-1', workbenchId: bench.id, crafting: 'axe' }),
     ]));
+  });
+
+  it('adopts an existing crafting bench exactly ten spaces away', () => {
+    const bench = block(
+      'shared-bench',
+      HUMAN_WORKBENCH_SEARCH_RADIUS,
+      0,
+      'crafting-bench',
+      1,
+    );
+    const world = [
+      ...Array.from({ length: HUMAN_WORKBENCH_SEARCH_RADIUS + 1 }, (_, x) =>
+        block(`ground-${x}`, x, 0, 'stone')),
+      bench,
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('human', 'human-0', 0, 0, { heldItem: 'wood' })],
+      nextEntityId: 1,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 1);
+
+    expect(result.blocks.filter(({ material }) => material === 'crafting-bench')).toEqual([bench]);
+    expect(result.ecosystem.animals[0]).toMatchObject({
+      workbenchId: bench.id,
+      heldItem: 'wood',
+      x: 1,
+      z: 0,
+    });
+  });
+
+  it('builds its own crafting bench when the nearest one is eleven spaces away', () => {
+    const distantBench = block(
+      'distant-bench',
+      HUMAN_WORKBENCH_SEARCH_RADIUS + 1,
+      0,
+      'crafting-bench',
+      1,
+    );
+    const world = [
+      ...Array.from({ length: HUMAN_WORKBENCH_SEARCH_RADIUS + 2 }, (_, x) =>
+        block(`ground-${x}`, x, 0, 'stone')),
+      distantBench,
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('human', 'human-0', 0, 0, { heldItem: 'wood' })],
+      nextEntityId: 1,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 1);
+
+    expect(result.blocks.filter(({ material }) => material === 'crafting-bench')).toEqual([
+      distantBench,
+      expect.objectContaining({
+        id: 'human-human-0-workbench',
+        x: 1,
+        y: 1,
+        z: 0,
+      }),
+    ]);
+    expect(result.ecosystem.animals[0]).toMatchObject({
+      workbenchId: 'human-human-0-workbench',
+    });
   });
 
   it('puts one log into the bench, waits, and takes one plank out', () => {

@@ -187,8 +187,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   communal bench is nearby, its first log becomes a Basic Crafting Bench on a
   neighboring safe surface.
 - Before constructing a bench, a Human adopts the nearest existing Basic
-  Crafting Bench inside its exploration range. Nearby Humans therefore share a
-  communal workshop and contribute planks to the same house instead of each
+  Crafting Bench within ten horizontal grid steps. If no bench is within ten
+  steps, it uses its first log to build its own. Nearby Humans therefore share
+  a communal workshop and contribute planks to the same house instead of each
   creating a duplicate bench. A Human places one carried log into its adopted
   bench and leaves its hand empty while the bench works. It takes the result
   when the recipe finishes. Its first three
