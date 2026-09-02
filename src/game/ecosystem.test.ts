@@ -884,6 +884,97 @@ describe('human crafting and building', () => {
     expect(result.ecosystem.animals[0].heldItem).toBeUndefined();
   });
 
+  it('continues a half-built cabin using planks left by a previous builder', () => {
+    const bench = block('bench', 1, 0, 'crafting-bench', 1);
+    const firstPart = HUMAN_HOUSE_BLUEPRINT[0];
+    const secondPart = HUMAN_HOUSE_BLUEPRINT[1];
+    const existingPlank = block(
+      'human-former-builder-house-0',
+      bench.x + firstPart.x,
+      bench.z + firstPart.z,
+      'planks',
+      bench.y + firstPart.y,
+    );
+    const world = [
+      block('human-ground', 1, 2, 'stone'),
+      block('bench-ground', 1, 0, 'stone'),
+      bench,
+      existingPlank,
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('human', 'human-0', 1, 2, {
+        heldItem: 'planks',
+        tools: ['hammer'],
+        workbenchId: bench.id,
+      })],
+      nextEntityId: 1,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 1);
+
+    expect(result.blocks).toContainEqual(existingPlank);
+    expect(result.blocks).toContainEqual({
+      id: 'human-human-0-house-1',
+      x: bench.x + secondPart.x,
+      y: bench.y + secondPart.y,
+      z: bench.z + secondPart.z,
+      material: 'planks',
+    });
+    expect(result.ecosystem.animals[0].heldItem).toBeUndefined();
+  });
+
+  it('dismantles a misplaced plank before installing cabin furniture', () => {
+    const bench = block('bench', 0, 0, 'crafting-bench', 1);
+    const shell = HUMAN_HOUSE_BLUEPRINT.map((offset, index) =>
+      block(
+        `human-former-builder-house-${index}`,
+        bench.x + offset.x,
+        bench.z + offset.z,
+        'planks',
+        bench.y + offset.y,
+      ));
+    const bed = HUMAN_FURNITURE_BLUEPRINT[0];
+    const misplacedPlank = block(
+      'misplaced-plank',
+      bench.x + bed.x,
+      bench.z + bed.z,
+      'planks',
+      bench.y + bed.y,
+    );
+    const world = [
+      block('bench-ground', 0, 0, 'stone'),
+      block('human-ground', -1, 3, 'stone'),
+      block('bed-ground', -1, 4, 'stone'),
+      bench,
+      ...shell,
+      misplacedPlank,
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('human', 'human-0', -1, 3, {
+        heldItem: 'planks',
+        tools: ['hammer'],
+        workbenchId: bench.id,
+      })],
+      nextEntityId: 1,
+    };
+
+    const dismantled = advanceEcosystem(world, ecosystem, () => 1);
+    expect(dismantled.blocks).not.toContainEqual(misplacedPlank);
+    expect(dismantled.ecosystem.animals[0].heldItem).toBe('planks');
+
+    const rebuilt = advanceEcosystem(dismantled.blocks, dismantled.ecosystem, () => 1);
+    expect(rebuilt.blocks).toContainEqual(expect.objectContaining({
+      id: 'human-human-0-furniture-bed',
+      x: bench.x + bed.x,
+      y: bench.y + bed.y,
+      z: bench.z + bed.z,
+      material: 'planks',
+    }));
+    expect(rebuilt.ecosystem.animals[0].heldItem).toBeUndefined();
+  });
+
   it('keeps the workbench outside a roofed cabin with a clear doorway and 3x3 interior', () => {
     const occupied = new Set(
       HUMAN_HOUSE_BLUEPRINT.map(({ x, y, z }) => `${x},${y},${z}`),

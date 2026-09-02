@@ -226,6 +226,10 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   outside with a clear cell between the workshop and house. A Human places only
   one Planks block per trip. Generated cabin roofs do not replace the walkable
   interior ground in the animal surface map; walls and furniture remain solid.
+  Each blueprint cell containing Planks already counts as complete, regardless
+  of which Human placed it, so a surviving Human can finish an abandoned
+  partial cabin. If an incompatible block occupies the next required cell, the
+  builder approaches and dismantles it before placing the correct part.
   Destroying the bench cancels anything left inside it.
 - After the cabin shell is complete, Humans use later Planks to build a bed and
   pantry inside. At night a Human approaches its bed, sleeps, and recovers one
@@ -384,6 +388,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   and the pantry to reduce overnight hunger loss. Right-clicking a Human
   without dragging opens its individual stats. A Human that makes no progress
   on a task for eight awake ticks abandons it and retries reachable work.
+  Surviving builders reuse Planks in abandoned cabin blueprint cells, skip
+  completed parts, and dismantle incompatible blocks before continuing.
   Healthy mature
   unrelated pairs can produce children whose six behavior traits average both
   parents with bounded mutation. Parent-child and sibling pairing is blocked,

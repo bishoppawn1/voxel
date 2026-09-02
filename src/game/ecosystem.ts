@@ -1311,11 +1311,17 @@ function findWorkbenchCell(
   return undefined;
 }
 
-function findHouseTarget(
+type HumanConstructionTask = {
+  action: 'build' | 'dismantle';
+  block: VoxelBlock;
+};
+
+function findHouseTask(
   human: Animal,
   workbench: VoxelBlock,
-  occupiedBlocks: ReadonlySet<string>,
-) {
+  blocksByCell: ReadonlyMap<string, VoxelBlock>,
+  consumedBlockIds: ReadonlySet<string>,
+): HumanConstructionTask | undefined {
   for (let index = 0; index < HUMAN_HOUSE_BLUEPRINT.length; index += 1) {
     const offset = HUMAN_HOUSE_BLUEPRINT[index];
     const cell = {
@@ -1323,41 +1329,50 @@ function findHouseTarget(
       y: workbench.y + offset.y,
       z: workbench.z + offset.z,
     };
-    if (
-      isInWorld(cell) &&
-      !occupiedBlocks.has(`${cell.x},${cell.y},${cell.z}`)
-    ) {
-      return {
+    if (!isInWorld(cell)) continue;
+    const existing = blocksByCell.get(`${cell.x},${cell.y},${cell.z}`);
+    if (existing && !consumedBlockIds.has(existing.id)) {
+      if (existing.material === 'planks') continue;
+      return { action: 'dismantle', block: existing };
+    }
+    return {
+      action: 'build',
+      block: {
         ...cell,
         id: `human-${human.id}-house-${index}`,
         material: 'planks' as const,
-      };
-    }
+      },
+    };
   }
   return undefined;
 }
 
-function findFurnishingTarget(
+function findFurnishingTask(
   human: Animal,
   workbench: VoxelBlock,
-  occupiedBlocks: ReadonlySet<string>,
-) {
+  blocksByCell: ReadonlyMap<string, VoxelBlock>,
+  consumedBlockIds: ReadonlySet<string>,
+): HumanConstructionTask | undefined {
   for (const furnishing of HUMAN_FURNITURE_BLUEPRINT) {
     const cell = {
       x: workbench.x + furnishing.x,
       y: workbench.y + furnishing.y,
       z: workbench.z + furnishing.z,
     };
-    if (
-      isInWorld(cell) &&
-      !occupiedBlocks.has(`${cell.x},${cell.y},${cell.z}`)
-    ) {
-      return {
+    if (!isInWorld(cell)) continue;
+    const existing = blocksByCell.get(`${cell.x},${cell.y},${cell.z}`);
+    if (existing && !consumedBlockIds.has(existing.id)) {
+      if (getHumanFurnitureKind(existing) === furnishing.kind) continue;
+      return { action: 'dismantle', block: existing };
+    }
+    return {
+      action: 'build',
+      block: {
         ...cell,
         id: `human-${human.id}-furniture-${furnishing.kind}`,
         material: 'planks' as const,
-      };
-    }
+      },
+    };
   }
   return undefined;
 }
@@ -2018,6 +2033,7 @@ export function advanceEcosystem(
         };
         createdBlocks.push(block);
         blocksById.set(block.id, block);
+        blocksByCell.set(`${block.x},${block.y},${block.z}`, block);
         occupiedBlockCells.add(`${block.x},${block.y},${block.z}`);
         const builder = { ...human, workbenchId: block.id };
         delete builder.heldItem;
@@ -2045,21 +2061,31 @@ export function advanceEcosystem(
     ) {
       human = equipHumanTool(human, 'hammer');
       animalsById.set(human.id, human);
-      const target = findHouseTarget(human, workbench, occupiedBlockCells) ??
-        findFurnishingTarget(human, workbench, occupiedBlockCells);
-      if (!target) {
+      const task = findHouseTask(human, workbench, blocksByCell, consumedBlockIds) ??
+        findFurnishingTask(human, workbench, blocksByCell, consumedBlockIds);
+      if (!task) {
         const stocked = { ...human };
         delete stocked.heldItem;
         saveHuman(stocked);
         continue;
       }
-      if (distance(human, target) > 1) {
-        saveHuman(moveToward(human, target, surfaces, occupied, 1));
+      if (distance(human, task.block) > 1) {
+        saveHuman(moveToward(human, task.block, surfaces, occupied, 1));
         continue;
       }
-      createdBlocks.push(target);
-      blocksById.set(target.id, target);
-      occupiedBlockCells.add(`${target.x},${target.y},${target.z}`);
+      const taskCell = `${task.block.x},${task.block.y},${task.block.z}`;
+      if (task.action === 'dismantle') {
+        consumedBlockIds.add(task.block.id);
+        occupiedBlockCells.delete(taskCell);
+        blocksById.delete(task.block.id);
+        blocksByCell.delete(taskCell);
+        saveHuman(human, true);
+        continue;
+      }
+      createdBlocks.push(task.block);
+      blocksById.set(task.block.id, task.block);
+      blocksByCell.set(taskCell, task.block);
+      occupiedBlockCells.add(taskCell);
       const builder = { ...human };
       delete builder.heldItem;
       saveHuman(builder);
@@ -2078,8 +2104,8 @@ export function advanceEcosystem(
 
     if (
       workbench &&
-      !findHouseTarget(human, workbench, occupiedBlockCells) &&
-      !findFurnishingTarget(human, workbench, occupiedBlockCells)
+      !findHouseTask(human, workbench, blocksByCell, consumedBlockIds) &&
+      !findFurnishingTask(human, workbench, blocksByCell, consumedBlockIds)
     ) {
       saveHuman(exploreWorld(human, tick, surfaces, occupied, random));
       continue;
