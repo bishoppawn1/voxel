@@ -86,7 +86,11 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   carries long spans, Planks and Basic Crafting Benches carry 24, and Wood
   carries 32. Materials still differ in strength, but placed building blocks
   should rarely slide off ordinary walls, roofs, or narrow supports.
-- Rigid and cohesive blocks can transmit support through face connections. Wood can carry a tree canopy, and leaves connect through neighboring wood and leaves within their shorter tolerance.
+- Rigid and cohesive blocks can transmit support through face connections. Wood
+  can carry a tree canopy, and Leaves can extend that canopy through neighboring
+  Leaves within their shorter tolerance. Leaves never transmit structural
+  support back into Wood or other materials, so touching canopies cannot brace
+  a neighboring trunk after that trunk is chopped.
 - Leaves remain healthy while their face-connected canopy reaches any Wood
   block. An orphaned canopy left after its Wood is chopped browns and fades
   through six ecosystem ticks, then its Leaves disappear.
@@ -366,6 +370,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   slower cadence, and seek lower open cells. Lava heat ignites nearby
   flammables, fire spreads, and weak vertical columns cannot exceed their
   material tolerance.
+- Wood supports its Leaves, but Leaves never hold up Wood or other solid blocks;
+  a chopped trunk falls even when its canopy touches a neighboring tree.
 - Dirt can become grassy dirt, grassy dirt can sprout non-block vegetation, and
   covered grassy dirt returns to Dirt. Short grass matures into tall grass, and
   rare tree saplings mature into several tall Wood-and-Leaves tree shapes on

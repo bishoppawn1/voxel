@@ -307,6 +307,7 @@ function anchoredBlockIds(blocks: VoxelBlock[]) {
         }),
       );
       if (!neighbor) continue;
+      if (block.material === 'leaves' && neighbor.material !== 'leaves') continue;
 
       const neighborTolerance = MATERIALS[neighbor.material].supportTolerance;
       const sourceTolerance = remainingTolerance.get(block.id) ?? 0;

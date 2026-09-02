@@ -116,6 +116,26 @@ describe('voxel gravity', () => {
     expect(settleWorld(world)).toEqual({ blocks: world, moved: false });
   });
 
+  it('does not let a neighboring canopy brace a chopped tree trunk', () => {
+    const world = [
+      block('rooted-trunk-0', 0, 0, 0, 'wood'),
+      block('rooted-trunk-1', 0, 1, 0, 'wood'),
+      block('rooted-trunk-2', 0, 2, 0, 'wood'),
+      block('rooted-leaf', 1, 2, 0, 'leaves'),
+      block('touching-leaf', 2, 2, 0, 'leaves'),
+      block('stump', 3, 0, 0, 'wood'),
+      block('chopped-trunk-1', 3, 2, 0, 'wood'),
+      block('chopped-trunk-2', 3, 3, 0, 'wood'),
+    ];
+
+    const result = settleWorld(world);
+
+    expect(result.moved).toBe(true);
+    expect(result.blocks.find(({ id }) => id === 'chopped-trunk-1')?.y).toBe(1);
+    expect(result.blocks.find(({ id }) => id === 'chopped-trunk-2')?.y).toBe(2);
+    expect(result.blocks.find(({ id }) => id === 'touching-leaf')?.y).toBe(2);
+  });
+
   it.each(['sand', 'lava'] as const)(
     'does not let %s hang from the side of a wall',
     (material) => {
