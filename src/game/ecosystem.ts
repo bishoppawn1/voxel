@@ -470,6 +470,7 @@ export type Animal = {
   burning?: number;
   heldItem?: HumanHeldItem;
   tools?: HumanTool[];
+  activeTool?: HumanTool;
   workbenchId?: string;
   crafting?: HumanCraft;
   craftingReadyTick?: number;
@@ -1089,9 +1090,18 @@ function humanCraftingTicks(human: Animal) {
 
 function humanLoggingInterval(human: Animal) {
   const skilled = traitsFor(human).gathering >= 55;
-  return (human.tools ?? []).includes('axe')
+  return human.activeTool === 'axe'
     ? (skilled ? 1 : 2)
     : (skilled ? 2 : 3);
+}
+
+function equipHumanTool(human: Animal, tool?: HumanTool) {
+  const activeTool = tool && (human.tools ?? []).includes(tool) ? tool : undefined;
+  if (human.activeTool === activeTool) return human;
+  const equipped = { ...human };
+  if (activeTool) equipped.activeTool = activeTool;
+  else delete equipped.activeTool;
+  return equipped;
 }
 
 function humanCanWorkOnTick(human: Animal, tick: number) {
@@ -1660,6 +1670,9 @@ export function advanceEcosystem(
       }
     }
 
+    human = equipHumanTool(human);
+    animalsById.set(human.id, human);
+
     const humanTraits = traitsFor(human);
     const huntHealthFloor = Math.ceil(
       ANIMALS.human.maxHealth * (0.25 + humanTraits.caution * 0.004),
@@ -1692,8 +1705,13 @@ export function advanceEcosystem(
             standingDistance(human!, a, surfaces) -
               standingDistance(human!, b, surfaces) ||
             a.id.localeCompare(b.id),
-        )[0];
+      )[0];
       if (prey) {
+        human = equipHumanTool(
+          human,
+          (human.tools ?? []).includes('spear') ? 'spear' : undefined,
+        );
+        animalsById.set(human.id, human);
         if (!animalsCanInteract(human, prey, surfaces)) {
           saveHuman(moveTowardAnimal(human, prey, surfaces, occupied));
           continue;
@@ -1717,7 +1735,7 @@ export function advanceEcosystem(
           }
           human = injuredHuman;
         }
-        const damage = ((huntingHuman.tools ?? []).includes('spear') ? 4 : 2) +
+        const damage = (huntingHuman.activeTool === 'spear' ? 4 : 2) +
           Math.floor(humanTraits.aggression / 50);
         const attackedPrey = { ...defendingPrey, health: defendingPrey.health - damage };
         actedThisTick.add(prey.id);
@@ -1794,6 +1812,8 @@ export function advanceEcosystem(
       workbench &&
       (human.tools ?? []).includes('hammer')
     ) {
+      human = equipHumanTool(human, 'hammer');
+      animalsById.set(human.id, human);
       const target = findHouseTarget(human, workbench, occupiedBlockCells);
       if (!target) {
         saveHuman(human);
@@ -1834,6 +1854,11 @@ export function advanceEcosystem(
       saveHuman(exploreWorld(human, tick, surfaces, occupied));
       continue;
     }
+    human = equipHumanTool(
+      human,
+      (human.tools ?? []).includes('axe') ? 'axe' : undefined,
+    );
+    animalsById.set(human.id, human);
     if (distance(human, wood) > 1) {
       saveHuman(moveToward(human, wood, surfaces, occupied, 1));
       continue;
@@ -2067,6 +2092,10 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
             new Set(tools).size === tools.length &&
             tools.every((tool) => HUMAN_TOOL_KEYS.includes(tool))
           )) &&
+          (animal.activeTool === undefined || (
+            HUMAN_TOOL_KEYS.includes(animal.activeTool) &&
+            Boolean(tools?.includes(animal.activeTool))
+          )) &&
           (animal.workbenchId === undefined || typeof animal.workbenchId === 'string') &&
           (animal.crafting === undefined || [...HUMAN_TOOL_KEYS, 'planks'].includes(animal.crafting)) &&
           ((animal.crafting === undefined && animal.craftingReadyTick === undefined) || (
@@ -2083,6 +2112,7 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
         )
       : animal.heldItem === undefined &&
         animal.tools === undefined &&
+        animal.activeTool === undefined &&
         animal.workbenchId === undefined &&
         animal.crafting === undefined &&
         animal.craftingReadyTick === undefined &&

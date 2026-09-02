@@ -633,7 +633,35 @@ describe('human crafting and building', () => {
     const result = advanceEcosystem(world, ecosystem, () => 1);
 
     expect(result.blocks.some(({ id }) => id === 'log')).toBe(false);
-    expect(result.ecosystem.animals[0]).toMatchObject({ heldItem: 'wood' });
+    expect(result.ecosystem.animals[0]).toMatchObject({
+      heldItem: 'wood',
+      activeTool: 'axe',
+    });
+  });
+
+  it('switches from its spear back to its axe when logging resumes', () => {
+    const world = [
+      block('ground', 0, 0, 'stone'),
+      block('tree-ground', 1, 0, 'stone'),
+      block('log', 1, 0, 'wood', 1),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('human', 'human-0', 0, 0, {
+        tools: ['axe', 'hammer', 'spear'],
+        activeTool: 'spear',
+        traits: { ...createFounderHumanTraits('human-0'), gathering: 100 },
+      })],
+      nextEntityId: 1,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 1);
+
+    expect(result.blocks.some(({ id }) => id === 'log')).toBe(false);
+    expect(result.ecosystem.animals[0]).toMatchObject({
+      heldItem: 'wood',
+      activeTool: 'axe',
+    });
   });
 
   it('uses its first log to build a basic crafting bench', () => {
@@ -759,6 +787,7 @@ describe('human crafting and building', () => {
       z: -1,
       material: 'planks',
     });
+    expect(result.ecosystem.animals[0]).toMatchObject({ activeTool: 'hammer' });
     expect(result.ecosystem.animals[0].heldItem).toBeUndefined();
   });
 
@@ -775,7 +804,12 @@ describe('human crafting and building', () => {
     const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
 
     expect(result.animals).toHaveLength(1);
-    expect(result.animals[0]).toMatchObject({ kind: 'human', eaten: 1, hunger: 63 });
+    expect(result.animals[0]).toMatchObject({
+      kind: 'human',
+      eaten: 1,
+      hunger: 63,
+      activeTool: 'spear',
+    });
   });
 
   it('actively explores instead of standing still when no task is visible', () => {
@@ -1848,6 +1882,7 @@ describe('ecosystem persistence validation', () => {
     const human = animal('human', 'human-0', 0, 0, {
       heldItem: 'wood',
       tools: ['axe', 'hammer'],
+      activeTool: 'axe',
       workbenchId: 'bench-0',
     });
     expect(isValidEcosystem({ ...emptyEcosystem(), animals: [human] })).toBe(true);
@@ -1861,7 +1896,11 @@ describe('ecosystem persistence validation', () => {
     })).toBe(false);
     expect(isValidEcosystem({
       ...emptyEcosystem(),
-      animals: [{ ...animal('sheep', 'sheep-0'), tools: ['axe'] }],
+      animals: [{ ...human, activeTool: 'spear' }],
+    })).toBe(false);
+    expect(isValidEcosystem({
+      ...emptyEcosystem(),
+      animals: [{ ...animal('sheep', 'sheep-0'), activeTool: 'axe' }],
     })).toBe(false);
   });
 

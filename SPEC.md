@@ -194,8 +194,11 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   when the recipe finishes. Its first three
   recipes produce an Axe, Hammer, and Spear in that order; the Axe makes logging
   faster, the Hammer enables construction work, and the Spear improves hunting.
-  Later logs become one Planks block each. Tools are worn equipment rather than
-  extra hand inventory, so the Human still carries no more than one resource.
+  A Human equips only the tool for its current job and switches back to the Axe
+  for logging, the Hammer for construction, or the Spear for hunting whenever
+  its priority changes. Only the equipped tool provides its work bonus. Later
+  logs become one Planks block each. Owned tools remain worn equipment rather
+  than extra hand inventory, so the Human still carries no more than one resource.
 - Once equipped, a Human carries each Planks result to the next cell in a small
   square-house blueprint around its bench. It places only one Planks block per
   trip. Destroying the bench cancels anything left inside it.
@@ -284,7 +287,7 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   normal camera distance: horns and antlers, ears and muzzles, manes and tails,
   wings and beaks, shells and flippers, and the Crocodile's long body and snout.
   Humans have an upright silhouette and visibly show a carried log or plank and
-  their most recently crafted tool. Clicking a Human opens a compact individual
+  the tool equipped for their current job. Clicking a Human opens a compact individual
   inspector with its name, activity, generation, parents, vitals, equipment,
   and six trait values.
 - The first-use message should leave after the first world edit.
@@ -330,8 +333,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   before entering an occupied cell, and never plan through solid terrain.
 - Humans carry one resource, hunt animals, chop Wood, share and use a nearby
   Basic Crafting Bench, craft an Axe, Hammer, and Spear, turn later logs into
-  Planks,
-  and place those planks into a small house one trip at a time. Healthy mature
+  Planks, switch among those tools as their job changes, and place those planks
+  into a small house one trip at a time. Healthy mature
   unrelated pairs can produce children whose six behavior traits average both
   parents with bounded mutation. Parent-child and sibling pairing is blocked,
   childhood takes 30 ticks, and total Human population never exceeds 40.

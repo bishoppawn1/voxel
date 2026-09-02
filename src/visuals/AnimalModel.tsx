@@ -246,7 +246,7 @@ function AnimalFire() {
 
 function HumanEquipment({ animal }: { animal: Animal }) {
   if (animal.kind !== 'human') return null;
-  const tool = animal.tools?.at(-1);
+  const tool = animal.activeTool;
   const traitHue = animal.traits
     ? Math.round((animal.traits.exploration * 2.2 + animal.traits.aggression) % 300)
     : 170;
@@ -325,6 +325,7 @@ export const AnimalModel = memo(function AnimalModel({
   previous.animal.isBaby === next.animal.isBaby &&
   previous.animal.burning === next.animal.burning &&
   previous.animal.heldItem === next.animal.heldItem &&
+  previous.animal.activeTool === next.animal.activeTool &&
   previous.animal.tools?.join(',') === next.animal.tools?.join(',') &&
   previous.animal.traits?.aggression === next.animal.traits?.aggression &&
   previous.animal.traits?.exploration === next.animal.traits?.exploration,

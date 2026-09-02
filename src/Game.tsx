@@ -910,6 +910,7 @@ function HumanInspector({ human, onClose }: { human: Animal; onClose: () => void
         <span>Hunger <strong>{human.hunger}</strong></span>
         <span>Health <strong>{human.health}</strong></span>
         <span>Tools <strong>{human.tools?.length ?? 0}/3</strong></span>
+        <span>Equipped <strong>{human.activeTool ?? 'none'}</strong></span>
       </div>
       <div className="human-traits">
         {HUMAN_TRAIT_KEYS.map((trait) => {
