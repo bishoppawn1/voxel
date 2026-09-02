@@ -30,7 +30,8 @@ The player can:
    never changes the camera angle; it is reserved for world editing.
 6. Hold W, A, S, or D to move the camera forward, left, backward, or right
    relative to its current view. Scroll to zoom in and out.
-7. Pause or resume gravity.
+7. Pause or resume the complete simulation from the top bar, or separately
+   pause only gravity from the creation panel.
 8. Undo, redo, clear, use Reset to generate another compact starter island, or
    use New Seed to generate randomized terrain across the full build plane with
    a chance of starting wildlife.
@@ -111,10 +112,12 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 ## Liquids and fire
 
 - Water and lava use four conserved depth levels: quarter, half, three-quarter,
-  and full blocks. They fall vertically whenever possible; when blocked, a full
-  cell balances its volume across all four horizontal directions at once.
-  Thinner neighboring cells continue balancing only when their depth differs by
-  at least two quarters, keeping flow finite and even without creating liquid.
+  and full blocks. They fall vertically whenever possible. On level ground,
+  each shared horizontal edge transfers at most one quarter per flow step and
+  only while neighboring depths differ by at least two quarters. Every transfer
+  therefore reduces the local imbalance, allowing pools to become still
+  instead of alternating between checkerboard patterns. A final quarter can
+  still spill over a genuine ledge and fall to a lower open cell.
 - Liquid flow advances on a slower cadence than structural gravity. Each flow
   step remains visible, preserves an original stable ID when a cell moves or
   splits, and never places more than one liquid block in a cell.
@@ -335,6 +338,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   original one-unit block size. Palette tiles stay very small and compact
   enough to show the expanded collection without covering the world.
 - Controls must expose accessible names, selected states, disabled states, and keyboard shortcuts where applicable.
+- The top bar exposes a persistent Pause button, with the P key as its shortcut.
+  Pausing freezes the world clock, ecosystem, fire, leaf decay, structural
+  gravity, and liquid flow while leaving direct editing controls available.
 - Selecting an animal displays its name and diet, and the spawn preview clearly
   distinguishes a valid surface from an occupied or otherwise invalid one.
 - Every animal has a species-specific low-poly silhouette rather than sharing a
@@ -366,8 +372,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 - Place and Erase work on valid grid cells without duplicates.
 - Right-drag orbits; left-click never rotates the camera.
 - Left-drag never rotates the camera, including while painting blocks.
-- Liquids conserve four quarter-block depth levels, spread evenly on their
-  slower cadence, and seek lower open cells. Lava heat ignites nearby
+- Liquids conserve four quarter-block depth levels, converge to a stable pool
+  on their slower cadence without oscillating, and seek lower open cells. Lava heat ignites nearby
   flammables, fire spreads, and weak vertical columns cannot exceed their
   material tolerance.
 - Wood supports its Leaves, but Leaves never hold up Wood or other solid blocks;
@@ -414,7 +420,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   parents with bounded mutation. Parent-child and sibling pairing is blocked,
   childhood takes 30 ticks, and total Human population never exceeds 40.
 - Removing the last connection beneath or beside a structure makes the detached group settle.
-- Gravity pause and resume work as specified.
+- Whole-world pause freezes all simulation systems and resumes them together;
+  gravity-only pause and resume also work as specified.
 - Verdant Touch, Wildfire, Rain, Deep Freeze, and Thaw affect only eligible
   blocks inside their small drag brush; all five preserve IDs and positions and
   can be undone or redone.

@@ -1271,6 +1271,7 @@ export default function Game() {
   const [animalKind, setAnimalKind] = useState<AnimalKind>('sheep');
   const [activeAbility, setActiveAbility] = useState<AbilityKey>('verdant-touch');
   const [gravityOn, setGravityOn] = useState(true);
+  const [simulationPaused, setSimulationPaused] = useState(false);
   const [past, setPast] = useState<VoxelBlock[][]>([]);
   const [future, setFuture] = useState<VoxelBlock[][]>([]);
   const [settling, setSettling] = useState(false);
@@ -1311,7 +1312,7 @@ export default function Game() {
   }, [ecosystem]);
 
   useEffect(() => {
-    if (!fireActive) return;
+    if (simulationPaused || !fireActive) return;
     const fireTimer = window.setInterval(() => {
       const fire = advanceFire(blocksRef.current);
       if (!fire.changed) return;
@@ -1321,10 +1322,10 @@ export default function Game() {
     }, FIRE_TICK_MS);
 
     return () => window.clearInterval(fireTimer);
-  }, [fireActive, gravityOn]);
+  }, [fireActive, gravityOn, simulationPaused]);
 
   useEffect(() => {
-    if (!gravityOn) {
+    if (simulationPaused || !gravityOn) {
       worldTickCounter.current = 0;
       setSettling(false);
       return;
@@ -1347,9 +1348,10 @@ export default function Game() {
     }, WORLD_TICK_MS);
 
     return () => window.clearInterval(worldTimer);
-  }, [gravityOn]);
+  }, [gravityOn, simulationPaused]);
 
   useEffect(() => {
+    if (simulationPaused) return;
     const ecosystemTimer = window.setInterval(() => {
       const result = advanceEcosystem(blocksRef.current, ecosystemRef.current);
       blocksRef.current = result.blocks;
@@ -1359,7 +1361,7 @@ export default function Game() {
     }, ECOSYSTEM_TICK_MS);
 
     return () => window.clearInterval(ecosystemTimer);
-  }, []);
+  }, [simulationPaused]);
 
   const commit = (next: VoxelBlock[], didMove = false) => {
     const nextBlocks = convertCoveredGrassToSoil(next);
@@ -1381,12 +1383,12 @@ export default function Game() {
     };
     const added = [...blocks, placed];
     const displaced = settlePlacedBlockOnLiquid(added, placed.id);
-    commit(displaced.blocks, gravityOn || displaced.moved);
+    commit(displaced.blocks, !simulationPaused && (gravityOn || displaced.moved));
   };
 
   const removeBlock = (id: string) => {
     const remaining = blocks.filter((block) => block.id !== id);
-    commit(remaining, gravityOn);
+    commit(remaining, !simulationPaused && gravityOn);
   };
 
   const selectAnimal = (kind: AnimalKind) => {
@@ -1412,16 +1414,27 @@ export default function Game() {
     setSettling(true);
   };
 
+  const toggleSimulation = () => {
+    if (simulationPaused) {
+      setSimulationPaused(false);
+      if (gravityOn) setSettling(true);
+      return;
+    }
+    setSimulationPaused(true);
+    setSettling(false);
+  };
+
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === '1') setTool('place');
       if (event.key === '2') setTool('erase');
       if (event.key === '3') setTool('animal');
       if (event.key.toLowerCase() === 'g') toggleGravity();
+      if (event.key.toLowerCase() === 'p') toggleSimulation();
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [blocks, gravityOn]);
+  }, [blocks, gravityOn, simulationPaused]);
 
   const undo = () => {
     const previous = past.at(-1);
@@ -1475,7 +1488,10 @@ export default function Game() {
   const applyActiveAbilityAt = (x: number, z: number) => {
     const result = applyAbility(blocks, activeAbility, { x, z });
     if (!result.changed) return;
-    commit(result.blocks, gravityOn && ABILITIES[activeAbility].triggersGravity);
+    commit(
+      result.blocks,
+      !simulationPaused && gravityOn && ABILITIES[activeAbility].triggersGravity,
+    );
     setPowerMessage(
       `${ABILITIES[activeAbility].label} affected ${result.affected} ${result.affected === 1 ? 'block' : 'blocks'}. Keep dragging to brush another area.`,
     );
@@ -1516,6 +1532,16 @@ export default function Game() {
           <small>{blocks.length} {blocks.length === 1 ? 'block' : 'blocks'}</small>
         </div>
         <div className="top-actions">
+          <button
+            className={`icon-button reset-button pause-button ${simulationPaused ? 'paused' : ''}`}
+            type="button"
+            aria-label={simulationPaused ? 'Resume simulation' : 'Pause simulation'}
+            aria-pressed={simulationPaused}
+            onClick={toggleSimulation}
+          >
+            {simulationPaused ? <Play size={17} /> : <Pause size={17} />}
+            <span>{simulationPaused ? 'Resume' : 'Pause'}</span>
+          </button>
           <button className="icon-button" type="button" aria-label="Undo" disabled={!past.length} onClick={undo}>
             <Undo2 size={17} />
           </button>
@@ -1608,8 +1634,20 @@ export default function Game() {
         {dayCycle.isNight ? <Moon size={15} /> : <Sun size={15} />}
         <span>{dayCycle.isNight ? 'Night' : 'Day'} · {formatWorldTime(dayCycle.hour)}</span>
         <span className="status-rule" />
-        {settling ? <ArrowDown size={15} className="falling-icon" /> : <span className={`status-dot ${gravityOn ? '' : 'paused'}`} />}
-        <span>{settling ? 'Blocks falling' : gravityOn ? 'Gravity on' : 'Gravity paused'}</span>
+        {simulationPaused
+          ? <Pause size={15} />
+          : settling
+            ? <ArrowDown size={15} className="falling-icon" />
+            : <span className={`status-dot ${gravityOn ? '' : 'paused'}`} />}
+        <span>
+          {simulationPaused
+            ? 'World paused'
+            : settling
+              ? 'Blocks falling'
+              : gravityOn
+                ? 'Gravity on'
+                : 'Gravity paused'}
+        </span>
         <span className="status-rule" />
         {burningCount ? <Flame size={15} className="fire-icon" /> : <Leaf size={15} />}
         <span>

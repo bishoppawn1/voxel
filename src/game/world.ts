@@ -433,13 +433,6 @@ function settleStructures(input: VoxelBlock[]) {
   return { blocks, moved };
 }
 
-type LiquidTransfer = {
-  sourceId: string;
-  target: Cell;
-  targetKey: string;
-  material: BlockMaterial;
-};
-
 function liquidDirections(block: VoxelBlock) {
   const offset = Math.abs(block.x * 31 + block.y * 17 + block.z * 13) % HORIZONTAL_DIRECTIONS.length;
   return HORIZONTAL_DIRECTIONS.map(
@@ -573,8 +566,10 @@ export function settlePlacedBlockOnLiquid(input: VoxelBlock[], blockId: string) 
 
 /**
  * Advances fluid by one visible step while conserving quarter-block units.
- * Full cells split across all four horizontal directions at once; thinner
- * cells settle only when they are at least two quarters deeper than a neighbor.
+ * Each horizontal edge transfers at most one quarter per step, and only when
+ * doing so reduces a depth difference of at least two quarters. Processing an
+ * edge once against current levels makes the system converge instead of
+ * alternating between checkerboard patterns made from the same snapshot.
  */
 export function settleLiquidsStep(input: VoxelBlock[]) {
   const byId = new Map(input.map((block) => [block.id, block]));
@@ -638,126 +633,107 @@ export function settleLiquidsStep(input: VoxelBlock[]) {
     moved = true;
   }
 
-  const snapshot = [...byId.values()];
-  const snapshotById = new Map(snapshot.map((block) => [block.id, block]));
-  const snapshotByCell = new Map(snapshot.map((block) => [cellKey(block), block]));
-  const proposals: LiquidTransfer[] = [];
+  const horizontalLiquids = [...byId.values()]
+    .filter((block) => MATERIALS[block.material].gravityBehavior === 'fluid')
+    .sort((a, b) => a.y - b.y || a.id.localeCompare(b.id));
+  const processedEdges = new Set<string>();
+  const usedIds = new Set(input.map(({ id }) => id));
 
-  for (const source of snapshot) {
-    if (
-      MATERIALS[source.material].gravityBehavior !== 'fluid' ||
-      verticallyChanged.has(source.id)
-    ) {
-      continue;
-    }
-
-    const sourceLevel = getLiquidLevel(source);
-    const eligible = liquidDirections(source)
-      .map((offset): Cell => ({
+  for (const originalSource of horizontalLiquids) {
+    if (verticallyChanged.has(originalSource.id)) continue;
+    for (const offset of liquidDirections(originalSource)) {
+      const source = byId.get(originalSource.id);
+      if (!source) break;
+      const target: Cell = {
         x: source.x + offset.x,
         y: source.y,
         z: source.z + offset.z,
-      }))
-      .filter((target) => {
-        if (!isInWorld(target)) return false;
-        const neighbor = snapshotByCell.get(cellKey(target));
-        if (neighbor && neighbor.material !== source.material) return false;
-        const neighborLevel = neighbor ? getLiquidLevel(neighbor) : 0;
-        return sourceLevel > neighborLevel + 1;
-      })
-      .slice(0, sourceLevel);
+      };
+      if (!isInWorld(target)) continue;
+      const sourceKey = cellKey(source);
+      const targetKey = cellKey(target);
+      const edgeKey = sourceKey < targetKey
+        ? `${sourceKey}|${targetKey}`
+        : `${targetKey}|${sourceKey}`;
+      if (processedEdges.has(edgeKey)) continue;
+      processedEdges.add(edgeKey);
 
-    for (const target of eligible) {
-      proposals.push({
-        sourceId: source.id,
-        target,
-        targetKey: cellKey(target),
-        material: source.material,
-      });
+      const neighbor = byCell.get(targetKey);
+      if (
+        (neighbor && neighbor.material !== source.material) ||
+        (neighbor && verticallyChanged.has(neighbor.id))
+      ) {
+        continue;
+      }
+
+      const sourceLevel = getLiquidLevel(source);
+      const neighborLevel = neighbor ? getLiquidLevel(neighbor) : 0;
+      const belowTarget = target.y > 0
+        ? byCell.get(cellKey({ x: target.x, y: target.y - 1, z: target.z }))
+        : undefined;
+      const sourceCanSpillOverEdge = !neighbor && target.y > 0 && !belowTarget;
+      const sourceIsHigher = sourceLevel > neighborLevel + 1 || sourceCanSpillOverEdge;
+      const neighborIsHigher = Boolean(neighbor && neighborLevel > sourceLevel + 1);
+      if (!sourceIsHigher && !neighborIsHigher) continue;
+
+      const donor = neighborIsHigher ? neighbor! : source;
+      const receiver = neighborIsHigher ? source : neighbor;
+      const donorLevel = getLiquidLevel(donor);
+      const receiverLevel = receiver ? getLiquidLevel(receiver) : 0;
+      const donorKey = cellKey(donor);
+      const receiverKey = neighborIsHigher ? sourceKey : targetKey;
+      const receiverCell = neighborIsHigher ? source : target;
+
+      if (donorLevel === 1) {
+        byId.delete(donor.id);
+        byCell.delete(donorKey);
+      } else {
+        const reducedDonor = {
+          ...donor,
+          liquidLevel: (donorLevel - 1) as LiquidLevel,
+        };
+        byId.set(donor.id, reducedDonor);
+        byCell.set(donorKey, reducedDonor);
+      }
+
+      if (receiver) {
+        const raisedReceiver = {
+          ...receiver,
+          liquidLevel: (receiverLevel + 1) as LiquidLevel,
+        };
+        byId.set(receiver.id, raisedReceiver);
+        byCell.set(receiverKey, raisedReceiver);
+      } else {
+        const spread: VoxelBlock = {
+          x: receiverCell.x,
+          y: receiverCell.y,
+          z: receiverCell.z,
+          id: donorLevel === 1
+            ? donor.id
+            : flowBlockId(donor.id, receiverCell, usedIds),
+          material: donor.material,
+          liquidLevel: 1,
+        };
+        usedIds.add(spread.id);
+        byId.set(spread.id, spread);
+        byCell.set(receiverKey, spread);
+      }
+      moved = true;
+      if (donor.id === originalSource.id && donorLevel === 1) break;
     }
   }
 
-  proposals.sort(
-    (a, b) => a.targetKey.localeCompare(b.targetKey) || a.sourceId.localeCompare(b.sourceId),
-  );
-
-  const outgoing = new Map<string, number>();
-  const incoming = new Map<string, number>();
-  const targetMaterials = new Map<string, BlockMaterial>();
-  const targetCells = new Map<string, Cell>();
-  const contributors = new Map<string, string[]>();
-
-  for (const proposal of proposals) {
-    const source = snapshotById.get(proposal.sourceId);
-    if (!source) continue;
-    const sent = outgoing.get(source.id) ?? 0;
-    if (sent >= getLiquidLevel(source)) continue;
-
-    const existingTarget = snapshotByCell.get(proposal.targetKey);
-    const targetMaterial = existingTarget?.material ?? targetMaterials.get(proposal.targetKey);
-    if (targetMaterial && targetMaterial !== proposal.material) continue;
-    const targetLevel = existingTarget ? getLiquidLevel(existingTarget) : 0;
-    const received = incoming.get(proposal.targetKey) ?? 0;
-    if (targetLevel + received >= MAX_LIQUID_LEVEL) continue;
-
-    outgoing.set(source.id, sent + 1);
-    incoming.set(proposal.targetKey, received + 1);
-    targetMaterials.set(proposal.targetKey, proposal.material);
-    targetCells.set(proposal.targetKey, proposal.target);
-    contributors.set(proposal.targetKey, [
-      ...(contributors.get(proposal.targetKey) ?? []),
-      source.id,
-    ]);
-  }
-
-  const nextById = new Map<string, VoxelBlock>();
-  const finalLevels = new Map<string, number>();
-  for (const block of snapshot) {
-    if (MATERIALS[block.material].gravityBehavior !== 'fluid') {
-      nextById.set(block.id, block);
-      continue;
-    }
-    const level = getLiquidLevel(block) - (outgoing.get(block.id) ?? 0) +
-      (incoming.get(cellKey(block)) ?? 0);
-    finalLevels.set(block.id, level);
-    if (level > 0) {
-      nextById.set(block.id, level === getLiquidLevel(block)
-        ? block
-        : { ...block, liquidLevel: level as LiquidLevel });
-    }
-  }
-
-  const usedIds = new Set(nextById.keys());
-  const inheritedIds = new Set<string>();
-  const created: VoxelBlock[] = [];
-  const emptyTargets = [...incoming.keys()]
-    .filter((key) => !snapshotByCell.has(key))
-    .sort();
-
-  for (const key of emptyTargets) {
-    const target = targetCells.get(key);
-    const material = targetMaterials.get(key);
-    const level = incoming.get(key) ?? 0;
-    if (!target || !material || level === 0) continue;
-    const sources = contributors.get(key) ?? [];
-    const inheritedSource = sources.find(
-      (id) => finalLevels.get(id) === 0 && !inheritedIds.has(id) && !usedIds.has(id),
-    );
-    const sourceId = sources[0] ?? material;
-    const id = inheritedSource ?? flowBlockId(sourceId, target, usedIds);
-    if (inheritedSource) inheritedIds.add(inheritedSource);
-    usedIds.add(id);
-    created.push({ ...target, id, material, liquidLevel: level as LiquidLevel });
-  }
-
-  if (outgoing.size > 0) moved = true;
   if (!moved) return { blocks: input, moved: false };
-
+  const originalIds = new Set(input.map(({ id }) => id));
   const blocks = input.flatMap((block) => {
-    const next = nextById.get(block.id);
+    const next = byId.get(block.id);
     return next ? [next] : [];
   });
-  blocks.push(...created);
+  blocks.push(
+    ...[...byId.values()]
+      .filter(({ id }) => !originalIds.has(id))
+      .sort((a, b) => a.y - b.y || a.x - b.x || a.z - b.z || a.id.localeCompare(b.id)),
+  );
   return { blocks, moved: true };
 }
 

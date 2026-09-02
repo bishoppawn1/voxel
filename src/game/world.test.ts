@@ -18,6 +18,7 @@ import {
   getLiquidLevel,
   isValidWorld,
   settleLiquids,
+  settleLiquidsStep,
   settlePlacedBlock,
   settlePlacedBlockOnLiquid,
   settleWorld,
@@ -334,6 +335,44 @@ describe('liquid flow', () => {
       .toBe(MAX_LIQUID_LEVEL);
     expect(new Set(water.map(({ id }) => id)).size).toBe(4);
     expect(water.some(({ id }) => id === 'water')).toBe(true);
+  });
+
+  it('settles a contained checkerboard lava pool without shifting back and forth', () => {
+    const floor = Array.from({ length: 3 }, (_, xIndex) =>
+      Array.from({ length: 3 }, (_, zIndex) =>
+        block(`floor-${xIndex}-${zIndex}`, xIndex - 1, 0, zIndex - 1))).flat();
+    const walls = Array.from({ length: 5 }, (_, xIndex) =>
+      Array.from({ length: 5 }, (_, zIndex) => ({
+        x: xIndex - 2,
+        z: zIndex - 2,
+      }))).flat()
+      .filter(({ x, z }) => Math.abs(x) === 2 || Math.abs(z) === 2)
+      .map(({ x, z }) => block(`wall-${x}-${z}`, x, 1, z));
+    const lava = Array.from({ length: 3 }, (_, xIndex) =>
+      Array.from({ length: 3 }, (_, zIndex) => ({
+        x: xIndex - 1,
+        z: zIndex - 1,
+      }))).flat()
+      .filter(({ x, z }) => Math.abs(x + z) % 2 === 0)
+      .map(({ x, z }) => ({
+        ...block(`lava-${x}-${z}`, x, 1, z, 'lava'),
+        liquidLevel: MAX_LIQUID_LEVEL,
+      } as const));
+    const initialVolume = lava.reduce(
+      (volume, liquid) => volume + getLiquidLevel(liquid),
+      0,
+    );
+
+    const settled = settleLiquids([...floor, ...walls, ...lava]);
+    const next = settleLiquidsStep(settled.blocks);
+    const settledLava = settled.blocks.filter(({ material }) => material === 'lava');
+    const levels = settledLava.map(getLiquidLevel);
+
+    expect(settled.moved).toBe(true);
+    expect(next).toEqual({ blocks: settled.blocks, moved: false });
+    expect(settledLava.reduce((volume, liquid) => volume + getLiquidLevel(liquid), 0))
+      .toBe(initialVolume);
+    expect(Math.max(...levels) - Math.min(...levels)).toBeLessThanOrEqual(1);
   });
 
   it('can skip fluid flow while structures continue on faster simulation ticks', () => {

@@ -53,6 +53,7 @@ button { font: inherit; }
 .icon-button:not(:disabled):hover { transform: translateY(-1px); background: rgba(255,255,255,.92); }
 .icon-button:disabled { opacity: .32; cursor: not-allowed; }
 .reset-button { width: auto; grid-auto-flow: column; gap: 6px; padding: 0 11px; font-size: 10px; font-weight: 800; }
+.pause-button.paused { color: #76551f; border-color: rgba(158, 116, 44, .3); background: #f5e7bc; }
 
 .tool-panel {
   position: absolute;
