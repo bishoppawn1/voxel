@@ -12,7 +12,6 @@ import {
   HUMAN_REPRODUCTION_MIN_HUNGER,
   HUMAN_STUCK_TASK_TICKS,
   HUMAN_WORKBENCH_SEARCH_RADIUS,
-  HERBIVORE_FIGHT_BACK_CHANCE,
   HERBIVORE_KEYS,
   MAX_ANIMAL_HUNGER,
   PREDATOR_KEYS,
@@ -1033,6 +1032,36 @@ describe('human crafting and building', () => {
       eaten: 1,
       hunger: 63,
       activeTool: 'spear',
+    });
+  });
+
+  it('lets prey flee a human hunter instead of counterattacking', () => {
+    const world = [
+      block('human-ground', 0, 0, 'stone'),
+      block('prey-ground', 1, 0, 'stone'),
+      block('escape-ground', 2, 0, 'stone'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('human', 'human-0', 0, 0, { hunger: 30, tools: ['spear'] }),
+        animal('rabbit', 'rabbit-1', 1, 0),
+      ],
+      nextEntityId: 2,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 0).ecosystem;
+
+    expect(result.animals).toHaveLength(2);
+    expect(result.animals.find(({ id }) => id === 'human-0')).toMatchObject({
+      health: ANIMALS.human.maxHealth,
+      activeTool: 'spear',
+    });
+    expect(result.animals.find(({ id }) => id === 'rabbit-1')).toMatchObject({
+      x: 2,
+      z: 0,
+      facingX: 1,
+      facingZ: 0,
     });
   });
 
@@ -2150,7 +2179,7 @@ describe('predator hunting', () => {
     expect(result.animals[0]).toMatchObject({ id: 'fox-0', eaten: 1 });
   });
 
-  it('survives multiple counterattacks because it has tank-like health', () => {
+  it('never lets cornered prey fight back against a predator', () => {
     const world = [
       block('fox-cell', 0, 0, 'stone'),
       block('sheep-cell', 1, 0, 'stone'),
@@ -2158,8 +2187,8 @@ describe('predator hunting', () => {
     const ecosystem: EcosystemState = {
       ...emptyEcosystem(),
       animals: [
-        animal('fox', 'fox-0', 0, 0, { hunger: 40 }),
-        animal('sheep', 'sheep-1', 1, 0),
+        animal('fox', 'fox-0', 0, 0, { health: 1, hunger: 40 }),
+        animal('sheep', 'sheep-1', 1, 0, { health: 1 }),
       ],
       nextEntityId: 2,
     };
@@ -2167,42 +2196,28 @@ describe('predator hunting', () => {
     const result = advanceEcosystem(world, ecosystem, () => 0).ecosystem;
 
     expect(result.animals).toHaveLength(1);
-    expect(result.animals[0]).toMatchObject({ id: 'fox-0', health: 11, eaten: 1 });
+    expect(result.animals[0]).toMatchObject({ id: 'fox-0', health: 1, eaten: 1 });
   });
 
-  it('gives herbivores only a fifteen-percent chance to fight back', () => {
-    const world = [
-      block('fox-cell', 0, 0, 'stone'),
-      block('sheep-cell', 1, 0, 'stone'),
-      block('escape-cell', 2, 0, 'stone'),
-    ];
+  it('makes prey run from a nearby predator even when it is not hunting', () => {
+    const world = Array.from({ length: 5 }, (_, x) =>
+      block(`ground-${x}`, x, 0, 'stone'));
     const ecosystem: EcosystemState = {
       ...emptyEcosystem(),
-      tick: 1,
       animals: [
-        animal('fox', 'fox-0', 0, 0, { hunger: 40 }),
-        animal('sheep', 'sheep-1', 1, 0),
+        animal('fox', 'fox-0', 0, 0),
+        animal('sheep', 'sheep-1', 3, 0),
       ],
       nextEntityId: 2,
     };
 
-    const fighter = advanceEcosystem(
-      world,
-      ecosystem,
-      (key) => key.startsWith('defend:') ? HERBIVORE_FIGHT_BACK_CHANCE - 0.001 : 1,
-    ).ecosystem;
-    const runner = advanceEcosystem(
-      world,
-      ecosystem,
-      (key) => key.startsWith('defend:') ? HERBIVORE_FIGHT_BACK_CHANCE : 1,
-    ).ecosystem;
+    const result = advanceEcosystem(world, ecosystem, () => 0).ecosystem;
 
-    expect(fighter.animals.find(({ id }) => id === 'fox-0')?.health).toBe(11);
-    expect(fighter.animals.some(({ id }) => id === 'sheep-1')).toBe(false);
-    expect(runner.animals.find(({ id }) => id === 'sheep-1')).toMatchObject({ x: 2, z: 0 });
+    expect(result.animals.find(({ id }) => id === 'fox-0')).toMatchObject({ x: 0, z: 0 });
+    expect(result.animals.find(({ id }) => id === 'sheep-1')).toMatchObject({ x: 4, z: 0 });
   });
 
-  it('lets sheep randomly flee to a safe neighboring cell', () => {
+  it('lets prey flee before a hungry predator closes in', () => {
     const world = [
       block('fox-cell', 0, 0, 'stone'),
       block('sheep-cell', 1, 0, 'stone'),
@@ -2221,32 +2236,13 @@ describe('predator hunting', () => {
     const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
 
     expect(result.animals).toHaveLength(2);
+    expect(result.animals.find(({ id }) => id === 'fox-0')).toMatchObject({ x: 1, z: 0 });
     expect(result.animals.find(({ id }) => id === 'sheep-1')).toMatchObject({
       x: 2,
       z: 0,
       facingX: 1,
       facingZ: 0,
     });
-  });
-
-  it('lets a fighting sheep defeat a fox that is down to its last health', () => {
-    const world = [
-      block('fox-cell', 0, 0, 'stone'),
-      block('sheep-cell', 1, 0, 'stone'),
-    ];
-    const ecosystem: EcosystemState = {
-      ...emptyEcosystem(),
-      animals: [
-        animal('fox', 'fox-0', 0, 0, { health: 1, hunger: 40 }),
-        animal('sheep', 'sheep-1', 1, 0),
-      ],
-      nextEntityId: 2,
-    };
-
-    const result = advanceEcosystem(world, ecosystem, () => 0).ecosystem;
-
-    expect(result.animals).toHaveLength(1);
-    expect(result.animals[0]).toMatchObject({ id: 'sheep-1' });
   });
 
   it('does not let a well-fed predator consume prey', () => {

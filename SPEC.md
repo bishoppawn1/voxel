@@ -176,7 +176,7 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   ecosystem tick. At night ordinary animals sleep in place instead of feeding,
   moving, or breeding. Each predator has a deterministic 35% chance per night
   to remain awake as a night stalker. An awake predator can hunt sleeping prey,
-  which cannot counterattack or flee from that surprise attack. Burning
+  which does not wake in time to flee from that surprise attack. Burning
   animals always stay awake and continue rushing toward water.
 - Every animal has individual hunger, but no overhead health or hunger bar.
   Hunger falls by only one point per ecosystem tick, and animals do not consume
@@ -262,10 +262,11 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   Fish. A predator seeks the nearest listed prey and has higher
   health and attack damage than herbivores. When it reaches prey, that animal
   must be on a horizontally neighboring surface no more than one block level
-  higher or lower; predators cannot attack through cliffs or into canopies. It
-  has a 15% deterministic chance to fight back and otherwise flees if its own
-  movement cadence is ready. A fleeing animal moves to an open reachable
-  surface farther from the predator, or is caught if no escape exists. A
+  higher or lower; predators cannot attack through cliffs or into canopies.
+  Awake prey detects a predator that hunts its species within four cells and
+  immediately tries to run one safe step farther away, even when that predator
+  is not currently hungry. Prey never fights back against either an animal
+  predator or a Human hunter. Cornered prey is caught when no escape exists. A
   successful hunt feeds the predator.
   Wolves, Bears, and Crocodiles also treat Humans as prey, creating real
   selection pressure; cautious Humans avoid hunting dangerous predators unless
@@ -358,8 +359,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   their movement direction. Herbivores seek their species-specific growths plus
   shared grassy dirt, Leaves, and Moss without crossing steps taller than one
   block, while beavers slowly eat only saplings or Wood, land predators hunt
-  their listed land prey plus both fish species, and prey randomly
-  fight or flee. Species use distinct, staggered movement cadences, with
+  their listed land prey plus both fish species, and awake prey runs from nearby
+  predators without ever fighting back. Species use distinct, staggered
+  movement cadences, with
   predators faster on average but fast herbivores able to keep pace. Animals
   plan through temporary animal traffic, wait before entering an occupied
   cell, and never plan through impassable terrain. Ordinary animals sleep at

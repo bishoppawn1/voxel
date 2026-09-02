@@ -12,7 +12,7 @@ export const ECOSYSTEM_TICK_MS = 900;
 export const ANIMAL_BREEDING_MIN_HUNGER = 70;
 export const BABY_GROWTH_MEALS = 3;
 export const MAX_ANIMAL_HUNGER = 100;
-export const HERBIVORE_FIGHT_BACK_CHANCE = 0.15;
+export const PREDATOR_FLEE_RADIUS = 4;
 export const SHORT_GRASS_MATURATION_TICKS = 18;
 export const SAPLING_MATURATION_TICKS = 28;
 
@@ -1594,12 +1594,53 @@ export function advanceEcosystem(
   const animalsById = new Map(animals.map((animal) => [animal.id, animal]));
   const occupied = new Set(animals.map(({ x, z }) => columnKey(x, z)));
   const actedThisTick = new Set(rushing);
+  const fledFromPredator = new Set<string>();
+
+  const nearbyPredators = [...animalsById.values()]
+    .filter(
+      (animal) =>
+        ANIMALS[animal.kind].predator &&
+        !animal.burning &&
+        !sleeping.has(animal.id),
+    );
+  for (const originalPrey of animalsById.values()) {
+    if (
+      originalPrey.burning ||
+      sleeping.has(originalPrey.id) ||
+      actedThisTick.has(originalPrey.id)
+    ) {
+      continue;
+    }
+    const threat = nearbyPredators
+      .filter(
+        (predator) =>
+          ANIMALS[predator.kind].prey.includes(originalPrey.kind) &&
+          standingDistance(originalPrey, predator, surfaces) <= PREDATOR_FLEE_RADIUS,
+      )
+      .sort(
+        (a, b) =>
+          standingDistance(originalPrey, a, surfaces) -
+            standingDistance(originalPrey, b, surfaces) ||
+          a.id.localeCompare(b.id),
+      )[0];
+    if (!threat) continue;
+
+    occupied.delete(columnKey(originalPrey.x, originalPrey.z));
+    const escaped = fleeFrom(originalPrey, threat, surfaces, occupied);
+    animalsById.set(escaped.id, escaped);
+    occupied.add(columnKey(escaped.x, escaped.z));
+    if (escaped.x !== originalPrey.x || escaped.z !== originalPrey.z) {
+      actedThisTick.add(escaped.id);
+      fledFromPredator.add(escaped.id);
+    }
+  }
 
   const predators = [...animalsById.values()]
     .filter(
       (animal) =>
         ANIMALS[animal.kind].predator &&
         !sleeping.has(animal.id) &&
+        !actedThisTick.has(animal.id) &&
         animalNeedsMeal(animal) &&
         animalCanEatOnTick(animal, tick),
     )
@@ -1613,7 +1654,7 @@ export function advanceEcosystem(
       .filter(
         (animal) =>
           preyKinds.includes(animal.kind) &&
-          !actedThisTick.has(animal.id),
+          (!actedThisTick.has(animal.id) || fledFromPredator.has(animal.id)),
       )
       .sort(
         (a, b) =>
@@ -1640,28 +1681,16 @@ export function advanceEcosystem(
     actedThisTick.add(defendingPrey.id);
 
     const caughtSleeping = sleeping.has(defendingPrey.id);
-    const fightsBack = !caughtSleeping &&
-      random(`defend:${tick}:${predator.id}:${defendingPrey.id}`) <
-      HERBIVORE_FIGHT_BACK_CHANCE;
-    if (!fightsBack) {
-      occupied.delete(columnKey(defendingPrey.x, defendingPrey.z));
-      const escaped = !caughtSleeping && animalMovesOnTick(defendingPrey, tick)
-        ? fleeFrom(defendingPrey, predator, surfaces, occupied)
-        : defendingPrey;
-      animalsById.set(escaped.id, escaped);
-      occupied.add(columnKey(escaped.x, escaped.z));
-      if (escaped.x !== defendingPrey.x || escaped.z !== defendingPrey.z) continue;
-    } else {
-      predator = {
-        ...predator,
-        health: predator.health - ANIMALS[defendingPrey.kind].attackDamage,
-      };
-      if (predator.health <= 0) {
-        animalsById.delete(predator.id);
-        occupied.delete(columnKey(predator.x, predator.z));
-        continue;
-      }
-      animalsById.set(predator.id, predator);
+    occupied.delete(columnKey(defendingPrey.x, defendingPrey.z));
+    const escaped = !caughtSleeping && !fledFromPredator.has(defendingPrey.id)
+      ? fleeFrom(defendingPrey, predator, surfaces, occupied)
+      : defendingPrey;
+    animalsById.set(escaped.id, escaped);
+    occupied.add(columnKey(escaped.x, escaped.z));
+    if (escaped.x !== defendingPrey.x || escaped.z !== defendingPrey.z) {
+      actedThisTick.add(escaped.id);
+      fledFromPredator.add(escaped.id);
+      continue;
     }
 
     const attackedPrey = {
@@ -1927,21 +1956,15 @@ export function advanceEcosystem(
         const huntingHuman = faceToward(human, prey);
         human = huntingHuman;
         const defendingPrey = faceToward(prey, huntingHuman);
-        const fightBackChance = (ANIMALS[prey.kind].predator ? 0.55 : 0.14) *
-          (1 - humanTraits.caution * 0.006);
-        if (
-          random(`human-defend:${tick}:${huntingHuman.id}:${prey.id}`) <
-          fightBackChance
-        ) {
-          const injuredHuman = {
-            ...huntingHuman,
-            health: huntingHuman.health - ANIMALS[prey.kind].attackDamage,
-          };
-          if (injuredHuman.health <= 0) {
-            animalsById.delete(huntingHuman.id);
-            continue;
-          }
-          human = injuredHuman;
+        animalsById.set(defendingPrey.id, defendingPrey);
+        actedThisTick.add(defendingPrey.id);
+        occupied.delete(columnKey(defendingPrey.x, defendingPrey.z));
+        const escaped = fleeFrom(defendingPrey, huntingHuman, surfaces, occupied);
+        animalsById.set(escaped.id, escaped);
+        occupied.add(columnKey(escaped.x, escaped.z));
+        if (escaped.x !== defendingPrey.x || escaped.z !== defendingPrey.z) {
+          saveHuman(human, true);
+          continue;
         }
         const damage = (huntingHuman.activeTool === 'spear' ? 4 : 2) +
           Math.floor(humanTraits.aggression / 50);
