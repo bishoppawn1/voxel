@@ -70,6 +70,8 @@ export type VoxelBlock = {
 };
 
 export const MAX_LIQUID_LEVEL = 4;
+export const LAVA_HEAT_HORIZONTAL_RADIUS = 2;
+export const LAVA_HEAT_VERTICAL_RADIUS = 1;
 export type LiquidLevel = 1 | 2 | 3 | 4;
 export const LEAF_DECAY_TICKS = 6;
 
@@ -832,9 +834,9 @@ export function advanceFire(input: VoxelBlock[]): {
 
     const heatedByLava = lavaSources.some(
       (lava) =>
-        Math.abs(lava.x - block.x) <= 2 &&
-        Math.abs(lava.z - block.z) <= 2 &&
-        Math.abs(lava.y - block.y) <= 1,
+        Math.abs(lava.x - block.x) <= LAVA_HEAT_HORIZONTAL_RADIUS &&
+        Math.abs(lava.z - block.z) <= LAVA_HEAT_HORIZONTAL_RADIUS &&
+        Math.abs(lava.y - block.y) <= LAVA_HEAT_VERTICAL_RADIUS,
     );
     const catchesFire = heatedByLava || neighbors.some((neighbor) => Boolean(neighbor.burning));
     if (!catchesFire) return [block];

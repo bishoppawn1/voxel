@@ -10,7 +10,9 @@ export const ABILITY_KEYS = [
 
 export type AbilityKey = (typeof ABILITY_KEYS)[number];
 export type AbilityTarget = Pick<VoxelBlock, 'x' | 'z'>;
-export const ABILITY_RADIUS = 3;
+export const MIN_ABILITY_BRUSH_SIZE = 1;
+export const MAX_ABILITY_BRUSH_SIZE = 15;
+export const DEFAULT_ABILITY_BRUSH_SIZE = 7;
 
 export const ABILITIES: Record<
   AbilityKey,
@@ -49,6 +51,38 @@ export type AbilityResult = {
   affected: number;
 };
 
+export type AbilityAnimal = {
+  x: number;
+  z: number;
+  burning?: number;
+};
+
+export type AnimalAbilityResult<T extends AbilityAnimal> = {
+  animals: T[];
+  changed: boolean;
+  affected: number;
+};
+
+function normalizedBrushSize(size: number) {
+  const clamped = Math.max(
+    MIN_ABILITY_BRUSH_SIZE,
+    Math.min(MAX_ABILITY_BRUSH_SIZE, Math.round(size)),
+  );
+  return clamped % 2 === 0 ? clamped - 1 : clamped;
+}
+
+export function isInsideAbilityBrush(
+  position: AbilityTarget,
+  target: AbilityTarget,
+  brushSize = DEFAULT_ABILITY_BRUSH_SIZE,
+) {
+  const radius = Math.floor(normalizedBrushSize(brushSize) / 2);
+  return (
+    Math.abs(position.x - target.x) <= radius &&
+    Math.abs(position.z - target.z) <= radius
+  );
+}
+
 function getSurfaceY(input: VoxelBlock[]) {
   const surfaceY = new Map<string, number>();
   for (const block of input) {
@@ -63,10 +97,10 @@ function isEligible(
   ability: AbilityKey,
   surfaceY: Map<string, number>,
   target?: AbilityTarget,
+  brushSize = DEFAULT_ABILITY_BRUSH_SIZE,
 ) {
   if (!target) return false;
-  const distanceSquared = (block.x - target.x) ** 2 + (block.z - target.z) ** 2;
-  if (distanceSquared > ABILITY_RADIUS ** 2) return false;
+  if (!isInsideAbilityBrush(block, target, brushSize)) return false;
   if (ability === 'verdant-touch') {
     return (
       block.material === 'soil' &&
@@ -103,12 +137,13 @@ export function applyAbility(
   input: VoxelBlock[],
   ability: AbilityKey,
   target?: AbilityTarget,
+  brushSize = DEFAULT_ABILITY_BRUSH_SIZE,
 ): AbilityResult {
   const surfaceY = getSurfaceY(input);
   let affected = 0;
 
   const blocks = input.map((block): VoxelBlock => {
-    if (!isEligible(block, ability, surfaceY, target)) return block;
+    if (!isEligible(block, ability, surfaceY, target, brushSize)) return block;
 
     if (ability === 'verdant-touch') {
       affected += 1;
@@ -142,6 +177,47 @@ export function applyAbility(
 
   return {
     blocks: affected ? blocks : input,
+    changed: affected > 0,
+    affected,
+  };
+}
+
+function animalIsEligible(animal: AbilityAnimal, ability: AbilityKey) {
+  if (ability === 'wildfire') return !animal.burning;
+  if (ability === 'rain') return Boolean(animal.burning);
+  return false;
+}
+
+export function countEligibleAnimals(input: AbilityAnimal[], ability: AbilityKey) {
+  return input.filter((animal) => animalIsEligible(animal, ability)).length;
+}
+
+export function applyAbilityToAnimals<T extends AbilityAnimal>(
+  input: T[],
+  ability: AbilityKey,
+  target?: AbilityTarget,
+  brushSize = DEFAULT_ABILITY_BRUSH_SIZE,
+): AnimalAbilityResult<T> {
+  if (!target || (ability !== 'wildfire' && ability !== 'rain')) {
+    return { animals: input, changed: false, affected: 0 };
+  }
+
+  let affected = 0;
+  const animals = input.map((animal) => {
+    if (
+      !isInsideAbilityBrush(animal, target, brushSize) ||
+      !animalIsEligible(animal, ability)
+    ) {
+      return animal;
+    }
+    affected += 1;
+    if (ability === 'wildfire') return { ...animal, burning: 1 };
+    const { burning: _burning, ...extinguished } = animal;
+    return extinguished as T;
+  });
+
+  return {
+    animals: affected ? animals : input,
     changed: affected > 0,
     affected,
   };

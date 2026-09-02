@@ -35,10 +35,11 @@ The player can:
 8. Undo, redo, clear, use Reset to generate another compact starter island, or
    use New Seed to generate randomized terrain across the full build plane with
    a chance of starting wildlife.
-9. Select any power and left-click or left-drag its small circular area brush:
-   Verdant Touch grassifies exposed Dirt, Wildfire ignites flammable blocks,
-   Rain extinguishes fires, Deep Freeze turns Water into Ice and Lava into
-   Obsidian, and Thaw melts Ice and Snow into Water.
+9. Set one shared square brush size, then select any power and left-click or
+   left-drag its area: Verdant Touch grassifies exposed Dirt, Wildfire ignites
+   flammable blocks and animals, Rain extinguishes blocks and animals, Deep
+   Freeze turns Water into Ice and Lava into Obsidian, and Thaw melts Ice and
+   Snow into Water.
 10. Select one of 19 land or aquatic creatures from the animal palette,
     then left-click the top of an unoccupied block column to spawn it.
 11. Watch the persisted world clock move through sunrise, daylight, dusk, and
@@ -134,8 +135,12 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   and other nonflammable materials never ignite.
 - Animals standing on a burning surface catch fire, take damage, and ignore
   their normal activity while rushing one cell per ecosystem tick toward the
-  nearest reachable water. Entering water extinguishes them. Land animals can
-  cross connected water surfaces by swimming through them.
+  nearest reachable water. Lava radiates the same two-cell horizontal and
+  one-level vertical heat to animals that it does to flammable blocks. An
+  animal beside lava or underneath newly placed lava catches fire and first
+  runs away from the heat; animals cannot be spawned inside and never choose
+  paths through lava or its heat zone. Entering water extinguishes them. Land
+  animals can cross connected water surfaces by swimming through them.
 - When fire removes a supporting block, gravity settles the remaining structure
   and liquids again unless gravity is paused.
 
@@ -316,11 +321,15 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 
 - Powers live in their own panel beside the creation tools on the left side of
   the screen, leaving the right side clear.
-- All five powers are selected area tools with the same three-cell-radius
-  circular preview. A left-click applies one patch, and a calm left-drag
-  cadence paints adjacent patches without rotating the camera. No power affects
-  the whole world at once.
-- A power is disabled when the current world contains no eligible block. Every
+- All five powers share one adjustable odd-numbered brush size from one through
+  fifteen cells. The preview and affected area are square and centered on the
+  targeted cell. A left-click applies one patch, and a calm left-drag cadence
+  paints adjacent patches without rotating the camera. No power affects the
+  whole world at once.
+- Wildfire ignites both flammable blocks and animals inside the square. Rain
+  extinguishes either kind of burning target. Their combined changes use the
+  same undo and redo snapshots as other world edits.
+- A power is disabled when the current world contains no eligible target. Every
   power button is labeled as an area action, exposes its selected state, and
   reports a plain-language result after each successful patch.
 - Every power preserves stable block IDs and cell positions. Powers that create
@@ -378,9 +387,10 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 - Right-drag orbits; left-click never rotates the camera.
 - Left-drag never rotates the camera, including while painting blocks.
 - Liquids conserve four quarter-block depth levels, converge to a stable pool
-  on their slower cadence without oscillating, and seek lower open cells. Lava heat ignites nearby
-  flammables, fire spreads, and weak vertical columns cannot exceed their
-  material tolerance.
+  on their slower cadence without oscillating, and seek lower open cells. Lava
+  heat ignites nearby flammables and animals, including animals underneath
+  newly placed lava. Animals avoid lava heat zones, fire spreads, and weak
+  vertical columns cannot exceed their material tolerance.
 - Wood supports its Leaves, but Leaves never hold up Wood or other solid blocks;
   a chopped trunk falls even when its canopy touches a neighboring tree.
 - Dirt can become grassy dirt, grassy dirt can sprout non-block vegetation, and
@@ -430,8 +440,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 - Whole-world pause freezes all simulation systems and resumes them together;
   gravity-only pause and resume also work as specified.
 - Verdant Touch, Wildfire, Rain, Deep Freeze, and Thaw affect only eligible
-  blocks inside their small drag brush; all five preserve IDs and positions and
-  can be undone or redone.
+  targets inside their shared adjustable square drag brush; Wildfire and Rain
+  also affect animals. All five preserve IDs and positions and can be undone or
+  redone.
 - Undo, redo, clear, reset, material selection, block count, and local persistence work.
 - `npm test` and `npm run build` succeed.
 - The GitHub Pages deployment succeeds from `main` and loads assets from the repository subpath.

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ABILITY_RADIUS,
   ABILITY_KEYS,
+  DEFAULT_ABILITY_BRUSH_SIZE,
   applyAbility,
+  applyAbilityToAnimals,
   countEligibleBlocks,
 } from './abilities';
 import { isValidWorld, type BlockMaterial, type VoxelBlock } from './world';
@@ -17,6 +18,8 @@ const block = (
 ): VoxelBlock => ({ id, x, y, z, material, ...(burning ? { burning } : {}) });
 
 describe('god powers', () => {
+  const defaultRadius = Math.floor(DEFAULT_ABILITY_BRUSH_SIZE / 2);
+
   it('offers exactly five abilities', () => {
     expect(ABILITY_KEYS).toEqual([
       'verdant-touch',
@@ -32,7 +35,7 @@ describe('god powers', () => {
       block('exposed', 0, 0, 0, 'soil'),
       block('covered', 1, 0, 0, 'soil'),
       block('cover', 1, 2, 0, 'stone'),
-      block('far-away', ABILITY_RADIUS + 1, 0, 0, 'soil'),
+      block('far-away', defaultRadius + 1, 0, 0, 'soil'),
     ];
     const result = applyAbility(world, 'verdant-touch', { x: 0, z: 0 });
 
@@ -69,7 +72,7 @@ describe('god powers', () => {
       block('planks', 1, 0, 0, 'planks'),
       block('already-burning', 2, 0, 0, 'wood', 3),
       block('stone', 3, 0, 0, 'stone'),
-      block('far-wood', ABILITY_RADIUS + 1, 0, 0, 'wood'),
+      block('far-wood', defaultRadius + 1, 0, 0, 'wood'),
     ];
     const result = applyAbility(world, 'wildfire', { x: 0, z: 0 });
 
@@ -83,7 +86,7 @@ describe('god powers', () => {
 
   it('extinguishes fire in the targeted area without changing block material or position', () => {
     const burningWood = block('wood', 4, 2, -3, 'wood', 2);
-    const farFire = block('far-fire', 4 + ABILITY_RADIUS + 1, 2, -3, 'wood', 2);
+    const farFire = block('far-fire', 4 + defaultRadius + 1, 2, -3, 'wood', 2);
     const result = applyAbility([burningWood, farFire], 'rain', { x: 4, z: -3 });
 
     expect(result).toEqual({
@@ -98,7 +101,7 @@ describe('god powers', () => {
       { ...block('water', 0, 0, 0, 'water'), liquidLevel: 2 },
       { ...block('lava', 1, 0, 0, 'lava'), liquidLevel: 1 },
       block('snow', 2, 0, 0, 'snow'),
-      { ...block('far-water', ABILITY_RADIUS + 1, 0, 0, 'water'), liquidLevel: 1 },
+      { ...block('far-water', defaultRadius + 1, 0, 0, 'water'), liquidLevel: 1 },
     ], 'deep-freeze', { x: 0, z: 0 });
 
     expect(result.affected).toBe(2);
@@ -118,7 +121,7 @@ describe('god powers', () => {
       block('ice', 0, 1, 0, 'ice'),
       block('snow', 1, 1, 0, 'snow'),
       block('obsidian', 2, 1, 0, 'obsidian'),
-      block('far-ice', ABILITY_RADIUS + 1, 1, 0, 'ice'),
+      block('far-ice', defaultRadius + 1, 1, 0, 'ice'),
     ], 'thaw', { x: 0, z: 0 });
 
     expect(result.affected).toBe(2);
@@ -137,5 +140,51 @@ describe('god powers', () => {
 
     expect(result).toEqual({ blocks: world, changed: false, affected: 0 });
     expect(result.blocks).toBe(world);
+  });
+
+  it('uses a square brush that includes its corner cells', () => {
+    const world = [
+      block('corner', defaultRadius, 0, defaultRadius, 'soil'),
+      block('outside', defaultRadius + 1, 0, 0, 'soil'),
+    ];
+
+    const result = applyAbility(world, 'verdant-touch', { x: 0, z: 0 });
+
+    expect(result.affected).toBe(1);
+    expect(result.blocks.find(({ id }) => id === 'corner')?.material).toBe('grass');
+    expect(result.blocks.find(({ id }) => id === 'outside')?.material).toBe('soil');
+  });
+
+  it.each([
+    ['verdant-touch', 'soil', undefined],
+    ['wildfire', 'wood', undefined],
+    ['rain', 'wood', 1],
+    ['deep-freeze', 'water', undefined],
+    ['thaw', 'ice', undefined],
+  ] as const)('uses the shared adjustable size for %s', (ability, material, burning) => {
+    const world = [
+      block('center', 0, 0, 0, material, burning),
+      block('neighbor', 1, 0, 0, material, burning),
+    ];
+
+    expect(applyAbility(world, ability, { x: 0, z: 0 }, 1).affected).toBe(1);
+    expect(applyAbility(world, ability, { x: 0, z: 0 }, 3).affected).toBe(2);
+  });
+
+  it('lights animals with Wildfire and lets Rain extinguish them', () => {
+    const animals = [
+      { id: 'near', x: 1, z: 1 },
+      { id: 'far', x: 2, z: 0 },
+    ];
+
+    const wildfire = applyAbilityToAnimals(animals, 'wildfire', { x: 0, z: 0 }, 3);
+    expect(wildfire).toEqual({
+      animals: [{ ...animals[0], burning: 1 }, animals[1]],
+      changed: true,
+      affected: 1,
+    });
+
+    const rain = applyAbilityToAnimals(wildfire.animals, 'rain', { x: 0, z: 0 }, 3);
+    expect(rain).toEqual({ animals, changed: true, affected: 1 });
   });
 });

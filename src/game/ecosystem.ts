@@ -1,4 +1,6 @@
 import {
+  LAVA_HEAT_HORIZONTAL_RADIUS,
+  LAVA_HEAT_VERTICAL_RADIUS,
   MAX_WORLD_BLOCKS,
   advanceLeafDecay,
   cellKey,
@@ -823,7 +825,7 @@ export function createSeededEcosystem(
   return { ...empty, animals, nextEntityId };
 }
 
-export function spawnAnimal(
+export function canSpawnAnimal(
   blocks: VoxelBlock[],
   state: EcosystemState,
   kind: AnimalKind,
@@ -831,18 +833,29 @@ export function spawnAnimal(
   z: number,
 ) {
   const surface = getAnimalSurfaceBlock(blocks, x, z);
-  if (
+  return !(
     state.animals.length >= MAX_ANIMALS ||
     (kind === 'human' &&
       state.animals.filter((animal) => animal.kind === 'human').length >= HUMAN_MAX_POPULATION) ||
     !surface ||
     surface.burning ||
     surface.material === 'lava' ||
+    blocks.some(
+      (block) => block.material === 'lava' && isWithinLavaHeat(surface, block),
+    ) ||
     (isAquaticAnimal(kind) && surface.material !== 'water') ||
     state.animals.some((animal) => animal.x === x && animal.z === z)
-  ) {
-    return state;
-  }
+  );
+}
+
+export function spawnAnimal(
+  blocks: VoxelBlock[],
+  state: EcosystemState,
+  kind: AnimalKind,
+  x: number,
+  z: number,
+) {
+  if (!canSpawnAnimal(blocks, state, kind, x, z)) return state;
 
   return {
     ...state,
@@ -968,6 +981,14 @@ function surfaceSupportsAnimal(animal: Pick<Animal, 'kind'>, surface: VoxelBlock
   return !isAquaticAnimal(animal.kind) || surface.material === 'water';
 }
 
+function isWithinLavaHeat(surface: VoxelBlock, lava: VoxelBlock) {
+  return (
+    Math.abs(lava.x - surface.x) <= LAVA_HEAT_HORIZONTAL_RADIUS &&
+    Math.abs(lava.z - surface.z) <= LAVA_HEAT_HORIZONTAL_RADIUS &&
+    Math.abs(lava.y - surface.y) <= LAVA_HEAT_VERTICAL_RADIUS
+  );
+}
+
 function surfaceIsTraversable(animal: Pick<Animal, 'kind'>, surface: VoxelBlock) {
   return !surface.burning && surfaceSupportsAnimal(animal, surface);
 }
@@ -1082,7 +1103,7 @@ function moveTowardNearestFood(
 
 function fleeFrom(
   animal: Animal,
-  predator: Animal,
+  predator: Position,
   surfaces: Map<string, VoxelBlock>,
   occupied: Set<string>,
 ) {
@@ -1457,7 +1478,16 @@ export function advanceEcosystem(
   let nextEntityId = state.nextEntityId;
   const workingBlocks = blocks;
   const worldSurfaces = createSurfaceIndex(workingBlocks);
-  const surfaces = createAnimalSurfaceIndex(workingBlocks);
+  const baseAnimalSurfaces = createAnimalSurfaceIndex(workingBlocks);
+  const lavaSources = workingBlocks.filter(({ material }) => material === 'lava');
+  const surfaces = new Map(
+    [...baseAnimalSurfaces].map(([key, surface]) => [
+      key,
+      lavaSources.some((lava) => isWithinLavaHeat(surface, lava))
+        ? { ...surface, burning: surface.burning ?? 1 }
+        : surface,
+    ]),
+  );
   const surfaceIds = new Set([...worldSurfaces.values()].map(({ id }) => id));
   const blocksById = new Map(workingBlocks.map((block) => [block.id, block]));
   const blocksByCell = new Map(workingBlocks.map((block) => [cellKey(block), block]));
@@ -1552,7 +1582,10 @@ export function advanceEcosystem(
     const hunger = animal.hunger - (tick % hungerLossEveryTicks === 0 ? 1 : 0);
     if (hunger <= 0) return [];
     const surface = surfaces.get(columnKey(animal.x, animal.z));
-    if (surface && surfaceSupportsAnimal(animal, surface)) {
+    if (
+      surface &&
+      (surfaceSupportsAnimal(animal, surface) || surface.material === 'lava')
+    ) {
       const inWater = surface.material === 'water';
       const burning = !inWater && (animal.burning || surface.burning)
         ? (animal.burning ?? 0) + 1
@@ -1571,7 +1604,7 @@ export function advanceEcosystem(
       return [nextAnimal];
     }
     const nearest = availableSurfaces
-      .filter((candidate) => surfaceSupportsAnimal(animal, candidate))
+      .filter((candidate) => surfaceIsTraversable(animal, candidate))
       .slice()
       .sort(
         (a, b) =>
@@ -1590,6 +1623,7 @@ export function advanceEcosystem(
   });
 
   const rushing = new Set<string>();
+  const avoidingLava = new Set<string>();
   const rushOccupied = new Set(animals.map(({ x, z }) => columnKey(x, z)));
   const waterTargetKeys = new Set(
     [...surfaces.values()]
@@ -1597,10 +1631,24 @@ export function advanceEcosystem(
       .map(({ x, z }) => columnKey(x, z)),
   );
   animals = animals.map((animal) => {
-    if (!animal.burning) return animal;
-    rushing.add(animal.id);
+    const currentSurface = baseAnimalSurfaces.get(columnKey(animal.x, animal.z));
+    const nearbyLava = currentSurface
+      ? lavaSources
+        .filter((lava) => isWithinLavaHeat(currentSurface, lava))
+        .sort(
+          (a, b) =>
+            distance(animal, a) - distance(animal, b) ||
+            a.y - b.y ||
+            a.id.localeCompare(b.id),
+        )[0]
+      : undefined;
+    if (!animal.burning && !nearbyLava) return animal;
+    if (animal.burning) rushing.add(animal.id);
+    else avoidingLava.add(animal.id);
     rushOccupied.delete(columnKey(animal.x, animal.z));
-    const moved = moveTowardNearestFood(animal, waterTargetKeys, surfaces, rushOccupied);
+    const moved = nearbyLava
+      ? fleeFrom(animal, nearbyLava, baseAnimalSurfaces, rushOccupied)
+      : moveTowardNearestFood(animal, waterTargetKeys, surfaces, rushOccupied);
     rushOccupied.add(columnKey(moved.x, moved.z));
     const surface = surfaces.get(columnKey(moved.x, moved.z));
     if (surface?.material !== 'water') return moved;
@@ -1613,6 +1661,7 @@ export function advanceEcosystem(
   for (const animal of animals) {
     if (
       rushing.has(animal.id) ||
+      avoidingLava.has(animal.id) ||
       sleeping.has(animal.id) ||
       !animalNeedsMeal(animal) ||
       !animalCanEatOnTick(animal, tick)
@@ -1665,7 +1714,7 @@ export function advanceEcosystem(
 
   const animalsById = new Map(animals.map((animal) => [animal.id, animal]));
   const occupied = new Set(animals.map(({ x, z }) => columnKey(x, z)));
-  const actedThisTick = new Set(rushing);
+  const actedThisTick = new Set([...rushing, ...avoidingLava]);
   const fledFromPredator = new Set<string>();
 
   const nearbyPredators = [...animalsById.values()]

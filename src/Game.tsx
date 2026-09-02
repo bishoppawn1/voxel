@@ -34,12 +34,12 @@ import {
   HUMAN_TRAIT_KEYS,
   advanceEcosystem,
   animalSleepsAtNight,
+  canSpawnAnimal,
   convertCoveredGrassToSoil,
   createAnimalSurfaceIndex,
   createInitialEcosystem,
   createSeededEcosystem,
   createSurfaceIndex,
-  isAquaticAnimal,
   humanDisplayName,
   getHumanFurnitureKind,
   migrateEcosystem,
@@ -74,9 +74,13 @@ import {
 } from './game/world';
 import {
   ABILITIES,
-  ABILITY_RADIUS,
   ABILITY_KEYS,
+  DEFAULT_ABILITY_BRUSH_SIZE,
+  MAX_ABILITY_BRUSH_SIZE,
+  MIN_ABILITY_BRUSH_SIZE,
   applyAbility,
+  applyAbilityToAnimals,
+  countEligibleAnimals,
   countEligibleBlocks,
   type AbilityKey,
   type AbilityResult,
@@ -86,6 +90,7 @@ import { AnimalModel } from './visuals/AnimalModel';
 
 type Tool = 'place' | 'erase' | 'animal' | 'ability';
 type HoverTarget = Cell & { blockId?: string; valid: boolean };
+type WorldSnapshot = { blocks: VoxelBlock[]; ecosystem: EcosystemState };
 
 const STORAGE_KEY = 'voxel-world-v2';
 const ECOSYSTEM_STORAGE_KEY = 'voxel-ecosystem-v2';
@@ -642,6 +647,7 @@ function WorldScene({
   tool,
   animalKind,
   activeAbility,
+  abilityBrushSize,
   dayCycle,
   onAdd,
   onRemove,
@@ -654,6 +660,7 @@ function WorldScene({
   tool: Tool;
   animalKind: AnimalKind;
   activeAbility: AbilityKey;
+  abilityBrushSize: number;
   dayCycle: DayCycle;
   onAdd: (cell: Cell) => void;
   onRemove: (id: string) => void;
@@ -753,11 +760,23 @@ function WorldScene({
     if (tool === 'ability') {
       const surface = surfaceAt(block.x, block.z) ?? block;
       const target = { x: block.x, z: block.z };
+      const affectsBlocks = applyAbility(
+        blocks,
+        activeAbility,
+        target,
+        abilityBrushSize,
+      ).changed;
+      const affectsAnimals = applyAbilityToAnimals(
+        ecosystem.animals,
+        activeAbility,
+        target,
+        abilityBrushSize,
+      ).changed;
       setHover({
         ...target,
         y: surface.y,
         blockId: surface.id,
-        valid: applyAbility(blocks, activeAbility, target).changed,
+        valid: affectsBlocks || affectsAnimals,
       });
       paintAbility(event, target);
       return;
@@ -768,9 +787,6 @@ function WorldScene({
     }
     if (tool === 'animal') {
       const surface = animalSurfaceAt(block.x, block.z);
-      const occupied = ecosystem.animals.some(
-        (animal) => animal.x === block.x && animal.z === block.z,
-      );
       setHover({
         x: block.x,
         y: block.y + 1,
@@ -778,10 +794,7 @@ function WorldScene({
         blockId: block.id,
         valid:
           surface?.id === block.id &&
-          !block.burning &&
-          block.material !== 'lava' &&
-          (!isAquaticAnimal(animalKind) || block.material === 'water') &&
-          !occupied,
+          canSpawnAnimal(blocks, ecosystem, animalKind, block.x, block.z),
       });
       return;
     }
@@ -814,15 +827,9 @@ function WorldScene({
     }
     if (tool === 'animal') {
       const surface = animalSurfaceAt(block.x, block.z);
-      const occupied = ecosystem.animals.some(
-        (animal) => animal.x === block.x && animal.z === block.z,
-      );
       if (
         surface?.id === block.id &&
-        !block.burning &&
-        block.material !== 'lava' &&
-        (!isAquaticAnimal(animalKind) || block.material === 'water') &&
-        !occupied
+        canSpawnAnimal(blocks, ecosystem, animalKind, block.x, block.z)
       ) {
         onSpawnAnimal(block.x, block.z);
         setHover(null);
@@ -895,9 +902,21 @@ function WorldScene({
           const cell = planeCell(event);
           if (tool === 'ability') {
             const target = { x: cell.x, z: cell.z };
+            const affectsBlocks = applyAbility(
+              blocks,
+              activeAbility,
+              target,
+              abilityBrushSize,
+            ).changed;
+            const affectsAnimals = applyAbilityToAnimals(
+              ecosystem.animals,
+              activeAbility,
+              target,
+              abilityBrushSize,
+            ).changed;
             setHover({
               ...cell,
-              valid: applyAbility(blocks, activeAbility, target).changed,
+              valid: affectsBlocks || affectsAnimals,
             });
             paintAbility(event, target);
           } else {
@@ -1006,27 +1025,20 @@ function WorldScene({
           rotation={[-Math.PI / 2, 0, 0]}
         >
           <mesh>
-            <circleGeometry args={[(ABILITY_RADIUS + 0.5) * BLOCK_SIZE, 32]} />
+            <planeGeometry
+              args={[abilityBrushSize * BLOCK_SIZE, abilityBrushSize * BLOCK_SIZE]}
+            />
             <meshBasicMaterial
               color={hover.valid ? ABILITY_PREVIEW_COLORS[activeAbility].fill : '#b96a57'}
               transparent
               opacity={0.2}
               depthWrite={false}
             />
-          </mesh>
-          <mesh position={[0, 0, 0.003]}>
-            <ringGeometry
-              args={[
-                (ABILITY_RADIUS + 0.34) * BLOCK_SIZE,
-                (ABILITY_RADIUS + 0.5) * BLOCK_SIZE,
-                32,
-              ]}
-            />
-            <meshBasicMaterial
+            <Edges
               color={hover.valid ? ABILITY_PREVIEW_COLORS[activeAbility].edge : '#914c3d'}
+              lineWidth={1.5}
               transparent
-              opacity={0.78}
-              depthWrite={false}
+              opacity={0.82}
             />
           </mesh>
         </group>
@@ -1164,12 +1176,16 @@ function PowerPanel({
   results,
   message,
   activeAbility,
+  brushSize,
   onActivate,
+  onBrushSizeChange,
 }: {
   results: Record<AbilityKey, AbilityResult>;
   message: string;
   activeAbility: AbilityKey | null;
+  brushSize: number;
   onActivate: (ability: AbilityKey) => void;
+  onBrushSizeChange: (size: number) => void;
 }) {
   return (
     <aside className="power-panel" aria-label="God powers">
@@ -1204,6 +1220,19 @@ function PowerPanel({
           );
         })}
       </div>
+      <label className="power-brush-size">
+        <span>Brush size</span>
+        <input
+          type="range"
+          min={MIN_ABILITY_BRUSH_SIZE}
+          max={MAX_ABILITY_BRUSH_SIZE}
+          step={2}
+          value={brushSize}
+          aria-label="Power brush size"
+          onChange={(event) => onBrushSizeChange(Number(event.target.value))}
+        />
+        <output>{brushSize} × {brushSize}</output>
+      </label>
       <p className="power-status" role="status" aria-live="polite" aria-atomic="true">
         {message || 'Choose a power, then left-click or drag its area brush over the world.'}
       </p>
@@ -1270,10 +1299,11 @@ export default function Game() {
   const [material, setMaterial] = useState<BlockMaterial>('grass');
   const [animalKind, setAnimalKind] = useState<AnimalKind>('sheep');
   const [activeAbility, setActiveAbility] = useState<AbilityKey>('verdant-touch');
+  const [abilityBrushSize, setAbilityBrushSize] = useState(DEFAULT_ABILITY_BRUSH_SIZE);
   const [gravityOn, setGravityOn] = useState(true);
   const [simulationPaused, setSimulationPaused] = useState(false);
-  const [past, setPast] = useState<VoxelBlock[][]>([]);
-  const [future, setFuture] = useState<VoxelBlock[][]>([]);
+  const [past, setPast] = useState<WorldSnapshot[]>([]);
+  const [future, setFuture] = useState<WorldSnapshot[]>([]);
   const [settling, setSettling] = useState(false);
   const [welcomeVisible, setWelcomeVisible] = useState(true);
   const [powerMessage, setPowerMessage] = useState('');
@@ -1282,15 +1312,17 @@ export default function Game() {
   const worldTickCounter = useRef(0);
   const blocksRef = useRef(blocks);
   const ecosystemRef = useRef(ecosystem);
-  const burningCount = blocks.filter((block) => block.burning).length;
+  const burningCount = blocks.filter((block) => block.burning).length +
+    ecosystem.animals.filter((animal) => animal.burning).length;
   const fireActive = useMemo(() => advanceFire(blocks).changed, [blocks]);
   const abilityResults = useMemo(
     () => ABILITY_KEYS.reduce((results, key) => {
-      const affected = countEligibleBlocks(blocks, key);
+      const affected = countEligibleBlocks(blocks, key) +
+        countEligibleAnimals(ecosystem.animals, key);
       results[key] = { blocks, changed: affected > 0, affected };
       return results;
     }, {} as Record<AbilityKey, AbilityResult>),
-    [blocks],
+    [blocks, ecosystem.animals],
   );
   const inspectedHuman = inspectedHumanId
     ? ecosystem.animals.find((animal) => animal.id === inspectedHumanId && animal.kind === 'human')
@@ -1363,13 +1395,19 @@ export default function Game() {
     return () => window.clearInterval(ecosystemTimer);
   }, [simulationPaused]);
 
-  const commit = (next: VoxelBlock[], didMove = false) => {
+  const commit = (
+    next: VoxelBlock[],
+    didMove = false,
+    nextEcosystem = ecosystem,
+  ) => {
     const nextBlocks = convertCoveredGrassToSoil(next);
-    if (nextBlocks === blocks) return;
-    setPast((history) => [...history.slice(-29), blocks]);
+    if (nextBlocks === blocks && nextEcosystem === ecosystem) return;
+    setPast((history) => [...history.slice(-29), { blocks, ecosystem }]);
     setFuture([]);
     blocksRef.current = nextBlocks;
+    ecosystemRef.current = nextEcosystem;
     setBlocks(nextBlocks);
+    setEcosystem(nextEcosystem);
     setWelcomeVisible(false);
     if (didMove) setSettling(true);
   };
@@ -1440,40 +1478,38 @@ export default function Game() {
     const previous = past.at(-1);
     if (!previous) return;
     setPast((history) => history.slice(0, -1));
-    setFuture((history) => [blocks, ...history].slice(0, 30));
-    blocksRef.current = previous;
-    setBlocks(previous);
+    setFuture((history) => [{ blocks, ecosystem }, ...history].slice(0, 30));
+    blocksRef.current = previous.blocks;
+    ecosystemRef.current = previous.ecosystem;
+    setBlocks(previous.blocks);
+    setEcosystem(previous.ecosystem);
   };
 
   const redo = () => {
     const next = future[0];
     if (!next) return;
     setFuture((history) => history.slice(1));
-    setPast((history) => [...history.slice(-29), blocks]);
-    blocksRef.current = next;
-    setBlocks(next);
+    setPast((history) => [...history.slice(-29), { blocks, ecosystem }]);
+    blocksRef.current = next.blocks;
+    ecosystemRef.current = next.ecosystem;
+    setBlocks(next.blocks);
+    setEcosystem(next.ecosystem);
   };
 
   const resetWorld = () => {
     const starter = createRandomWorld();
     const freshEcosystem = createInitialEcosystem(starter);
-    commit(starter);
-    ecosystemRef.current = freshEcosystem;
-    setEcosystem(freshEcosystem);
+    commit(starter, false, freshEcosystem);
   };
   const seedWorld = () => {
     const random = Math.random;
     const seeded = createSeedWorld(random);
     const seededEcosystem = createSeededEcosystem(seeded, random);
-    commit(seeded);
-    ecosystemRef.current = seededEcosystem;
-    setEcosystem(seededEcosystem);
+    commit(seeded, false, seededEcosystem);
   };
   const clearWorld = () => {
     const emptyEcosystem = createInitialEcosystem([]);
-    commit([]);
-    ecosystemRef.current = emptyEcosystem;
-    setEcosystem(emptyEcosystem);
+    commit([], false, emptyEcosystem);
   };
   const selectMaterial = (nextMaterial: BlockMaterial) => {
     setMaterial(nextMaterial);
@@ -1485,15 +1521,35 @@ export default function Game() {
     setTool('ability');
     setPowerMessage(`${ABILITIES[ability].label} selected. Left-click or drag over the area to apply it.`);
   };
+  const changeAbilityBrushSize = (size: number) => {
+    setAbilityBrushSize(size);
+    setPowerMessage(`All power brushes are now ${size} × ${size} cells.`);
+  };
   const applyActiveAbilityAt = (x: number, z: number) => {
-    const result = applyAbility(blocks, activeAbility, { x, z });
-    if (!result.changed) return;
+    const result = applyAbility(
+      blocks,
+      activeAbility,
+      { x, z },
+      abilityBrushSize,
+    );
+    const animalResult = applyAbilityToAnimals(
+      ecosystem.animals,
+      activeAbility,
+      { x, z },
+      abilityBrushSize,
+    );
+    if (!result.changed && !animalResult.changed) return;
+    const nextEcosystem = animalResult.changed
+      ? { ...ecosystem, animals: animalResult.animals }
+      : ecosystem;
     commit(
       result.blocks,
       !simulationPaused && gravityOn && ABILITIES[activeAbility].triggersGravity,
+      nextEcosystem,
     );
+    const affected = result.affected + animalResult.affected;
     setPowerMessage(
-      `${ABILITIES[activeAbility].label} affected ${result.affected} ${result.affected === 1 ? 'block' : 'blocks'}. Keep dragging to brush another area.`,
+      `${ABILITIES[activeAbility].label} affected ${affected} ${affected === 1 ? 'target' : 'targets'}. Keep dragging to brush another area.`,
     );
   };
 
@@ -1512,6 +1568,7 @@ export default function Game() {
             tool={tool}
             animalKind={animalKind}
             activeAbility={activeAbility}
+            abilityBrushSize={abilityBrushSize}
             dayCycle={dayCycle}
             onAdd={addBlock}
             onRemove={removeBlock}
@@ -1619,7 +1676,9 @@ export default function Game() {
         results={abilityResults}
         message={powerMessage}
         activeAbility={tool === 'ability' ? activeAbility : null}
+        brushSize={abilityBrushSize}
         onActivate={activateAbility}
+        onBrushSizeChange={changeAbilityBrushSize}
       />
 
       <section className={`welcome-card ${welcomeVisible ? '' : 'dismissed'}`} aria-live="polite">
@@ -1652,7 +1711,7 @@ export default function Game() {
         {burningCount ? <Flame size={15} className="fire-icon" /> : <Leaf size={15} />}
         <span>
           {burningCount
-            ? `${burningCount} ${burningCount === 1 ? 'block' : 'blocks'} burning`
+            ? `${burningCount} ${burningCount === 1 ? 'fire' : 'fires'} burning`
             : ecosystem.vegetation.length
               ? `${ecosystem.vegetation.length} growing`
             : blocks.length
@@ -1679,7 +1738,7 @@ export default function Game() {
             : tool}
         </span>
         {tool === 'place' && <span><kbd>Shift</kbd> + drag to pour</span>}
-        {tool === 'ability' && <span>Drag to brush a small area</span>}
+        {tool === 'ability' && <span>Drag to brush a {abilityBrushSize} × {abilityBrushSize} area</span>}
         <span><b>⌁</b> Scroll to zoom</span>
       </div>
 

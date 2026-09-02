@@ -148,6 +148,9 @@ kbd { min-width: 21px; padding: 3px 6px; border: 1px solid rgba(42, 66, 55, .12)
 .power-rain .power-icon { color: #3f7590; background: #d8e9ec; }
 .power-deep-freeze .power-icon { color: #487f9b; background: #d9eef1; }
 .power-thaw .power-icon { color: #9b6a22; background: #f2e2af; }
+.power-brush-size { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 7px; margin: 9px 2px 0; color: #73837b; font-size: 8px; font-weight: 700; }
+.power-brush-size input { min-width: 0; accent-color: var(--sage-dark); cursor: pointer; }
+.power-brush-size output { min-width: 28px; color: var(--sage-dark); font-family: 'DM Mono', monospace; text-align: right; }
 .power-status { min-height: 24px; margin: 9px 2px 0; padding-top: 8px; border-top: 1px solid var(--line); color: #73837b; font-size: 8px; line-height: 1.35; }
 
 .welcome-card {
@@ -268,6 +271,7 @@ kbd { min-width: 21px; padding: 3px 6px; border: 1px solid rgba(42, 66, 55, .12)
   .power-button strong { overflow: hidden; font-size: 8px; line-height: 1; text-overflow: ellipsis; white-space: nowrap; }
   .power-button small, .power-count { display: none; }
   .power-icon { width: 22px; height: 22px; border-radius: 7px; }
+  .power-brush-size { margin: 6px 3px 0; }
   .welcome-card { top: 145px; }
   .world-status { display: none; }
   .controls-hint { left: 10px; right: 10px; bottom: 10px; justify-content: center; transform: none; }

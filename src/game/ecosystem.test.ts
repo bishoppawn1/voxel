@@ -454,6 +454,16 @@ describe('animal spawning and diets', () => {
     expect(spawnAnimal(world, occupied, 'goat', 1, 0)).toBe(occupied);
   });
 
+  it('does not spawn an animal inside a lava heat zone', () => {
+    const world = [
+      block('ground', 0, 0, 'stone'),
+      block('lava', 2, 0, 'lava'),
+    ];
+    const ecosystem = emptyEcosystem();
+
+    expect(spawnAnimal(world, ecosystem, 'sheep', 0, 0)).toBe(ecosystem);
+  });
+
   it('spawns fish only in water while land animals may enter water to swim', () => {
     const water = [block('water', 0, 0, 'water')];
     const land = [block('land', 0, 0, 'stone')];
@@ -1729,6 +1739,70 @@ describe('animal life cycle', () => {
     ecosystem = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
     expect(ecosystem.animals[0]).toMatchObject({ x: 2, z: 0, health: 2 });
     expect(ecosystem.animals[0].burning).toBeUndefined();
+  });
+
+  it('ignites an animal beside lava and makes it run away from the heat', () => {
+    const world = [
+      block('escape', -1, 0, 'stone'),
+      block('animal-ground', 0, 0, 'stone'),
+      block('lava', 1, 0, 'lava'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('sheep', 'sheep-0', 0, 0)],
+      nextEntityId: 1,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+
+    expect(result.animals[0]).toMatchObject({
+      x: -1,
+      z: 0,
+      burning: 1,
+      health: 3,
+    });
+  });
+
+  it('ignites instead of relocating an animal when lava is placed on it', () => {
+    const world = [
+      block('animal-ground', 0, 0, 'stone'),
+      block('placed-lava', 0, 0, 'lava', 1),
+      block('escape', 1, 0, 'stone'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('sheep', 'sheep-0', 0, 0)],
+      nextEntityId: 1,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+
+    expect(result.animals[0]).toMatchObject({
+      x: 1,
+      z: 0,
+      burning: 1,
+      health: 3,
+    });
+  });
+
+  it('will not path through the heat surrounding lava', () => {
+    const world = Array.from({ length: 7 }, (_, x) =>
+      block(
+        `surface-${x}`,
+        x,
+        0,
+        x === 3 ? 'lava' : x === 6 ? 'grass' : 'stone',
+      ));
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('rabbit', 'rabbit-0', 0, 0, { hunger: 40 })],
+      nextEntityId: 1,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem;
+
+    expect(result.animals[0]).toMatchObject({ x: 0, z: 0 });
+    expect(result.animals[0].burning).toBeUndefined();
   });
 
   it('keeps fish in connected water and lets small fish eat kelp', () => {
