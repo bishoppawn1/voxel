@@ -201,7 +201,10 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   increases its hunting damage. At other times it seeks Wood, chops one exposed
   Wood block at a time, and carries that one log in a single hand slot. If no
   communal bench is nearby, its first log becomes a Basic Crafting Bench on a
-  neighboring safe surface.
+  neighboring safe surface. A Human tracks whether its current task makes
+  meaningful progress. After eight consecutive awake ticks without moving or
+  advancing that task, it abandons the blocked commitment and explores toward
+  another reachable destination before choosing fresh work.
 - Before constructing a bench, a Human adopts the nearest existing Basic
   Crafting Bench within ten horizontal grid steps. If no bench is within ten
   steps, it uses its first log to build its own. Nearby Humans therefore share
@@ -281,9 +284,10 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   populations do not trigger repeated whole-world scans or redraws.
 - Vegetation, animal species, positions, facing, hunger, age, health, fire, meal
   counts, breeding cooldowns, and Human hands, tools, benches, unfinished
-  recipes, traits, generation, and parent IDs persist with the local world.
-  Older Human saves receive deterministic founder traits during migration. Reset restores a
-  fresh ecosystem; Clear removes it.
+  recipes, traits, generation, parent IDs, and task-stall counters persist with
+  the local world. Older Human saves receive deterministic founder traits and
+  a clear task-stall counter during migration. Reset restores a fresh
+  ecosystem; Clear removes it.
 
 ## God powers
 
@@ -376,7 +380,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   five-by-five cabin while keeping the shared bench outside. Finished cabins
   contain a visible bed and pantry; Humans use the bed to heal while sleeping
   and the pantry to reduce overnight hunger loss. Right-clicking a Human
-  without dragging opens its individual stats.
+  without dragging opens its individual stats. A Human that makes no progress
+  on a task for eight awake ticks abandons it and retries reachable work.
   Healthy mature
   unrelated pairs can produce children whose six behavior traits average both
   parents with bounded mutation. Parent-child and sibling pairing is blocked,

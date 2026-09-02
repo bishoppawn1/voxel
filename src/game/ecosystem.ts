@@ -37,6 +37,7 @@ const HUMAN_MUTATION_RANGE = 8;
 const HUMAN_EMERGENCY_HUNGER = 36;
 const HUMAN_MIN_MATE_SEARCH_RADIUS = 24;
 export const HUMAN_WORKBENCH_SEARCH_RADIUS = 10;
+export const HUMAN_STUCK_TASK_TICKS = 8;
 export const NIGHT_PREDATOR_HUNT_CHANCE = 0.35;
 const BED_HEAL_EVERY_TICKS = 4;
 
@@ -514,6 +515,7 @@ export type Animal = {
   workbenchId?: string;
   crafting?: HumanCraft;
   craftingReadyTick?: number;
+  taskStallTicks?: number;
   traits?: HumanTraits;
   generation?: number;
   parentIds?: [string, string];
@@ -727,6 +729,7 @@ function createAnimal(kind: AnimalKind, idNumber: number, position: Position): A
   };
   if (kind === 'human') {
     animal.tools = [];
+    animal.taskStallTicks = 0;
     animal.traits = createFounderHumanTraits(animal.id);
     animal.generation = 0;
   }
@@ -1080,11 +1083,17 @@ function exploreWorld(
       !surfaceIsTraversable(human, surface)
     );
   }).sort((a, b) => a.x - b.x || a.z - b.z || a.id.localeCompare(b.id));
-  const target = pickRandom(
-    candidates,
-    random(`human-wander:${tick}:${epoch}:${human.id}`),
+  if (!candidates.length) return human;
+  const startIndex = Math.min(
+    candidates.length - 1,
+    Math.floor(random(`human-wander:${tick}:${epoch}:${human.id}`) * candidates.length),
   );
-  return target ? moveToward(human, target, surfaces, occupied) : human;
+  for (let offset = 0; offset < candidates.length; offset += 1) {
+    const target = candidates[(startIndex + offset) % candidates.length];
+    const moved = moveToward(human, target, surfaces, occupied);
+    if (moved.x !== human.x || moved.z !== human.z) return moved;
+  }
+  return human;
 }
 
 function findBabyCell(
@@ -1237,6 +1246,7 @@ function createHumanChild(
     facingX: parents[0].facingX,
     facingZ: parents[0].facingZ,
     tools: [],
+    taskStallTicks: 0,
     traits: inheritHumanTraits(parents[0], parents[1], id, tick, random),
     generation: Math.max(parents[0].generation ?? 0, parents[1].generation ?? 0) + 1,
     parentIds: parents.map(({ id: parentId }) => parentId).sort() as [string, string],
@@ -1778,10 +1788,30 @@ export function advanceEcosystem(
     if (!human) continue;
     actedThisTick.add(human.id);
     occupied.delete(columnKey(human.x, human.z));
-    const saveHuman = (nextHuman: Animal) => {
-      human = nextHuman;
-      animalsById.set(nextHuman.id, nextHuman);
-      occupied.add(columnKey(nextHuman.x, nextHuman.z));
+    const saveHuman = (nextHuman: Animal, explicitProgress = false) => {
+      const madeProgress = explicitProgress ||
+        nextHuman.x !== human!.x ||
+        nextHuman.z !== human!.z ||
+        nextHuman.heldItem !== human!.heldItem ||
+        nextHuman.crafting !== human!.crafting ||
+        nextHuman.craftingReadyTick !== human!.craftingReadyTick ||
+        nextHuman.workbenchId !== human!.workbenchId ||
+        nextHuman.tools?.join(',') !== human!.tools?.join(',');
+      const taskStallTicks = madeProgress
+        ? 0
+        : (human!.taskStallTicks ?? 0) + 1;
+      let savedHuman: Animal = { ...nextHuman, taskStallTicks };
+      if (taskStallTicks >= HUMAN_STUCK_TASK_TICKS) {
+        savedHuman = { ...savedHuman, taskStallTicks: 0 };
+        delete savedHuman.heldItem;
+        delete savedHuman.crafting;
+        delete savedHuman.craftingReadyTick;
+        delete savedHuman.activeTool;
+        savedHuman = exploreWorld(savedHuman, tick, surfaces, occupied, random);
+      }
+      human = savedHuman;
+      animalsById.set(savedHuman.id, savedHuman);
+      occupied.add(columnKey(savedHuman.x, savedHuman.z));
     };
 
     let workbench = human.workbenchId
@@ -1796,6 +1826,7 @@ export function advanceEcosystem(
       delete resetHuman.workbenchId;
       delete resetHuman.crafting;
       delete resetHuman.craftingReadyTick;
+      resetHuman.taskStallTicks = 0;
       human = resetHuman;
       workbench = undefined;
       animalsById.set(human.id, human);
@@ -1814,7 +1845,7 @@ export function advanceEcosystem(
             a.id.localeCompare(b.id),
         )[0];
       if (sharedWorkbench) {
-        human = { ...human, workbenchId: sharedWorkbench.id };
+        human = { ...human, workbenchId: sharedWorkbench.id, taskStallTicks: 0 };
         workbench = sharedWorkbench;
         animalsById.set(human.id, human);
       }
@@ -1828,13 +1859,13 @@ export function advanceEcosystem(
         ? homeFurnitureAt(workbench, 'bed', blocksByCell)
         : undefined;
       if (bed && distance(human, bed) > 1) {
-        saveHuman(moveToward(human, bed, surfaces, occupied, 1));
+        saveHuman(moveToward(human, bed, surfaces, occupied, 1), true);
         continue;
       }
       const recoveredHealth = bed && tick % BED_HEAL_EVERY_TICKS === 0
         ? Math.min(ANIMALS.human.maxHealth, human.health + 1)
         : human.health;
-      saveHuman({ ...human, health: recoveredHealth });
+      saveHuman({ ...human, health: recoveredHealth }, true);
       continue;
     }
 
@@ -1918,7 +1949,7 @@ export function advanceEcosystem(
         actedThisTick.add(prey.id);
         if (attackedPrey.health > 0) {
           animalsById.set(prey.id, attackedPrey);
-          saveHuman(human);
+          saveHuman(human, true);
           continue;
         }
         animalsById.delete(prey.id);
@@ -1927,7 +1958,7 @@ export function advanceEcosystem(
           ...human,
           eaten: human.eaten + 1,
           hunger: Math.min(MAX_ANIMAL_HUNGER, human.hunger + HUNGER_PER_MEAL),
-        });
+        }, true);
         continue;
       }
     }
@@ -2303,6 +2334,9 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
             Number.isInteger(animal.craftingReadyTick) &&
             (animal.craftingReadyTick ?? -1) >= 0
           )) &&
+          Number.isInteger(animal.taskStallTicks) &&
+          (animal.taskStallTicks ?? -1) >= 0 &&
+          (animal.taskStallTicks ?? HUMAN_STUCK_TASK_TICKS) < HUMAN_STUCK_TASK_TICKS &&
           !(animal.heldItem && animal.crafting) &&
           traitsValid &&
           Number.isInteger(animal.generation) &&
@@ -2316,6 +2350,7 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
         animal.workbenchId === undefined &&
         animal.crafting === undefined &&
         animal.craftingReadyTick === undefined &&
+        animal.taskStallTicks === undefined &&
         animal.traits === undefined &&
         animal.generation === undefined &&
         animal.parentIds === undefined;
@@ -2373,6 +2408,7 @@ export function migrateEcosystem(value: unknown): EcosystemState | undefined {
       facingX: Number.isInteger(animal.facingX) ? animal.facingX : 1,
       facingZ: Number.isInteger(animal.facingZ) ? animal.facingZ : 0,
       ...(isHuman && animal.tools === undefined ? { tools: [] } : {}),
+      ...(isHuman && animal.taskStallTicks === undefined ? { taskStallTicks: 0 } : {}),
       ...(isHuman && animal.traits === undefined
         ? { traits: createFounderHumanTraits(animal.id ?? 'human-legacy') }
         : {}),

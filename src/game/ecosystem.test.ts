@@ -10,6 +10,7 @@ import {
   HUMAN_HOUSE_BLUEPRINT,
   HUMAN_MAX_POPULATION,
   HUMAN_REPRODUCTION_MIN_HUNGER,
+  HUMAN_STUCK_TASK_TICKS,
   HUMAN_WORKBENCH_SEARCH_RADIUS,
   HERBIVORE_FIGHT_BACK_CHANCE,
   HERBIVORE_KEYS,
@@ -70,6 +71,7 @@ const animal = (
   facingZ: 0,
   ...(kind === 'human' ? {
     tools: [],
+    taskStallTicks: 0,
     traits: createFounderHumanTraits(id),
     generation: 0,
   } : {}),
@@ -1045,6 +1047,82 @@ describe('human crafting and building', () => {
     const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem.animals[0];
 
     expect({ x: result.x, z: result.z }).not.toEqual({ x: 0, z: 0 });
+  });
+
+  it('abandons a committed task after staring without progress for too long', () => {
+    const world = [
+      ...Array.from({ length: 7 }, (_, index) =>
+        block(`ground-${index}`, index - 3, 0, 'stone')),
+      block('remote-ground', 8, 0, 'stone'),
+      block('remote-bench', 8, 0, 'crafting-bench', 1),
+    ];
+    let ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('human', 'human-0', 0, 0, {
+        heldItem: 'planks',
+        tools: ['hammer'],
+        workbenchId: 'remote-bench',
+        taskStallTicks: 0,
+      })],
+      nextEntityId: 1,
+    };
+
+    for (let tick = 1; tick <= HUMAN_STUCK_TASK_TICKS; tick += 1) {
+      ecosystem = advanceEcosystem(world, ecosystem, () => 0).ecosystem;
+    }
+
+    expect(ecosystem.animals[0]).toMatchObject({
+      x: -1,
+      z: 0,
+      taskStallTicks: 0,
+    });
+    expect(ecosystem.animals[0].heldItem).toBeUndefined();
+    expect(ecosystem.animals[0].activeTool).toBeUndefined();
+  });
+
+  it('resets the watchdog when committed work makes progress', () => {
+    const world = [
+      block('human-ground', 0, 0, 'stone'),
+      block('bench-ground', 1, 0, 'stone'),
+      block('bench', 1, 0, 'crafting-bench', 1),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('human', 'human-0', 0, 0, {
+        heldItem: 'wood',
+        workbenchId: 'bench',
+        taskStallTicks: HUMAN_STUCK_TASK_TICKS - 1,
+      })],
+      nextEntityId: 1,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem.animals[0];
+
+    expect(result).toMatchObject({ crafting: 'axe', taskStallTicks: 0 });
+    expect(result.heldItem).toBeUndefined();
+  });
+
+  it('tries another exploration destination when its first choice is unreachable', () => {
+    const world = [
+      block('island', -3, 0, 'stone'),
+      block('ground-0', 0, 0, 'stone'),
+      block('ground-1', 1, 0, 'stone'),
+      block('ground-2', 2, 0, 'stone'),
+    ];
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [animal('human', 'human-0', 0, 0, {
+        traits: {
+          ...createFounderHumanTraits('human-0'),
+          exploration: 100,
+        },
+      })],
+      nextEntityId: 1,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, () => 0).ecosystem.animals[0];
+
+    expect(result).toMatchObject({ x: 1, z: 0, taskStallTicks: 0 });
   });
 
   it('uses intrinsic random rolls to choose between hunting, exploring, and working', () => {
@@ -2285,6 +2363,7 @@ describe('ecosystem persistence validation', () => {
     delete legacyHuman.traits;
     delete legacyHuman.generation;
     delete legacyHuman.craftingReadyTick;
+    delete legacyHuman.taskStallTicks;
     const legacy: EcosystemState = {
       ...emptyEcosystem(),
       tick: 12,
@@ -2300,6 +2379,7 @@ describe('ecosystem persistence validation', () => {
       generation: 0,
       crafting: 'axe',
       craftingReadyTick: 12,
+      taskStallTicks: 0,
     });
   });
 });
