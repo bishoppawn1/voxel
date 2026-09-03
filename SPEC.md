@@ -416,7 +416,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   cell, and never plan through impassable terrain. Ordinary animals sleep at
   night while a deterministic minority of predators remain awake to surprise
   sleeping prey. The visible clock, sky, stars, fog, and lighting complete the
-  same persisted 160-tick cycle. Animals starve at zero and die of old age.
+  same persisted 160-tick cycle. Daytime lasts 96 ticks and nighttime lasts 64,
+  making day exactly 1.5 times as long as night. Animals starve at zero and die
+  of old age.
   Every non-human animal species can produce
   smaller babies from a well-fed same-species adult pair and grow those babies into adults
   without displaying overhead bars. Burning animals rush into

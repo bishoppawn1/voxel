@@ -45,7 +45,7 @@ import {
   type VoxelBlock,
 } from './world';
 
-const NIGHT_START_TICK = DAY_CYCLE_TICKS / 2;
+const NIGHT_TEST_TICK = DAY_CYCLE_TICKS * 3 / 4;
 
 const block = (
   id: string,
@@ -1095,7 +1095,7 @@ describe('human crafting and building', () => {
     ];
     const ecosystem: EcosystemState = {
       ...emptyEcosystem(),
-      tick: NIGHT_START_TICK - 1,
+      tick: NIGHT_TEST_TICK - 1,
       animals: [animal('human', 'human-0', -1, 3, {
         health: ANIMALS.human.maxHealth - 2,
         workbenchId: bench.id,
@@ -1119,7 +1119,7 @@ describe('human crafting and building', () => {
     });
     const makeState = (): EcosystemState => ({
       ...emptyEcosystem(),
-      tick: NIGHT_START_TICK,
+      tick: NIGHT_TEST_TICK,
       animals: [human],
       nextEntityId: 1,
     });
@@ -2225,14 +2225,14 @@ describe('night behavior', () => {
     ];
     const ecosystem: EcosystemState = {
       ...emptyEcosystem(),
-      tick: NIGHT_START_TICK - 1,
+      tick: NIGHT_TEST_TICK - 1,
       animals: [animal('sheep', 'sheep-0', 0, 0, { hunger: 40 })],
       nextEntityId: 1,
     };
 
     const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem.animals[0];
 
-    expect(animalSleepsAtNight(result, NIGHT_START_TICK, () => 1)).toBe(true);
+    expect(animalSleepsAtNight(result, NIGHT_TEST_TICK, () => 1)).toBe(true);
     expect(result).toMatchObject({ x: 0, z: 0, eaten: 0, hunger: 39 });
   });
 
@@ -2243,7 +2243,7 @@ describe('night behavior', () => {
     ];
     const ecosystem: EcosystemState = {
       ...emptyEcosystem(),
-      tick: NIGHT_START_TICK - 1,
+      tick: NIGHT_TEST_TICK - 1,
       animals: [
         animal('fox', 'fox-0', 0, 0, { hunger: 40 }),
         animal('rabbit', 'rabbit-1', 1, 0, { health: 1 }),
