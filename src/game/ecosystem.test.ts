@@ -9,6 +9,7 @@ import {
   HUMAN_FURNITURE_BLUEPRINT,
   HUMAN_CHILDHOOD_TICKS,
   HUMAN_HOUSE_BLUEPRINT,
+  HUMAN_HUNT_PATIENCE_TICKS,
   HUMAN_MAX_POPULATION,
   HUMAN_REPRODUCTION_MIN_HUNGER,
   HUMAN_STACK_CAPACITY,
@@ -77,12 +78,16 @@ const animal = (
   ...(kind === 'human' ? {
     tools: [],
     taskStallTicks: 0,
+    huntExperience: {},
     traits: createFounderHumanTraits(id),
     generation: 0,
   } : {}),
   ...overrides,
   ...(overrides.heldItem
     ? { heldItemCount: overrides.heldItemCount ?? 1 }
+    : {}),
+  ...(overrides.huntTargetId
+    ? { huntTicks: overrides.huntTicks ?? 0 }
     : {}),
 });
 
@@ -1153,8 +1158,46 @@ describe('human crafting and building', () => {
       eaten: 1,
       hunger: 63,
       activeTool: 'spear',
+      huntExperience: { rabbit: 2 },
     });
     expect(result.animals[0].huntTargetId).toBeUndefined();
+    expect(result.animals[0].huntTicks).toBeUndefined();
+  });
+
+  it('learns from an overlong hunt and switches to a better prey species', () => {
+    const world = Array.from({ length: 9 }, (_, index) =>
+      block(`ground-${index}`, index - 4, 0, 'stone'));
+    const ecosystem: EcosystemState = {
+      ...emptyEcosystem(),
+      animals: [
+        animal('human', 'human-0', 0, 0, {
+          hunger: 60,
+          huntTargetId: 'rabbit-a',
+          huntTicks: HUMAN_HUNT_PATIENCE_TICKS,
+          traits: {
+            ...createFounderHumanTraits('human-0'),
+            aggression: 100,
+            caution: 0,
+            exploration: 100,
+          },
+        }),
+        animal('rabbit', 'rabbit-a', 4, 0),
+        animal('pig', 'pig-a', -4, 0),
+      ],
+      nextEntityId: 3,
+    };
+
+    const result = advanceEcosystem(world, ecosystem, (key) =>
+      key.startsWith('human-activity:') || key.startsWith('human-prey:') ? 0 : 1)
+      .ecosystem.animals.find(({ id }) => id === 'human-0');
+
+    expect(result).toMatchObject({
+      x: -1,
+      z: 0,
+      huntTargetId: 'pig-a',
+      huntTicks: 1,
+      huntExperience: { rabbit: -1 },
+    });
   });
 
   it('lets prey flee a human hunter instead of counterattacking', () => {
@@ -2615,6 +2658,14 @@ describe('ecosystem persistence validation', () => {
     })).toBe(false);
     expect(isValidEcosystem({
       ...emptyEcosystem(),
+      animals: [{ ...human, huntExperience: { rabbit: -9 } }],
+    })).toBe(false);
+    expect(isValidEcosystem({
+      ...emptyEcosystem(),
+      animals: [{ ...human, huntExperience: { human: 1 } }],
+    })).toBe(false);
+    expect(isValidEcosystem({
+      ...emptyEcosystem(),
       animals: [{ ...animal('sheep', 'sheep-0'), huntTargetId: 'pig-0' }],
     })).toBe(false);
   });
@@ -2649,6 +2700,7 @@ describe('ecosystem persistence validation', () => {
     delete legacyHuman.generation;
     delete legacyHuman.craftingReadyTick;
     delete legacyHuman.taskStallTicks;
+    delete legacyHuman.huntExperience;
     const legacy: EcosystemState = {
       ...emptyEcosystem(),
       tick: 12,
@@ -2665,6 +2717,7 @@ describe('ecosystem persistence validation', () => {
       crafting: 'axe',
       craftingReadyTick: 12,
       taskStallTicks: 0,
+      huntExperience: {},
     });
   });
 

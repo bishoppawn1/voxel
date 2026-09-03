@@ -41,10 +41,15 @@ const HUMAN_EMERGENCY_HUNGER = 36;
 const HUMAN_MIN_MATE_SEARCH_RADIUS = 24;
 export const HUMAN_WORKBENCH_SEARCH_RADIUS = 10;
 export const HUMAN_STUCK_TASK_TICKS = 8;
+export const HUMAN_HUNT_PATIENCE_TICKS = 12;
 export const HUMAN_STACK_CAPACITY = 8;
 export const PLANKS_PER_LOG = 4;
 export const NIGHT_PREDATOR_HUNT_CHANCE = 0.35;
 const BED_HEAL_EVERY_TICKS = 4;
+const HUMAN_HUNT_SUCCESS_REWARD = 2;
+const HUMAN_HUNT_FAILURE_PENALTY = -1;
+const HUMAN_HUNT_EXPERIENCE_MIN = -8;
+const HUMAN_HUNT_EXPERIENCE_MAX = 8;
 
 const DIRECTIONS = [
   { x: 1, z: 0 },
@@ -492,6 +497,7 @@ export const HUMAN_TRAIT_KEYS = [
 ] as const;
 export type HumanTraitKey = (typeof HUMAN_TRAIT_KEYS)[number];
 export type HumanTraits = Record<HumanTraitKey, number>;
+export type HumanHuntExperience = Partial<Record<AnimalKind, number>>;
 export const HUMAN_TRAITS: Record<HumanTraitKey, { label: string; low: string; high: string }> = {
   aggression: { label: 'Aggression', low: 'patient hunter', high: 'hunts early' },
   caution: { label: 'Caution', low: 'takes risks', high: 'avoids danger' },
@@ -524,6 +530,8 @@ export type Animal = {
   craftingReadyTick?: number;
   taskStallTicks?: number;
   huntTargetId?: string;
+  huntTicks?: number;
+  huntExperience?: HumanHuntExperience;
   traits?: HumanTraits;
   generation?: number;
   parentIds?: [string, string];
@@ -738,6 +746,7 @@ function createAnimal(kind: AnimalKind, idNumber: number, position: Position): A
   if (kind === 'human') {
     animal.tools = [];
     animal.taskStallTicks = 0;
+    animal.huntExperience = {};
     animal.traits = createFounderHumanTraits(animal.id);
     animal.generation = 0;
   }
@@ -1270,6 +1279,60 @@ function pickRandom<T>(items: readonly T[], roll: number): T | undefined {
   return items[index];
 }
 
+function humanHuntExperienceScore(human: Animal, kind: AnimalKind) {
+  return human.huntExperience?.[kind] ?? 0;
+}
+
+function updateHumanHuntExperience(
+  human: Animal,
+  kind: AnimalKind,
+  change: number,
+) {
+  const score = Math.max(
+    HUMAN_HUNT_EXPERIENCE_MIN,
+    Math.min(
+      HUMAN_HUNT_EXPERIENCE_MAX,
+      humanHuntExperienceScore(human, kind) + change,
+    ),
+  );
+  return {
+    ...human,
+    huntExperience: { ...human.huntExperience, [kind]: score },
+  };
+}
+
+function continueHumanHunt(human: Animal) {
+  return {
+    ...human,
+    huntTicks: Math.min(
+      HUMAN_HUNT_PATIENCE_TICKS,
+      (human.huntTicks ?? 0) + 1,
+    ),
+  };
+}
+
+/** Uses a bounded reward score as a tiny online learning rule. Untried prey
+ * begin neutral, successful species rise, and failed species fall. Distance
+ * and the existing individual random roll break ties between equally learned
+ * options. */
+function preferredHumanPrey(
+  human: Animal,
+  possiblePrey: readonly Animal[],
+  roll: number,
+  emergency: boolean,
+) {
+  if (!possiblePrey.length) return undefined;
+  const bestScore = Math.max(
+    ...possiblePrey.map((prey) => humanHuntExperienceScore(human, prey.kind)),
+  );
+  const learnedOptions = possiblePrey.filter(
+    (prey) => humanHuntExperienceScore(human, prey.kind) === bestScore,
+  );
+  return emergency
+    ? learnedOptions[0]
+    : pickRandom(learnedOptions.slice(0, 3), roll);
+}
+
 function humansAreCloseFamily(first: Animal, second: Animal) {
   if (first.parentIds?.includes(second.id) || second.parentIds?.includes(first.id)) {
     return true;
@@ -1312,6 +1375,7 @@ function createHumanChild(
     facingZ: parents[0].facingZ,
     tools: [],
     taskStallTicks: 0,
+    huntExperience: {},
     traits: inheritHumanTraits(parents[0], parents[1], id, tick, random),
     generation: Math.max(parents[0].generation ?? 0, parents[1].generation ?? 0) + 1,
     parentIds: parents.map(({ id: parentId }) => parentId).sort() as [string, string],
@@ -1955,12 +2019,23 @@ export function advanceEcosystem(
       let savedHuman: Animal = { ...nextHuman, taskStallTicks };
       if (taskStallTicks >= HUMAN_STUCK_TASK_TICKS) {
         savedHuman = { ...savedHuman, taskStallTicks: 0 };
+        const failedPrey = savedHuman.huntTargetId
+          ? animalsById.get(savedHuman.huntTargetId)
+          : undefined;
+        if (failedPrey) {
+          savedHuman = updateHumanHuntExperience(
+            savedHuman,
+            failedPrey.kind,
+            HUMAN_HUNT_FAILURE_PENALTY,
+          );
+        }
         delete savedHuman.heldItem;
         delete savedHuman.heldItemCount;
         delete savedHuman.crafting;
         delete savedHuman.craftingReadyTick;
         delete savedHuman.activeTool;
         delete savedHuman.huntTargetId;
+        delete savedHuman.huntTicks;
         savedHuman = exploreWorld(savedHuman, tick, surfaces, occupied, random);
       }
       human = savedHuman;
@@ -2043,7 +2118,20 @@ export function advanceEcosystem(
     if (!isPermittedPrey(lockedPrey)) {
       const unlockedHuman = { ...human };
       delete unlockedHuman.huntTargetId;
+      delete unlockedHuman.huntTicks;
       human = unlockedHuman;
+      lockedPrey = undefined;
+      animalsById.set(human.id, human);
+    }
+    if (lockedPrey && (human.huntTicks ?? 0) >= HUMAN_HUNT_PATIENCE_TICKS) {
+      const learnedHuman = updateHumanHuntExperience(
+        human,
+        lockedPrey.kind,
+        HUMAN_HUNT_FAILURE_PENALTY,
+      );
+      delete learnedHuman.huntTargetId;
+      delete learnedHuman.huntTicks;
+      human = { ...learnedHuman, taskStallTicks: 0 };
       lockedPrey = undefined;
       animalsById.set(human.id, human);
     }
@@ -2074,17 +2162,20 @@ export function advanceEcosystem(
               standingDistance(human!, b, surfaces) ||
             a.id.localeCompare(b.id),
         );
-      const prey = lockedPrey ?? (
-        emergencyHunt
-          ? possiblePrey[0]
-          : pickRandom(
-            possiblePrey.slice(0, 3),
-            random(`human-prey:${tick}:${human.id}`),
-          )
+      const prey = lockedPrey ?? preferredHumanPrey(
+        human,
+        possiblePrey,
+        random(`human-prey:${tick}:${human.id}`),
+        emergencyHunt,
       );
       if (prey) {
         if (human.huntTargetId !== prey.id) {
-          human = { ...human, huntTargetId: prey.id, taskStallTicks: 0 };
+          human = {
+            ...human,
+            huntTargetId: prey.id,
+            huntTicks: 0,
+            taskStallTicks: 0,
+          };
         }
         human = equipHumanTool(
           human,
@@ -2092,7 +2183,9 @@ export function advanceEcosystem(
         );
         animalsById.set(human.id, human);
         if (!animalsCanInteract(human, prey, surfaces)) {
-          saveHuman(moveTowardAnimal(human, prey, surfaces, occupied));
+          saveHuman(continueHumanHunt(
+            moveTowardAnimal(human, prey, surfaces, occupied),
+          ));
           continue;
         }
         const huntingHuman = faceToward(human, prey);
@@ -2105,7 +2198,7 @@ export function advanceEcosystem(
         animalsById.set(escaped.id, escaped);
         occupied.add(columnKey(escaped.x, escaped.z));
         if (escaped.x !== defendingPrey.x || escaped.z !== defendingPrey.z) {
-          saveHuman(human, true);
+          saveHuman(continueHumanHunt(human), true);
           continue;
         }
         const damage = (huntingHuman.activeTool === 'spear' ? 4 : 2) +
@@ -2114,17 +2207,22 @@ export function advanceEcosystem(
         actedThisTick.add(prey.id);
         if (attackedPrey.health > 0) {
           animalsById.set(prey.id, attackedPrey);
-          saveHuman(human, true);
+          saveHuman(continueHumanHunt(human), true);
           continue;
         }
         animalsById.delete(prey.id);
         occupied.delete(columnKey(prey.x, prey.z));
         const fedHuman = {
-          ...human,
+          ...updateHumanHuntExperience(
+            human,
+            prey.kind,
+            HUMAN_HUNT_SUCCESS_REWARD,
+          ),
           eaten: human.eaten + 1,
           hunger: Math.min(MAX_ANIMAL_HUNGER, human.hunger + HUNGER_PER_MEAL),
         };
         delete fedHuman.huntTargetId;
+        delete fedHuman.huntTicks;
         saveHuman(fedHuman, true);
         continue;
       }
@@ -2480,6 +2578,7 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
     const definition = ANIMALS[animal.kind as AnimalKind];
     const tools = animal.tools;
     const traits = animal.traits;
+    const huntExperience = animal.huntExperience;
     const traitsValid = Boolean(
       traits &&
       typeof traits === 'object' &&
@@ -2495,6 +2594,16 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
       animal.parentIds.length === 2 &&
       animal.parentIds.every((parentId) => typeof parentId === 'string') &&
       animal.parentIds[0] !== animal.parentIds[1]
+    );
+    const huntExperienceValid = Boolean(
+      huntExperience &&
+      typeof huntExperience === 'object' &&
+      !Array.isArray(huntExperience) &&
+      Object.entries(huntExperience).every(([kind, score]) =>
+        ANIMALS.human.prey.includes(kind as AnimalKind) &&
+        Number.isInteger(score) &&
+        score >= HUMAN_HUNT_EXPERIENCE_MIN &&
+        score <= HUMAN_HUNT_EXPERIENCE_MAX),
     );
     const humanStateValid = animal.kind === 'human'
       ? (
@@ -2516,7 +2625,14 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
             Boolean(tools?.includes(animal.activeTool))
           )) &&
           (animal.workbenchId === undefined || typeof animal.workbenchId === 'string') &&
-          (animal.huntTargetId === undefined || typeof animal.huntTargetId === 'string') &&
+          ((animal.huntTargetId === undefined && animal.huntTicks === undefined) || (
+            typeof animal.huntTargetId === 'string' &&
+            Number.isInteger(animal.huntTicks) &&
+            (animal.huntTicks ?? -1) >= 0 &&
+            (animal.huntTicks ?? HUMAN_HUNT_PATIENCE_TICKS + 1) <=
+              HUMAN_HUNT_PATIENCE_TICKS
+          )) &&
+          huntExperienceValid &&
           (animal.crafting === undefined || [...HUMAN_TOOL_KEYS, 'planks'].includes(animal.crafting)) &&
           ((animal.crafting === undefined && animal.craftingReadyTick === undefined) || (
             animal.crafting !== undefined &&
@@ -2539,6 +2655,8 @@ export function isValidEcosystem(value: unknown): value is EcosystemState {
         animal.activeTool === undefined &&
         animal.workbenchId === undefined &&
         animal.huntTargetId === undefined &&
+        animal.huntTicks === undefined &&
+        animal.huntExperience === undefined &&
         animal.crafting === undefined &&
         animal.craftingReadyTick === undefined &&
         animal.taskStallTicks === undefined &&
@@ -2603,6 +2721,10 @@ export function migrateEcosystem(value: unknown): EcosystemState | undefined {
         ? { heldItemCount: 1 }
         : {}),
       ...(isHuman && animal.taskStallTicks === undefined ? { taskStallTicks: 0 } : {}),
+      ...(isHuman && animal.huntExperience === undefined ? { huntExperience: {} } : {}),
+      ...(isHuman && animal.huntTargetId !== undefined && animal.huntTicks === undefined
+        ? { huntTicks: 0 }
+        : {}),
       ...(isHuman && animal.traits === undefined
         ? { traits: createFounderHumanTraits(animal.id ?? 'human-legacy') }
         : {}),

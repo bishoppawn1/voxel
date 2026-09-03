@@ -271,7 +271,14 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   few nearby prey at the start of a hunt, then locks onto that individual until
   it catches it, the prey disappears, or the path stays blocked for eight awake
   ticks. This prevents a faster Human from wasting its movement by alternating
-  between slower targets. It also randomly chooses among nearby Wood targets,
+  between slower targets. Each Human also keeps its own bounded experience
+  score for every prey species. A successful kill raises that species' score;
+  a blocked hunt or a chase that lasts twelve hunting ticks without a kill
+  lowers it. New hunts prefer the highest-scoring available species, using
+  distance and the Human's individual random choice to break ties, so a Human
+  that repeatedly fails to catch Rabbits redirects itself toward other prey
+  while another Human can learn a different preference. It also randomly
+  chooses among nearby Wood targets,
   wanders toward a random reachable destination, and chooses randomly among
   eligible unrelated partners. Active crafting and carrying jobs remain
   committed work, while emergency hunger always overrides the roll: the Human
@@ -437,7 +444,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   without dragging opens its individual stats. A Human that makes no progress
   on a task for eight awake ticks abandons it and retries reachable work.
   A hunter keeps one prey target throughout a chase instead of zig-zagging
-  between nearby animals.
+  between nearby animals, learns a bounded preference score from successful and
+  failed hunts, and switches species after an overlong unsuccessful chase when
+  a better learned option is available.
   Surviving builders reuse Planks in abandoned cabin blueprint cells, skip
   completed parts, and dismantle incompatible blocks before continuing.
   Leaves cut off from every Wood block visibly decay over six ecosystem ticks
