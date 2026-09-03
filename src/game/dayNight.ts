@@ -1,4 +1,4 @@
-export const DAY_CYCLE_TICKS = 80;
+export const DAY_CYCLE_TICKS = 160;
 export const NIGHT_START_HOUR = 20;
 export const DAY_START_HOUR = 6;
 

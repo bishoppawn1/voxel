@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DAY_CYCLE_TICKS } from './dayNight';
 import {
   ANIMALS,
   ANIMAL_BREEDING_MIN_HUNGER,
@@ -43,6 +44,8 @@ import {
   type BlockMaterial,
   type VoxelBlock,
 } from './world';
+
+const NIGHT_START_TICK = DAY_CYCLE_TICKS / 2;
 
 const block = (
   id: string,
@@ -173,6 +176,7 @@ describe('vegetation growth', () => {
   });
 
   it('matures a sapling into a rooted wood-and-leaves tree', () => {
+    expect(SAPLING_MATURATION_TICKS).toBe(56);
     const grassyDirt = block('grass', 0, 0, 'grass');
     let ecosystem: EcosystemState = {
       ...emptyEcosystem(),
@@ -1091,7 +1095,7 @@ describe('human crafting and building', () => {
     ];
     const ecosystem: EcosystemState = {
       ...emptyEcosystem(),
-      tick: 39,
+      tick: NIGHT_START_TICK - 1,
       animals: [animal('human', 'human-0', -1, 3, {
         health: ANIMALS.human.maxHealth - 2,
         workbenchId: bench.id,
@@ -1115,7 +1119,7 @@ describe('human crafting and building', () => {
     });
     const makeState = (): EcosystemState => ({
       ...emptyEcosystem(),
-      tick: 40,
+      tick: NIGHT_START_TICK,
       animals: [human],
       nextEntityId: 1,
     });
@@ -2221,14 +2225,14 @@ describe('night behavior', () => {
     ];
     const ecosystem: EcosystemState = {
       ...emptyEcosystem(),
-      tick: 39,
+      tick: NIGHT_START_TICK - 1,
       animals: [animal('sheep', 'sheep-0', 0, 0, { hunger: 40 })],
       nextEntityId: 1,
     };
 
     const result = advanceEcosystem(world, ecosystem, () => 1).ecosystem.animals[0];
 
-    expect(animalSleepsAtNight(result, 40, () => 1)).toBe(true);
+    expect(animalSleepsAtNight(result, NIGHT_START_TICK, () => 1)).toBe(true);
     expect(result).toMatchObject({ x: 0, z: 0, eaten: 0, hunger: 39 });
   });
 
@@ -2239,7 +2243,7 @@ describe('night behavior', () => {
     ];
     const ecosystem: EcosystemState = {
       ...emptyEcosystem(),
-      tick: 39,
+      tick: NIGHT_START_TICK - 1,
       animals: [
         animal('fox', 'fox-0', 0, 0, { hunger: 40 }),
         animal('rabbit', 'rabbit-1', 1, 0, { health: 1 }),

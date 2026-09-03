@@ -7,10 +7,11 @@ import {
 
 describe('day and night cycle', () => {
   it('starts in daylight, enters night, and returns to morning', () => {
+    expect(DAY_CYCLE_TICKS).toBe(160);
     expect(getDayCycle(0)).toMatchObject({ hour: 8, isNight: false, cycleIndex: 0 });
     expect(getDayCycle(DAY_CYCLE_TICKS / 2)).toMatchObject({ hour: 20, isNight: true });
-    expect(getDayCycle(73).isNight).toBe(true);
-    expect(getDayCycle(74).isNight).toBe(false);
+    expect(getDayCycle(146).isNight).toBe(true);
+    expect(getDayCycle(147).isNight).toBe(false);
     expect(getDayCycle(DAY_CYCLE_TICKS)).toMatchObject({
       hour: 8,
       isNight: false,

@@ -159,7 +159,8 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   are lightweight surface attachments keyed to stable block IDs; they do not
   occupy world cells and move with their supporting block. Short grass
   matures into tall grass after a short, deterministic growth period. A
-  sapling matures into one of three tall Wood-and-Leaves tree patterns. Each
+  sapling matures after 56 ecosystem ticks into one of three tall
+  Wood-and-Leaves tree patterns. Each
   keeps its canopy well above the reach of animals on level ground and grows
   only when its footprint is unobstructed;
   otherwise it waits and tries again on a later ecosystem tick. Generated
@@ -415,7 +416,7 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
   cell, and never plan through impassable terrain. Ordinary animals sleep at
   night while a deterministic minority of predators remain awake to surprise
   sleeping prey. The visible clock, sky, stars, fog, and lighting complete the
-  same persisted 80-tick cycle. Animals starve at zero and die of old age.
+  same persisted 160-tick cycle. Animals starve at zero and die of old age.
   Every non-human animal species can produce
   smaller babies from a well-fed same-species adult pair and grow those babies into adults
   without displaying overhead bars. Burning animals rush into
