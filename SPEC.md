@@ -105,6 +105,10 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 - Pausing gravity allows unsupported structures to remain suspended. Resuming
   gravity advances unsupported groups one cell per simulation tick so the
   player can watch the complete fall.
+- Gravity processing wakes after loading, terrain edits, structural ecosystem
+  changes, fire damage, undo, redo, or resuming gravity. It stops scanning the
+  world after both structures and the slower liquid pass report that nothing
+  moved, then remains idle until another event can destabilize the world.
 - A freshly placed loose or fluid block can roll diagonally off an occupied
   cell before it becomes stable, so repeated placement forms a low pile
   instead of an implausibly thin tower. Rigid blocks remain on direct supports,

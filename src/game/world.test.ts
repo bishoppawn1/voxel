@@ -22,6 +22,7 @@ import {
   settlePlacedBlock,
   settlePlacedBlockOnLiquid,
   settleWorld,
+  worldStepNeedsContinuation,
   worldToCell,
   type VoxelBlock,
 } from './world';
@@ -48,6 +49,12 @@ describe('voxel gravity', () => {
     expect(first.blocks[0].y).toBe(3);
     expect(second.blocks[0].y).toBe(2);
     expect(first.structuresMoved).toBe(true);
+  });
+
+  it('keeps an on-demand world loop active until liquids have also settled', () => {
+    expect(worldStepNeedsContinuation({ moved: false }, false)).toBe(true);
+    expect(worldStepNeedsContinuation({ moved: false }, true)).toBe(false);
+    expect(worldStepNeedsContinuation({ moved: true }, true)).toBe(true);
   });
 
   it('drops a lone floating block to the plane', () => {

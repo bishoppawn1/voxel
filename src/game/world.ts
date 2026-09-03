@@ -768,6 +768,13 @@ export function advanceWorldStep(input: VoxelBlock[], flowLiquids = true) {
   };
 }
 
+export function worldStepNeedsContinuation(
+  step: Pick<ReturnType<typeof advanceWorldStep>, 'moved'>,
+  liquidsChecked: boolean,
+) {
+  return step.moved || !liquidsChecked;
+}
+
 /**
  * Settles overloaded or disconnected groups, then lets liquids seek the
  * lowest reachable cells. IDs and falling group shapes are preserved.

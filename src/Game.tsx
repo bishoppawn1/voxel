@@ -67,6 +67,7 @@ import {
   isInWorld,
   isValidWorld,
   settlePlacedBlockOnLiquid,
+  worldStepNeedsContinuation,
   worldToCell,
   type BlockMaterial,
   type Cell,
@@ -1303,7 +1304,7 @@ export default function Game() {
   const [simulationPaused, setSimulationPaused] = useState(false);
   const [past, setPast] = useState<WorldSnapshot[]>([]);
   const [future, setFuture] = useState<WorldSnapshot[]>([]);
-  const [settling, setSettling] = useState(false);
+  const [settling, setSettling] = useState(true);
   const [welcomeVisible, setWelcomeVisible] = useState(true);
   const [powerMessage, setPowerMessage] = useState('');
   const [inspectedHumanId, setInspectedHumanId] = useState<string | null>(null);
@@ -1361,15 +1362,20 @@ export default function Game() {
       setSettling(false);
       return;
     }
+    if (!settling) {
+      worldTickCounter.current = 0;
+      return;
+    }
 
     const worldTimer = window.setInterval(() => {
       worldTickCounter.current = (worldTickCounter.current + 1) % LIQUID_TICK_DIVISOR;
+      const liquidsChecked = worldTickCounter.current === 0;
       const step = advanceWorldStep(
         blocksRef.current,
-        worldTickCounter.current === 0,
+        liquidsChecked,
       );
       if (!step.moved) {
-        setSettling(false);
+        if (!worldStepNeedsContinuation(step, liquidsChecked)) setSettling(false);
         return;
       }
       const nextBlocks = convertCoveredGrassToSoil(step.blocks);
@@ -1379,20 +1385,22 @@ export default function Game() {
     }, WORLD_TICK_MS);
 
     return () => window.clearInterval(worldTimer);
-  }, [gravityOn, simulationPaused]);
+  }, [gravityOn, settling, simulationPaused]);
 
   useEffect(() => {
     if (simulationPaused) return;
     const ecosystemTimer = window.setInterval(() => {
-      const result = advanceEcosystem(blocksRef.current, ecosystemRef.current);
+      const previousBlocks = blocksRef.current;
+      const result = advanceEcosystem(previousBlocks, ecosystemRef.current);
       blocksRef.current = result.blocks;
       ecosystemRef.current = result.ecosystem;
       setBlocks(result.blocks);
       setEcosystem(result.ecosystem);
+      if (gravityOn && result.blocks !== previousBlocks) setSettling(true);
     }, ECOSYSTEM_TICK_MS);
 
     return () => window.clearInterval(ecosystemTimer);
-  }, [simulationPaused]);
+  }, [gravityOn, simulationPaused]);
 
   const commit = (
     next: VoxelBlock[],
@@ -1482,6 +1490,7 @@ export default function Game() {
     ecosystemRef.current = previous.ecosystem;
     setBlocks(previous.blocks);
     setEcosystem(previous.ecosystem);
+    if (!simulationPaused && gravityOn) setSettling(true);
   };
 
   const redo = () => {
@@ -1493,6 +1502,7 @@ export default function Game() {
     ecosystemRef.current = next.ecosystem;
     setBlocks(next.blocks);
     setEcosystem(next.ecosystem);
+    if (!simulationPaused && gravityOn) setSettling(true);
   };
 
   const resetWorld = () => {
