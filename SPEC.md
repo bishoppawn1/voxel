@@ -345,6 +345,9 @@ Gravity is material-aware and connectivity-based rather than a full rigid-body s
 - Creation tools and the separate Powers section are grouped on the left side;
   the right side remains open for viewing the world.
 - Every material uses a distinct pixel texture rather than a flat color. Grass is a dirt block with a separate grassy cap, a green top, and an irregular grass fringe over its dirt sides; wood uses bark and growth rings, masonry uses joints, and ore blocks show mineral deposits embedded in stone.
+- Short grass, tall grass, flowers, and tree saplings use hard-edged,
+  axis-aligned cuboids so surface vegetation matches the world's pixelated
+  voxel style. Flower colors remain varied between individual plants.
 - Rendered cubes fill quarter-unit grid cells and touch neighboring cubes.
   Their geometry, spacing, placement grid, and gravity steps are all 25% of the
   original one-unit block size. Palette tiles stay very small and compact

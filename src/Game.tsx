@@ -112,17 +112,17 @@ const ABILITY_PREVIEW_COLORS: Record<AbilityKey, { fill: string; edge: string }>
 };
 const FLOWER_COLORS = ['#f2a6ba', '#f1ca54', '#9fb5ef', '#d99ee9', '#ef9366', '#f2eee1'] as const;
 const SHORT_GRASS_BLADES = [
-  [-0.18, -0.08, 0.08, 0.86],
-  [-0.06, 0.13, -0.06, 0.74],
-  [0.07, -0.03, 0.05, 1],
-  [0.19, 0.11, -0.08, 0.82],
+  [-0.18, -0.08, 0.86],
+  [-0.06, 0.13, 0.74],
+  [0.07, -0.03, 1],
+  [0.19, 0.11, 0.82],
 ] as const;
 const TALL_GRASS_BLADES = [
-  [-0.22, -0.1, 0.07, 0.88],
-  [-0.1, 0.15, -0.08, 0.76],
-  [0, -0.02, 0.04, 1],
-  [0.11, 0.14, 0.08, 0.82],
-  [0.22, -0.1, -0.07, 0.9],
+  [-0.22, -0.1, 0.88],
+  [-0.1, 0.15, 0.76],
+  [0, -0.02, 1],
+  [0.11, 0.14, 0.82],
+  [0.22, -0.1, 0.9],
 ] as const;
 
 function flowerColorFor(id: string) {
@@ -568,7 +568,7 @@ const VegetationSprout = memo(function VegetationSprout({
   const kelp = growth.kind === 'kelp';
   const tallGrass = growth.kind === 'tall-grass';
   const height = tallGrass ? BLOCK_SIZE * 0.88 : BLOCK_SIZE * 0.46;
-  const bladeWidth = tallGrass ? BLOCK_SIZE * 0.085 : BLOCK_SIZE * 0.075;
+  const bladeWidth = tallGrass ? BLOCK_SIZE * 0.11 : BLOCK_SIZE * 0.095;
   const bladeColor = growth.kind === 'tall-grass' ? '#4f873e' : '#6da24b';
   const flowerColor = flowerColorFor(growth.id);
   const bladeOffsets = tallGrass ? TALL_GRASS_BLADES : SHORT_GRASS_BLADES;
@@ -597,42 +597,41 @@ const VegetationSprout = memo(function VegetationSprout({
       ) : growth.kind === 'sapling' ? (
         <>
           <mesh position={[0, BLOCK_SIZE * 0.22, 0]} castShadow>
-            <boxGeometry args={[BLOCK_SIZE * 0.1, BLOCK_SIZE * 0.44, BLOCK_SIZE * 0.1]} />
+            <boxGeometry args={[BLOCK_SIZE * 0.12, BLOCK_SIZE * 0.44, BLOCK_SIZE * 0.12]} />
             <meshStandardMaterial color="#765038" roughness={0.96} />
           </mesh>
-          <mesh position={[0, BLOCK_SIZE * 0.48, 0]} castShadow>
-            <boxGeometry args={[BLOCK_SIZE * 0.48, BLOCK_SIZE * 0.32, BLOCK_SIZE * 0.42]} />
+          <mesh position={[0, BLOCK_SIZE * 0.43, 0]} castShadow>
+            <boxGeometry args={[BLOCK_SIZE * 0.4, BLOCK_SIZE * 0.24, BLOCK_SIZE * 0.4]} />
             <meshStandardMaterial color="#5d8c47" roughness={0.94} />
           </mesh>
-          <mesh position={[BLOCK_SIZE * 0.13, BLOCK_SIZE * 0.61, 0]} castShadow>
-            <boxGeometry args={[BLOCK_SIZE * 0.26, BLOCK_SIZE * 0.22, BLOCK_SIZE * 0.28]} />
+          <mesh position={[BLOCK_SIZE * 0.08, BLOCK_SIZE * 0.6, 0]} castShadow>
+            <boxGeometry args={[BLOCK_SIZE * 0.24, BLOCK_SIZE * 0.22, BLOCK_SIZE * 0.24]} />
             <meshStandardMaterial color="#78a454" roughness={0.94} />
           </mesh>
         </>
       ) : growth.kind === 'flower' ? (
         <>
-          <mesh position={[0, BLOCK_SIZE * 0.2, 0]} castShadow>
-            <boxGeometry args={[BLOCK_SIZE * 0.045, BLOCK_SIZE * 0.4, BLOCK_SIZE * 0.045]} />
+          <mesh position={[0, BLOCK_SIZE * 0.19, 0]} castShadow>
+            <boxGeometry args={[BLOCK_SIZE * 0.065, BLOCK_SIZE * 0.38, BLOCK_SIZE * 0.065]} />
             <meshStandardMaterial color="#4f873e" roughness={0.95} />
           </mesh>
           <mesh position={[0, BLOCK_SIZE * 0.42, 0]} castShadow>
-            <sphereGeometry args={[BLOCK_SIZE * 0.11, 7, 5]} />
+            <boxGeometry args={[BLOCK_SIZE * 0.24, BLOCK_SIZE * 0.18, BLOCK_SIZE * 0.24]} />
             <meshStandardMaterial color={flowerColor} roughness={0.8} />
           </mesh>
-          <mesh position={[0, BLOCK_SIZE * 0.42, BLOCK_SIZE * 0.085]}>
-            <sphereGeometry args={[BLOCK_SIZE * 0.045, 6, 4]} />
+          <mesh position={[0, BLOCK_SIZE * 0.42, BLOCK_SIZE * 0.135]}>
+            <boxGeometry args={[BLOCK_SIZE * 0.09, BLOCK_SIZE * 0.09, BLOCK_SIZE * 0.04]} />
             <meshStandardMaterial color="#e5b83d" roughness={0.8} />
           </mesh>
         </>
       ) : (
-        bladeOffsets.map(([x, z, tilt, heightScale], index) => (
+        bladeOffsets.map(([x, z, heightScale]) => (
           <mesh
             key={`${x}:${z}`}
             position={[BLOCK_SIZE * x, height * heightScale / 2, BLOCK_SIZE * z]}
-            rotation={[index % 2 ? 0.08 : -0.06, index * 0.72, tilt]}
             castShadow
           >
-            <boxGeometry args={[bladeWidth, height * heightScale, BLOCK_SIZE * 0.055]} />
+            <boxGeometry args={[bladeWidth, height * heightScale, bladeWidth]} />
             <meshStandardMaterial color={bladeColor} roughness={0.96} />
           </mesh>
         ))
